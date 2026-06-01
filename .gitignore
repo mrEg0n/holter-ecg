@@ -14,9 +14,11 @@ venv/
 .idea/
 *.swp
 
-# Recordings (user-specific, can be large)
-# Sample recordings under samples/ are tracked; ad-hoc captures are not.
-ecg_*.csv
-ecg_*.png
-!samples/ecg_*.csv
-!samples/ecg_*.png
+# Per-session recordings (auto-created by host/server.py)
+logs/
+
+# Ad-hoc recordings in repo root (not the curated samples/)
+/ecg_*.csv
+/ecg_*.png
+/peaks_*.csv
+/markers_*.csv

@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ECG live</title>
+<script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+<style>
+  :root {
+    --bg: #1e1e1e;
+    --panel: #2a2a2a;
+    --plot-bg: #0d0d0d;
+    --grid: #333;
+    --fg: #eaeaea;
+    --muted: #888;
+    --green: #2ecc71;
+    --blue: #3498db;
+    --red: #e74c3c;
+    --orange: #f39c12;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro", Helvetica, Arial, sans-serif;
+    overflow: hidden;
+  }
+  .layout {
+    display: grid;
+    grid-template-columns: 1fr 260px;
+    grid-template-rows: 1fr;
+    gap: 12px;
+    padding: 12px;
+    height: 100vh;
+  }
+  .chart-wrap { position: relative; background: var(--plot-bg); border-radius: 6px; }
+  #chart { width: 100%; height: 100%; }
+  .toolbar {
+    position: absolute; top: 8px; right: 8px;
+    display: flex; gap: 4px;
+    background: rgba(0,0,0,0.55);
+    padding: 4px; border-radius: 6px;
+    z-index: 10;
+    backdrop-filter: blur(6px);
+  }
+  .toolbar button {
+    background: #333; color: #eee; border: 1px solid #555;
+    border-radius: 4px; padding: 6px 10px;
+    font-size: 14px; line-height: 1; cursor: pointer;
+    min-width: 38px; min-height: 32px;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .toolbar button:hover { background: #444; }
+  .toolbar button:active { background: #222; }
+  .toolbar button.paused { background: #f39c12; color: #000; }
+  .toolbar input[type="text"] {
+    background: #1a1a1a; border: 1px solid #555; color: #eee;
+    padding: 6px 10px; border-radius: 4px;
+    font-size: 12px; min-width: 140px; outline: none;
+  }
+  .toolbar input[type="text"]:focus { border-color: #f1c40f; }
+  .stats { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+  .card {
+    background: var(--panel); border-radius: 8px; padding: 12px 14px;
+    box-shadow: 0 1px 0 rgba(255,255,255,0.05) inset;
+  }
+  .card .label {
+    font-size: 11px; color: var(--muted); text-transform: uppercase;
+    letter-spacing: 0.6px;
+  }
+  .card .value {
+    font-size: 38px; font-weight: 700; line-height: 1.05; margin-top: 4px;
+  }
+  .card .unit { font-size: 13px; color: var(--muted); margin-top: 2px; }
+  .card.ecg .value { color: var(--green); }
+  .card.sinus .value { color: var(--blue); }
+  .card.pvc .value { color: var(--red); }
+  .card.burden .value { color: var(--orange); }
+  #status {
+    font-size: 11px; color: var(--muted);
+    padding: 6px 10px; background: var(--panel); border-radius: 6px;
+    margin-top: auto;
+  }
+  #status.connected { color: var(--green); }
+  #status.disconnected { color: var(--red); }
+  .footer {
+    font-size: 10px; color: var(--muted); padding: 4px 10px;
+  }
+  @media (max-width: 700px) {
+    .layout { grid-template-columns: 1fr; grid-template-rows: 60vh 1fr; }
+    .stats { flex-direction: row; flex-wrap: wrap; overflow-x: auto; }
+    .card { flex: 1 0 calc(50% - 6px); }
+    .card .value { font-size: 30px; }
+  }
+</style>
+</head>
+<body>
+<div class="layout">
+  <div class="chart-wrap">
+    <div id="chart"></div>
+    <div class="toolbar">
+      <button id="btn-yin"   title="Zoom Y in">↕−</button>
+      <button id="btn-yout"  title="Zoom Y out">↕+</button>
+      <button id="btn-xin"   title="Zoom X in (less seconds, more detail)">↔−</button>
+      <button id="btn-xout"  title="Zoom X out (more seconds)">↔+</button>
+      <button id="btn-reset" title="Reset axes">⟲</button>
+      <button id="btn-pause" title="Pause / resume">⏸</button>
+      <input  id="mark-text" type="text" placeholder="marker note…" autocomplete="off"
+              spellcheck="false" maxlength="80">
+      <button id="btn-mark"  title="Add marker at the current time">📍 mark</button>
+    </div>
+  </div>
+  <div class="stats">
+    <div class="card ecg">
+      <div class="label">ECG total</div>
+      <div class="value" id="ecg_bpm">--</div>
+      <div class="unit">BPM (electrical)</div>
+    </div>
+    <div class="card sinus">
+      <div class="label">Sinus only</div>
+      <div class="value" id="sinus_bpm">--</div>
+      <div class="unit">BPM (≈ wrist PPG)</div>
+    </div>
+    <div class="card pvc">
+      <div class="label">PVC rate</div>
+      <div class="value" id="pvc_rate">--</div>
+      <div class="unit">/min</div>
+    </div>
+    <div class="card burden">
+      <div class="label">PVC burden</div>
+      <div class="value" id="burden">--</div>
+      <div class="unit">% of total</div>
+    </div>
+    <div id="status" class="disconnected">connecting…</div>
+    <div class="footer">Educational only — not a medical device.</div>
+  </div>
+</div>
+
+<script>
+const FS         = 250;
+const WINDOW_S   = 30;
+const BUF_SIZE   = FS * WINDOW_S;
+const PVC_HALF_W = Math.round(0.12 * FS); // 120 ms window painted red around each PVC peak
+
+// rolling y buffers
+const yMain = new Array(BUF_SIZE).fill(NaN); // green (everything)
+const yPvc  = new Array(BUF_SIZE).fill(NaN); // red (only PVC regions, overlays)
+const xAxis = Array.from({length: BUF_SIZE}, (_, i) => -WINDOW_S + i / FS);
+
+// peaks kept in absolute sample-index coords; rendered relative to current time
+const peakLog = []; // {n, amp, cls}
+
+// markers (manual annotations): {n, t_s, text}, replaced wholesale by server
+let markersList = [];
+
+// last samples_seen reported by server (used for "mark now" and click-to-mark)
+let lastSamplesSeen = 0;
+
+// Plotly init
+const DEFAULT_X = [-WINDOW_S, 0];
+const DEFAULT_Y = [-1.0, 1.5];
+const layout = {
+  paper_bgcolor: '#0d0d0d',
+  plot_bgcolor:  '#0d0d0d',
+  font: { color: '#aaa', family: 'system-ui' },
+  margin: { t: 12, l: 50, r: 16, b: 40 },
+  xaxis: {
+    title: { text: 'Time (s, scrolling)', font: { size: 11 } },
+    range: DEFAULT_X.slice(), gridcolor: '#333', zerolinecolor: '#444',
+    showspikes: false,
+  },
+  yaxis: {
+    title: { text: 'ECG filtered (V)', font: { size: 11 } },
+    range: DEFAULT_Y.slice(), gridcolor: '#333', zerolinecolor: '#444',
+  },
+  showlegend: false,
+  dragmode: 'pan',
+};
+
+const traces = [
+  // green line — all samples
+  { x: xAxis, y: yMain, type: 'scattergl', mode: 'lines',
+    line: { color: '#2ecc71', width: 1.2 }, hoverinfo: 'skip',
+    connectgaps: false },
+  // red line — PVC segments only, overlays on top
+  { x: xAxis, y: yPvc, type: 'scattergl', mode: 'lines',
+    line: { color: '#e74c3c', width: 2.0 }, hoverinfo: 'skip',
+    connectgaps: false },
+  // green triangle markers — normal beats
+  { x: [], y: [], type: 'scatter', mode: 'markers',
+    marker: { color: '#2ecc71', size: 10, symbol: 'triangle-down',
+              line: { color: '#fff', width: 0.6 } }, hoverinfo: 'skip' },
+  // red triangle markers — PVC beats
+  { x: [], y: [], type: 'scatter', mode: 'markers',
+    marker: { color: '#e74c3c', size: 18, symbol: 'triangle-down',
+              line: { color: '#fff', width: 1.0 } }, hoverinfo: 'skip' },
+];
+
+Plotly.newPlot('chart', traces, layout, {
+  displayModeBar: false, responsive: true, scrollZoom: true,
+});
+
+// ---- status helpers ----
+function statusOk(msg) {
+  const el = document.getElementById('status');
+  el.className = 'connected';
+  el.textContent = msg;
+}
+function statusBad(msg) {
+  const el = document.getElementById('status');
+  el.className = 'disconnected';
+  el.textContent = msg;
+}
+
+// ---- toolbar (axis controls + pause) ----
+let paused = false;
+function curRange(axis) {
+  return document.getElementById('chart').layout[axis].range;
+}
+function zoomAxis(axis, factor) {
+  const [lo, hi] = curRange(axis);
+  const c = (lo + hi) / 2;
+  const half = (hi - lo) / 2 * factor;
+  const update = {};
+  update[axis + '.range'] = [c - half, c + half];
+  Plotly.relayout('chart', update);
+}
+document.getElementById('btn-yin').onclick   = () => zoomAxis('yaxis', 0.6);
+document.getElementById('btn-yout').onclick  = () => zoomAxis('yaxis', 1.6);
+document.getElementById('btn-xin').onclick   = () => zoomAxis('xaxis', 0.6);
+document.getElementById('btn-xout').onclick  = () => zoomAxis('xaxis', 1.6);
+document.getElementById('btn-reset').onclick = () => {
+  Plotly.relayout('chart', { 'xaxis.range': DEFAULT_X.slice(),
+                             'yaxis.range': DEFAULT_Y.slice() });
+};
+const btnPause = document.getElementById('btn-pause');
+btnPause.onclick = () => {
+  paused = !paused;
+  btnPause.textContent = paused ? '▶' : '⏸';
+  btnPause.classList.toggle('paused', paused);
+};
+
+// ---- marker (manual annotation) ----
+function postMarker(n, text) {
+  fetch('/marker', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ n, text }),
+  });
+}
+const markText = document.getElementById('mark-text');
+const btnMark  = document.getElementById('btn-mark');
+
+function placeMarkerNow() {
+  const text = markText.value.trim();
+  if (!text) { markText.focus(); return; }
+  postMarker(lastSamplesSeen, text);
+  // leave text in place so the user can re-mark with the same note quickly;
+  // clear by hand if they want to write a new one
+}
+btnMark.onclick = placeMarkerNow;
+markText.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { placeMarkerNow(); e.preventDefault(); }
+});
+
+// keyboard fallback (desktop) — ignore when typing in inputs
+document.addEventListener('keydown', (e) => {
+  const tag = (e.target.tagName || '').toUpperCase();
+  if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+  if (e.key === ' ')      { btnPause.click(); e.preventDefault(); }
+  else if (e.key === 'r') { document.getElementById('btn-reset').click(); }
+  else if (e.key === 'ArrowUp')    { zoomAxis('yaxis', 0.6); }
+  else if (e.key === 'ArrowDown')  { zoomAxis('yaxis', 1.6); }
+  else if (e.key === 'ArrowRight') { zoomAxis('xaxis', 0.6); }
+  else if (e.key === 'ArrowLeft')  { zoomAxis('xaxis', 1.6); }
+});
+
+// ---- SSE ----
+let es;
+function connect() {
+  es = new EventSource('/stream');
+  es.onmessage = (ev) => {
+    const d = JSON.parse(ev.data);
+    if (d.hello) {
+      statusOk(`connected · session ${d.session_id}`);
+      return;
+    }
+    // markers can arrive in any batch (including initial); update wholesale
+    if (d.markers) {
+      markersList = d.markers;
+    }
+    if (paused) return; // accumulate nothing while paused
+
+    // append new samples — every sample goes into the green line,
+    // red line gets NaN by default and is painted later by PVC peaks
+    if (d.samples && d.samples.length) {
+      for (const v of d.samples) {
+        yMain.push(v); yMain.shift();
+        yPvc.push(NaN); yPvc.shift();
+      }
+    }
+
+    // record peaks
+    if (d.peaks && d.peaks.length) {
+      for (const p of d.peaks) peakLog.push(p);
+    }
+
+    const samplesSeen = d.stats.samples_seen;
+    const minN = samplesSeen - BUF_SIZE;
+    while (peakLog.length && peakLog[0].n < minN) peakLog.shift();
+
+    // paint PVC regions red (overlays on top of green)
+    // since yPvc was reset to NaN on every sample push, we re-paint every batch
+    for (let i = 0; i < BUF_SIZE; i++) yPvc[i] = NaN;
+    for (const p of peakLog) {
+      if (p.cls !== 'pvc') continue;
+      const peakIdx = p.n - (samplesSeen - BUF_SIZE);
+      const start = Math.max(0, peakIdx - PVC_HALF_W);
+      const end   = Math.min(BUF_SIZE - 1, peakIdx + PVC_HALF_W);
+      for (let i = start; i <= end; i++) {
+        yPvc[i] = yMain[i];
+      }
+    }
+
+    // marker arrays
+    const nXY = { x: [], y: [] };
+    const pXY = { x: [], y: [] };
+    for (const p of peakLog) {
+      const xrel = (p.n - samplesSeen) / FS;
+      const y = Math.min(1.35, p.amp + 0.10);
+      if (p.cls === 'pvc') { pXY.x.push(xrel); pXY.y.push(y); }
+      else                 { nXY.x.push(xrel); nXY.y.push(y); }
+    }
+
+    // build vertical-line shapes + text annotations for manual markers
+    const shapes = [];
+    const annotations = [];
+    for (const m of markersList) {
+      const xrel = (m.n - samplesSeen) / FS;
+      if (xrel < -WINDOW_S - 1 || xrel > 0.5) continue;  // skip out of view
+      shapes.push({
+        type: 'line', xref: 'x', yref: 'paper',
+        x0: xrel, x1: xrel, y0: 0, y1: 1,
+        line: { color: '#f1c40f', width: 1, dash: 'dash' },
+      });
+      annotations.push({
+        x: xrel, y: 1, xref: 'x', yref: 'paper',
+        text: m.text, showarrow: false, yshift: 8,
+        font: { color: '#f1c40f', size: 10 },
+        bgcolor: 'rgba(0,0,0,0.7)', bordercolor: '#f1c40f',
+        borderpad: 3,
+      });
+    }
+
+    Plotly.update('chart',
+      {
+        x: [xAxis, xAxis, nXY.x, pXY.x],
+        y: [yMain, yPvc,  nXY.y, pXY.y],
+      },
+      { shapes, annotations }
+    );
+
+    lastSamplesSeen = samplesSeen;
+
+    // stats
+    document.getElementById('ecg_bpm').textContent   = d.stats.ecg_bpm   || '--';
+    document.getElementById('sinus_bpm').textContent = d.stats.sinus_bpm || '--';
+    document.getElementById('pvc_rate').textContent  = d.stats.pvc_rate  || '0';
+    document.getElementById('burden').textContent    = (d.stats.pvc_burden_pct || 0).toFixed(1);
+
+    const elapsed = (samplesSeen / FS).toFixed(0);
+    statusOk(`live · ${elapsed}s · PVC tot ${d.stats.pvc_total} / normali ${d.stats.normal_total}`);
+  };
+  es.onerror = () => {
+    statusBad('disconnected, retrying…');
+  };
+}
+connect();
+</script>
+</body>
+</html>
