@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.venv/
+venv/
+
+# macOS
+.DS_Store
+
+# Editors
+.vscode/
+.idea/
+*.swp
+
+# Recordings (user-specific, can be large)
+# Sample recordings under samples/ are tracked; ad-hoc captures are not.
+ecg_*.csv
+ecg_*.png
+!samples/ecg_*.csv
+!samples/ecg_*.png
