@@ -19,7 +19,9 @@ import glob
 import json
 import math
 import os
+import queue
 import shutil
+import socket
 import statistics
 import subprocess
 import threading
@@ -33,6 +35,8 @@ ROOT      = os.path.dirname(HERE)
 LOG_DIR   = os.path.join(ROOT, "logs")
 STATIC    = os.path.join(HERE, "static")
 PORT      = int(os.environ.get("PORT", "8081"))
+TRANSPORT = os.environ.get("TRANSPORT", "usb").lower()   # "usb" | "wifi"
+TCP_PORT  = int(os.environ.get("TCP_PORT", "5005"))      # TCP port for Pico → server stream
 os.makedirs(LOG_DIR, exist_ok=True)
 
 
@@ -57,9 +61,13 @@ def find_pico_device():
             return c[0]
     raise SystemExit("Pico not detected. Plug USB or set PICO_DEVICE=/dev/...")
 
-MPREMOTE = find_mpremote()
-DEVICE   = find_pico_device()
-STREAMER = os.path.normpath(os.path.join(ROOT, "pico", "streamer.py"))
+if TRANSPORT == "usb":
+    MPREMOTE = find_mpremote()
+    DEVICE   = find_pico_device()
+    STREAMER = os.path.normpath(os.path.join(ROOT, "pico", "streamer.py"))
+else:
+    MPREMOTE = DEVICE = STREAMER = None
+    print(f"[transport] WIFI mode: TCP server on 0.0.0.0:{TCP_PORT}")
 
 
 # ---------------- DSP / detector constants ----------------
@@ -126,13 +134,17 @@ state = {
     "pvc_count_total": 0,
     "normal_count_total": 0,
     # SSE batching: cleared every time /stream pulls a batch
-    "pending_samples": [],
-    "pending_peaks":   [],
     "first_sample_of_session_t": None,
     "markers":         [],     # list of {n, t_s, text}
-    "markers_dirty":   True,   # set True when markers change so SSE includes them
+    "markers_revision": 0,     # incremented on every marker change
     "lock":            threading.Lock(),
 }
+
+# Coda per ogni client SSE collegato. Ogni client ha la sua coda separata
+# cosi due browser aperti contemporaneamente non si rubano i sample a vicenda.
+clients = []          # list of {samples_q, peaks_q, last_markers_rev}
+clients_lock = threading.Lock()
+MAX_QUEUE = 4000      # se un client e' troppo lento, droppa i sample extra
 
 
 def detect_threshold():
@@ -167,8 +179,13 @@ def process_sample(v_raw, v_filt):
     # log every sample (raw + filtered)
     samples_log.write(f"{t_s:.4f},{v_raw:.4f},{v_filt:.4f}\n")
 
-    # store for SSE batching (only filtered + downsampled if needed — for now full rate)
-    state["pending_samples"].append(v_filt)
+    # push to ogni client SSE collegato (ognuno ha la sua coda)
+    with clients_lock:
+        for c in clients:
+            try:
+                c["samples_q"].put_nowait(v_filt)
+            except queue.Full:
+                pass
 
     if n < SETTLING_SAMPLES:
         return
@@ -231,13 +248,19 @@ def process_sample(v_raw, v_filt):
 
                 peak_t = p_n / SAMPLE_HZ
                 peaks_log.write(f"{peak_t:.4f},{p_amp:.4f},{w_ms:.1f},{ratio:.3f},{cls}\n")
-                state["pending_peaks"].append({
+                peak_payload = {
                     "n":        p_n,
                     "amp":      round(p_amp, 4),
                     "width_ms": round(w_ms, 1),
                     "rebound":  round(ratio, 3),
                     "cls":      cls,
-                })
+                }
+                with clients_lock:
+                    for c in clients:
+                        try:
+                            c["peaks_q"].put_nowait(peak_payload)
+                        except queue.Full:
+                            pass
 
                 elapsed = n / SAMPLE_HZ
                 effw    = min(BPM_WINDOW_S, elapsed)
@@ -260,33 +283,80 @@ def process_sample(v_raw, v_filt):
                 state["fsm"] = FSM_IDLE
 
 
-# ---------------- Pico reader thread ----------------
-def reader_loop():
+# ---------------- Pico reader threads (USB or WiFi) ----------------
+def process_line(line: str):
+    """Parse a single sample line from the Pico and run the detector pipeline."""
+    line = line.strip()
+    if not line:
+        return
+    try:
+        v_raw = float(line)
+    except ValueError:
+        return
+    v_filt = lp(hp(v_raw))
+    with state["lock"]:
+        process_sample(v_raw, v_filt)
+
+
+def usb_reader_loop():
     while True:
         try:
-            print(f"[pico] starting streamer on {DEVICE}")
+            print(f"[pico-usb] starting streamer on {DEVICE}")
             proc = subprocess.Popen(
                 [MPREMOTE, "connect", DEVICE, "run", STREAMER],
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                 bufsize=1, universal_newlines=True,
             )
             for line in proc.stdout:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    v_raw = float(line)
-                except ValueError:
-                    continue
-                v_filt = lp(hp(v_raw))
-                with state["lock"]:
-                    process_sample(v_raw, v_filt)
+                process_line(line)
         except Exception as e:
-            print(f"[pico] reader error: {e}")
+            print(f"[pico-usb] error: {e}")
         time.sleep(2)
-        print("[pico] reconnecting...")
+        print("[pico-usb] reconnecting...")
 
-threading.Thread(target=reader_loop, daemon=True).start()
+
+def wifi_reader_loop():
+    """TCP server: accepts one connection from the Pico WiFi streamer at a time.
+
+    Uses a recv() timeout so that abrupt disconnects (power-off, WiFi drop) are
+    detected within ~3 seconds and the server can accept the next connection
+    instead of staying stuck on a dead socket.
+    """
+    srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    srv.bind(("0.0.0.0", TCP_PORT))
+    srv.listen(1)
+    print(f"[pico-wifi] listening on 0.0.0.0:{TCP_PORT}")
+    RECV_TIMEOUT_S = 3.0   # any silence longer than this = client is gone
+    while True:
+        try:
+            conn, addr = srv.accept()
+            print(f"[pico-wifi] connected from {addr}")
+            conn.settimeout(RECV_TIMEOUT_S)
+            buf = b""
+            with conn:
+                while True:
+                    try:
+                        chunk = conn.recv(4096)
+                    except socket.timeout:
+                        print(f"[pico-wifi] silent for {RECV_TIMEOUT_S:.0f}s, dropping client {addr}")
+                        break
+                    if not chunk:
+                        print("[pico-wifi] client closed")
+                        break
+                    buf += chunk
+                    while b"\n" in buf:
+                        line, buf = buf.split(b"\n", 1)
+                        process_line(line.decode("ascii", errors="ignore"))
+        except Exception as e:
+            print(f"[pico-wifi] error: {e}")
+        time.sleep(0.5)
+
+
+if TRANSPORT == "usb":
+    threading.Thread(target=usb_reader_loop, daemon=True).start()
+else:
+    threading.Thread(target=wifi_reader_loop, daemon=True).start()
 
 
 # ---------------- Flask app ----------------
@@ -311,7 +381,7 @@ def add_marker():
     marker = {"n": n, "t_s": n / SAMPLE_HZ, "text": text}
     with state["lock"]:
         state["markers"].append(marker)
-        state["markers_dirty"] = True
+        state["markers_revision"] += 1
     escaped = text.replace('"', '""')
     markers_log.write(f'{marker["t_s"]:.4f},"{escaped}"\n')
     return {"ok": True, "marker": marker}
@@ -323,42 +393,68 @@ def list_markers():
 
 @app.route("/stream")
 def stream():
+    # Ogni client SSE riceve la propria coda dedicata.
+    # Niente competizione tra browser sui sample.
+    client = {
+        "samples_q":        queue.Queue(maxsize=MAX_QUEUE),
+        "peaks_q":          queue.Queue(maxsize=MAX_QUEUE),
+        "last_markers_rev": -1,
+    }
+    with clients_lock:
+        clients.append(client)
+
     def gen():
-        # send a hello message so the client knows server params
-        hello = {"hello": True, "fs": SAMPLE_HZ, "window_s": WINDOW_S,
-                 "session_id": session_id}
-        yield f"data: {json.dumps(hello)}\n\n"
-        # send initial markers so client knows about any pre-existing ones (after reload)
-        with state["lock"]:
-            init_markers = list(state["markers"])
-        yield f"data: {json.dumps({'markers': init_markers})}\n\n"
-
-        while True:
-            time.sleep(0.1)  # 10 batches per second
+        try:
+            hello = {"hello": True, "fs": SAMPLE_HZ, "window_s": WINDOW_S,
+                     "session_id": session_id}
+            yield f"data: {json.dumps(hello)}\n\n"
+            # initial markers
             with state["lock"]:
-                samples = state["pending_samples"]
-                peaks   = state["pending_peaks"]
-                state["pending_samples"] = []
-                state["pending_peaks"]   = []
-                stats = {
-                    "ecg_bpm":         state["ecg_bpm"],
-                    "sinus_bpm":       state["sinus_bpm"],
-                    "pvc_rate":        state["pvc_rate"],
-                    "pvc_burden_pct":  round(state["pvc_burden_pct"], 1),
-                    "samples_seen":    state["samples_seen"],
-                    "pvc_total":       state["pvc_count_total"],
-                    "normal_total":    state["normal_count_total"],
-                }
-                markers_payload = None
-                if state["markers_dirty"]:
-                    markers_payload = list(state["markers"])
-                    state["markers_dirty"] = False
+                init_markers = list(state["markers"])
+                client["last_markers_rev"] = state["markers_revision"]
+            yield f"data: {json.dumps({'markers': init_markers})}\n\n"
 
-            if samples or peaks or markers_payload is not None:
-                data = {"samples": samples, "peaks": peaks, "stats": stats}
-                if markers_payload is not None:
-                    data["markers"] = markers_payload
-                yield f"data: {json.dumps(data)}\n\n"
+            while True:
+                time.sleep(0.1)
+                # drain queues per-client
+                samples = []
+                try:
+                    while True:
+                        samples.append(client["samples_q"].get_nowait())
+                except queue.Empty:
+                    pass
+                peaks = []
+                try:
+                    while True:
+                        peaks.append(client["peaks_q"].get_nowait())
+                except queue.Empty:
+                    pass
+
+                with state["lock"]:
+                    stats = {
+                        "ecg_bpm":         state["ecg_bpm"],
+                        "sinus_bpm":       state["sinus_bpm"],
+                        "pvc_rate":        state["pvc_rate"],
+                        "pvc_burden_pct":  round(state["pvc_burden_pct"], 1),
+                        "samples_seen":    state["samples_seen"],
+                        "pvc_total":       state["pvc_count_total"],
+                        "normal_total":    state["normal_count_total"],
+                    }
+                    markers_payload = None
+                    if state["markers_revision"] != client["last_markers_rev"]:
+                        markers_payload = list(state["markers"])
+                        client["last_markers_rev"] = state["markers_revision"]
+
+                if samples or peaks or markers_payload is not None:
+                    data = {"samples": samples, "peaks": peaks, "stats": stats}
+                    if markers_payload is not None:
+                        data["markers"] = markers_payload
+                    yield f"data: {json.dumps(data)}\n\n"
+        finally:
+            with clients_lock:
+                if client in clients:
+                    clients.remove(client)
+
     return Response(gen(), mimetype="text/event-stream",
                     headers={"Cache-Control": "no-cache",
                              "X-Accel-Buffering": "no"})

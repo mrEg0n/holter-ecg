@@ -17,6 +17,9 @@ venv/
 # Per-session recordings (auto-created by host/server.py)
 logs/
 
+# WiFi credentials (user-specific, never commit)
+pico/wifi_config.py
+
 # Ad-hoc recordings in repo root (not the curated samples/)
 /ecg_*.csv
 /ecg_*.png

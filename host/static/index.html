@@ -132,7 +132,7 @@
       <div class="unit">% of total</div>
     </div>
     <div id="status" class="disconnected">connecting…</div>
-    <div class="footer">Educational only — not a medical device.</div>
+    <div class="footer">Educational only — not a medical device. <span style="color:#f1c40f">[v3-markers-top-extended-y]</span></div>
   </div>
 </div>
 
@@ -158,7 +158,7 @@ let lastSamplesSeen = 0;
 
 // Plotly init
 const DEFAULT_X = [-WINDOW_S, 0];
-const DEFAULT_Y = [-1.0, 1.5];
+const DEFAULT_Y = [-1.5, 2.0];   // più respiro sopra e sotto la traccia
 const layout = {
   paper_bgcolor: '#0d0d0d',
   plot_bgcolor:  '#0d0d0d',
@@ -325,11 +325,13 @@ function connect() {
     // marker arrays
     const nXY = { x: [], y: [] };
     const pXY = { x: [], y: [] };
+    // marker FISSI in cima al grafico, indipendenti dall'ampiezza del picco
+    const Y_MARKER_NORMAL = 1.75;
+    const Y_MARKER_PVC    = 1.90;
     for (const p of peakLog) {
       const xrel = (p.n - samplesSeen) / FS;
-      const y = Math.min(1.35, p.amp + 0.10);
-      if (p.cls === 'pvc') { pXY.x.push(xrel); pXY.y.push(y); }
-      else                 { nXY.x.push(xrel); nXY.y.push(y); }
+      if (p.cls === 'pvc') { pXY.x.push(xrel); pXY.y.push(Y_MARKER_PVC); }
+      else                 { nXY.x.push(xrel); nXY.y.push(Y_MARKER_NORMAL); }
     }
 
     // build vertical-line shapes + text annotations for manual markers
