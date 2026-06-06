@@ -91,6 +91,14 @@ for p in peaks:
         removed_fp.append(p)
     p["cls"] = "pvc" if (shape_pvc and p["amp"] >= PVC_MIN_AMP_V) else "normal"
 
+# ---- pulizia: rimuovi gli spike di rumore (non sono battiti) ----
+# Larghezza <= 16 ms (4 campioni @250 Hz) è sub-fisiologica: sono artefatti /
+# electrode-pop, non QRS reali. Si tolgono del tutto dalla serie (non solo
+# declassati) così non inquinano conteggi, RR e morfologia. Restano comunque
+# elencati in removed_fp per la sezione esplicativa.
+n_spike_removed = sum(1 for p in peaks if p["w"] <= 16 and p["amp"] < PVC_MIN_AMP_V)
+peaks = [p for p in peaks if not (p["w"] <= 16 and p["amp"] < PVC_MIN_AMP_V)]
+
 ses_id = os.path.basename(PATH).replace("ecg_", "").replace(".csv", "")
 total_s = float(t[-1] - t[0]) if N else 0
 total_min = total_s / 60.0
@@ -108,13 +116,29 @@ for i in range(len(peaks)):
     peaks[i]["rr_next"] = (peaks[i+1]["t"] - peaks[i]["t"]) if i < len(peaks)-1 else None
 sinus_rr  = [peaks[i]["rr_prev"] for i in range(1, len(peaks))
              if peaks[i]["cls"] == "normal" and peaks[i-1]["cls"] == "normal"]
-coupling  = [p["rr_prev"] for p in peaks if p["cls"] == "pvc" and p["rr_prev"] is not None]
+# ---- pulizia: coupling contaminato da battito sinusale non rilevato ----
+# Un coupling vero è PREMATURO (più corto del RR sinusale). Se l'rr_prev di una
+# PVC supera ~0.9x il RR sinusale mediano, quasi sempre è perché un battito
+# sinusale è stato perso nel gap (falso "late-coupled"): l'intervallo NON è un
+# vero coupling, quindi lo escludiamo da coupling/tachogramma.
+_sinus_median_rr = statistics.median(sinus_rr) if sinus_rr else 0.0
+COUPLING_MAX_FACTOR = 0.9
+n_coupling_excluded = 0
+for p in peaks:
+    p["coupling_bad"] = (p["cls"] == "pvc" and p["rr_prev"] is not None
+                         and _sinus_median_rr
+                         and p["rr_prev"] > COUPLING_MAX_FACTOR * _sinus_median_rr)
+    if p["coupling_bad"]:
+        n_coupling_excluded += 1
+coupling  = [p["rr_prev"] for p in peaks if p["cls"] == "pvc" and p["rr_prev"] is not None and not p["coupling_bad"]]
 compensatory = [p["rr_next"] for p in peaks if p["cls"] == "pvc" and p["rr_next"] is not None]
 
 # transizioni RR per categoria (per decomposizione tachogramma)
 transitions = {"N→N": [], "N→PVC": [], "PVC→N": [], "PVC→PVC": []}
 for i_t in range(1, len(peaks)):
     if peaks[i_t]["rr_prev"] is None: continue
+    # salta gli rr_prev contaminati da un battito sinusale perso (vedi sopra)
+    if peaks[i_t].get("coupling_bad"): continue
     rr_ms_t = peaks[i_t]["rr_prev"] * 1000
     prev_t = "PVC" if peaks[i_t-1]["cls"] == "pvc" else "N"
     cur_t  = "PVC" if peaks[i_t]["cls"]   == "pvc" else "N"
@@ -495,7 +519,7 @@ coupling_stability_img = None
 if coupling:
     fig, ax = plt.subplots(figsize=(8.5, 3.0))
     fig.patch.set_facecolor(DARK_BG)
-    pvc_times_for_coupling = [p["t"]/60 for p in peaks if p["cls"] == "pvc" and p["rr_prev"] is not None]
+    pvc_times_for_coupling = [p["t"]/60 for p in peaks if p["cls"] == "pvc" and p["rr_prev"] is not None and not p["coupling_bad"]]
     ax.scatter(pvc_times_for_coupling, [c*1000 for c in coupling], c=RED, s=8, alpha=0.7)
     ax.axhline(coupling_median, color=ORANGE, linestyle="--", linewidth=1.2,
                label=f"Mediana {coupling_median:.0f}ms")
@@ -842,10 +866,21 @@ story.append(Paragraph(
     "Nei 200 ms successivi al picco viene misurato il trough — la deflessione negativa post-QRS.",
     NORMAL))
 story.append(Paragraph(
-    "<b>Classificazione PVC.</b> Un battito è classificato come PVC se il rapporto "
-    "|trough|/peak supera 0.40 (iperpolarizzazione pronunciata) OPPURE se la larghezza del "
-    "QRS supera 95 ms. Refractory period di 300 ms tra battiti accettati.",
+    "<b>Classificazione PVC.</b> Un battito è classificato come PVC se ha morfologia ectopica "
+    "— rapporto |trough|/peak ≥ 0.40 (iperpolarizzazione pronunciata) OPPURE larghezza QRS ≥ 95 ms "
+    f"— <b>E</b> ampiezza ≥ {PVC_MIN_AMP_V:.2f} V. Il requisito di ampiezza evita di etichettare "
+    "come PVC i piccoli battiti sinusali con onda S fisiologica. Refractory period di 300 ms.",
     NORMAL))
+story.append(Paragraph(
+    f"<b>Pulizia dati.</b> Prima delle analisi la serie viene ripulita: "
+    f"(1) rimossi <b>{n_spike_removed}</b> spike di rumore con larghezza ≤ 16 ms "
+    f"(sub-fisiologica per un QRS reale, tipici electrode-pop/artefatti di movimento); "
+    f"(2) esclusi <b>{n_coupling_excluded}</b> intervalli di coupling non prematuri "
+    f"(rr_prev &gt; {COUPLING_MAX_FACTOR:.0%} del RR sinusale mediano): non sono veri coupling "
+    f"ma PVC il cui battito sinusale precedente non è stato rilevato nel gap "
+    f"(falsi “late-coupled”), e contaminerebbero le statistiche di coupling e il "
+    f"tachogramma. Conteggi, RR, coupling e morfologia qui riportati usano la serie pulita.",
+    MUTED_P))
 
 story.append(Paragraph("Metriche dettagliate", H2))
 story.append(kv_table([
@@ -1084,8 +1119,10 @@ story.append(Paragraph(
 
 story.append(PageBreak())
 
-# ---- ZOOM 9-11 MIN ----
-story.append(Paragraph("Analisi locale: oscillazioni tra 9 e 11 minuti", H2))
+# ---- ZOOM 9-11 MIN (solo se c'è davvero un'oscillazione locale) ----
+# La sezione è condizionale: ha senso solo se la finestra 09:00-11:00 mostra
+# variabilità RR realmente elevata vs baseline. In molte sessioni (es. quella
+# pulita 150812) NON c'è oscillazione locale, quindi la sezione viene omessa.
 window_beats_zoom = [r for r in peaks if 9*60 <= r["t"] < 11*60]
 zoom_n = sum(1 for r in window_beats_zoom if r["cls"] == "normal")
 zoom_p = sum(1 for r in window_beats_zoom if r["cls"] == "pvc")
@@ -1093,27 +1130,28 @@ zoom_rrs = [r["rr_prev"]*1000 for r in window_beats_zoom if r["rr_prev"]]
 zoom_std = statistics.stdev(zoom_rrs) if len(zoom_rrs) > 1 else 0
 all_rrs_global = [p["rr_prev"]*1000 for p in peaks if p["rr_prev"]]
 baseline_std_global = statistics.stdev(all_rrs_global) if len(all_rrs_global) > 1 else 0
-story.append(Paragraph(
-    f"Nel tachogramma si nota un'oscillazione visiva marcata attorno al minuto 10. "
-    f"Numericamente, nella finestra <b>09:00–11:00</b> ci sono <b>{len(window_beats_zoom)} "
-    f"battiti</b> ({zoom_n} normali, {zoom_p} PVC) con deviazione standard degli RR "
-    f"pari a <b>{zoom_std:.0f} ms</b>, contro un baseline di {baseline_std_global:.0f} ms "
-    f"per tutta la sessione. Non c'è quindi un aumento anomalo della variabilità.",
-    NORMAL))
-story.append(Paragraph(
-    "Le \"oscillazioni\" sono il <b>rimbalzo verticale tipico delle zone con maggiore "
-    "burden di PVC</b>: ogni PVC produce un punto basso (coupling ~500 ms), il battito "
-    "normale subito dopo produce un punto alto (compensatoria ~1200 ms), il battito "
-    "normale stabile sta in mezzo (~900 ms). Quando il pattern di trigeminia è "
-    "particolarmente regolare per un intervallo, i punti rimbalzano fra questi tre "
-    "livelli in successione rapida, dando l'effetto visivo di un'onda quadra "
-    "verticale.",
-    NORMAL))
-if zoom_img:
+show_zoom_section = bool(zoom_img) and len(window_beats_zoom) > 10 and zoom_std > 1.25 * baseline_std_global
+if show_zoom_section:
+    story.append(Paragraph("Analisi locale: oscillazioni tra 9 e 11 minuti", H2))
+    story.append(Paragraph(
+        f"Nel tachogramma si nota un'oscillazione visiva marcata attorno al minuto 10. "
+        f"Nella finestra <b>09:00–11:00</b> ci sono <b>{len(window_beats_zoom)} "
+        f"battiti</b> ({zoom_n} normali, {zoom_p} PVC) con deviazione standard degli RR "
+        f"pari a <b>{zoom_std:.0f} ms</b>, contro un baseline di {baseline_std_global:.0f} ms "
+        f"per tutta la sessione.",
+        NORMAL))
+    story.append(Paragraph(
+        "Le \"oscillazioni\" sono il <b>rimbalzo verticale tipico delle zone con maggiore "
+        "burden di PVC</b>: ogni PVC produce un punto basso (coupling ~500 ms), il battito "
+        "normale subito dopo produce un punto alto (compensatoria ~1200 ms), il battito "
+        "normale stabile sta in mezzo (~900 ms). Quando il pattern di trigeminia è "
+        "particolarmente regolare per un intervallo, i punti rimbalzano fra questi tre "
+        "livelli in successione rapida, dando l'effetto visivo di un'onda quadra "
+        "verticale.",
+        NORMAL))
     story.append(Spacer(1, 8))
     story.append(Image(zoom_img, width=174*mm, height=140*mm))
-
-story.append(PageBreak())
+    story.append(PageBreak())
 
 # ---- AMPLITUDE ANALYSIS ----
 story.append(Paragraph("Analisi dell'ampiezza dei battiti normali", H2))
