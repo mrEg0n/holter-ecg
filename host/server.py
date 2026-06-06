@@ -80,6 +80,8 @@ DETECT_THR_RATIO   = 0.45
 POST_PEAK_MS       = 200
 REBOUND_RATIO_PVC  = 0.40
 PVC_WIDTH_MS       = 95.0
+PVC_MIN_AMP_V      = 0.70   # ampiezza minima richiesta per accettare un PVC
+                            # (esclude i piccoli battiti normali rumorosi)
 REFRACTORY_S       = 0.30
 BPM_WINDOW_S       = 60
 
@@ -234,7 +236,11 @@ def process_sample(v_raw, v_filt):
             ratio = rebound / p_amp if p_amp > 0 else 0.0
             lps = state["last_peak_sample"]
             if lps is None or (p_n - lps) > REFRACTORY_SAMPLES:
-                cls = "pvc" if (ratio >= REBOUND_RATIO_PVC or w_ms >= PVC_WIDTH_MS) else "normal"
+                # PVC se rebound profondo OPPURE QRS largo, E ampiezza sopra soglia minima
+                # (l'AND con amp evita di scambiare per PVC piccoli battiti normali rumorosi
+                # con S-wave fisiologica relativamente alta)
+                is_pvc_shape = (ratio >= REBOUND_RATIO_PVC or w_ms >= PVC_WIDTH_MS)
+                cls = "pvc" if (is_pvc_shape and p_amp >= PVC_MIN_AMP_V) else "normal"
                 state["peak_amplitudes"].append(p_amp)
                 state["last_peak_sample"] = p_n
                 if cls == "pvc":
