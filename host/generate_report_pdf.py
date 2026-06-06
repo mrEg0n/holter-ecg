@@ -370,6 +370,32 @@ def make_event_strip(center_t, win_s=6.0, highlight=None, title=None,
     plt.tight_layout()
     return fig_to_bytes(fig)
 
+def make_example_style_strip(center_t, win_s=6.0, title=None):
+    """Strip nello STESSO stile della traccia esemplificativa di cima:
+    overlay rosso sul QRS delle PVC (±120 ms) + triangolo rosso, triangoli
+    verdi sui sinusali, styled_ax. Nessun cerchio arancione."""
+    c0 = center_t
+    mask = (t >= c0 - win_s / 2.0) & (t <= c0 + win_s / 2.0)
+    fig, ax = plt.subplots(figsize=(8.5, 2.8))
+    fig.patch.set_facecolor(DARK_BG)
+    if mask.any():
+        ax.plot(t[mask] - c0, vf[mask], linewidth=0.9, color=GREEN)
+    for p in peaks:
+        if not (c0 - win_s / 2.0 <= p["t"] <= c0 + win_s / 2.0):
+            continue
+        if p["cls"] == "pvc":
+            wm = (t >= p["t"] - 0.12) & (t <= p["t"] + 0.12)
+            if wm.any():
+                ax.plot(t[wm] - c0, vf[wm], linewidth=1.8, color=RED)
+            ax.scatter(p["t"] - c0, min(1.6, p["amp"] + 0.30), s=70, marker="v",
+                       color=RED, edgecolors="white", linewidths=0.6, zorder=5)
+        else:
+            ax.scatter(p["t"] - c0, min(1.4, p["amp"] + 0.18), s=18, marker="v",
+                       color=GREEN, edgecolors="white", linewidths=0.3, zorder=4)
+    styled_ax(ax, title, "t (s) rispetto al centro del couplet", "ECG filtrato (V)")
+    plt.tight_layout()
+    return fig_to_bytes(fig)
+
 def make_strip_page_image(t0, t1, rows_per_page=STRIP_ROWS_PER_PAGE,
                           row_s=STRIP_ROW_SECONDS):
     """Plot di una pagina di strip-chart: N righe da row_s secondi.
@@ -697,15 +723,16 @@ for page_idx in range(n_strip_pages):
 print(f"  {len(strip_imgs)} pagine di strip-chart")
 print(f"  {1 + len(strip_imgs) + 5} pagine totali stimate")
 
-# (Z1) Esempi di couplet (due PVC consecutive)
+# (Z1) Esempi di couplet (due PVC consecutive) — stesso stile della traccia esemplificativa.
+# Sono pochi: li mostriamo TUTTI (fino a 4) invece di campionarne alcuni.
 couplet_imgs = []
 for i in range(len(peaks) - 1):
     if peaks[i]["cls"] == "pvc" and peaks[i+1]["cls"] == "pvc":
         ctr = (peaks[i]["t"] + peaks[i+1]["t"]) / 2.0
-        couplet_imgs.append(make_event_strip(
-            ctr, win_s=6.0, highlight=[peaks[i]["t"], peaks[i+1]["t"]],
-            title=f"Couplet a {int(ctr//60):02d}:{int(ctr%60):02d} — due PVC consecutive"))
-        if len(couplet_imgs) >= 3:
+        couplet_imgs.append(make_example_style_strip(
+            ctr, win_s=6.0,
+            title=f"Couplet a {int(ctr//60):02d}:{int(ctr%60):02d} — due PVC consecutive (overlay rosso)"))
+        if len(couplet_imgs) >= 4:
             break
 
 # (Z2) Esempi rappresentativi dei battiti riclassificati dalla soglia di ampiezza.
@@ -720,6 +747,17 @@ for p in sorted(repr_fp, key=lambda q: -q["amp"])[:3]:
         title=(f"{int(p['t']//60):02d}:{int(p['t']%60):02d} — amp {p['amp']:.2f} V "
                f"(reb {p['reb']:.2f}, w {p['w']:.0f} ms): sotto soglia → normale")))
 print(f"  {len(couplet_imgs)} esempi couplet, {len(fp_imgs)} esempi falsi positivi")
+
+# (Z3) Esempi di PVC apparentemente "tardive" = battito sinusale non rilevato nel gap.
+# Sono i coupling esclusi dalle statistiche: li mostriamo comunque per trasparenza.
+latecoupled = [p for p in peaks if p.get("coupling_bad")]
+lc_imgs = []
+for p in latecoupled[:2]:
+    lc_imgs.append(make_event_strip(
+        p["t"], win_s=3.6, highlight=[p["t"]],
+        title=(f"{int(p['t']//60):02d}:{int(p['t']%60):02d} — RR_prev {p['rr_prev']*1000:.0f} ms "
+               f"(coupling tipico ~{coupling_median:.0f} ms): QRS sinusale non marcato nel gap")))
+print(f"  {len(lc_imgs)} esempi PVC late-coupled (artefatto)")
 
 # ------------------ PDF assembly ------------------
 out_path = PATH.replace(os.sep + "ecg_", os.sep + "report_").replace(".csv", ".pdf")
@@ -836,6 +874,21 @@ if ecg_example_img:
         "caratteristica fisiologica che il detector usa per classificarla.",
         NORMAL))
     story.append(Image(ecg_example_img, width=174*mm, height=58*mm))
+
+# Esempi di couplet subito sotto la traccia esemplificativa, stesso stile/colore
+if couplet_imgs:
+    story.append(Spacer(1, 8))
+    story.append(Paragraph(
+        "Couplet" if couplets_n == 1 else f"Couplet (tutti i {couplets_n})", H3))
+    story.append(Paragraph(
+        f"<b>Couplet</b>: due PVC consecutive senza battito sinusale interposto. In tutta "
+        f"la sessione se ne contano <b>{couplets_n}</b> — nessun triplet o run più lungo. "
+        f"Stesso stile della traccia sopra: overlay rosso sul QRS delle due PVC, triangoli "
+        f"verdi sui sinusali."
+        + ("" if couplets_n > len(couplet_imgs) else " Eccoli tutti:"),
+        NORMAL))
+    for im in couplet_imgs:
+        story.append(Image(im, width=174*mm, height=58*mm))
 
 story.append(PageBreak())
 
@@ -961,6 +1014,24 @@ if hist_img:
 if coupling_stability_img:
     story.append(Spacer(1, 6))
     story.append(Image(coupling_stability_img, width=174*mm, height=62*mm))
+
+if n_coupling_excluded:
+    story.append(Spacer(1, 10))
+    story.append(Paragraph("PVC apparentemente tardive (escluse dal coupling)", H3))
+    story.append(Paragraph(
+        f"<b>{n_coupling_excluded} PVC</b> presentano un RR precedente molto lungo "
+        f"(&gt; {COUPLING_MAX_FACTOR:.0%} del RR sinusale mediano), ben oltre il coupling "
+        f"tipico (~{coupling_median:.0f} ms). Non sono però vere PVC \"end-diastolic\": "
+        f"hanno la stessa morfologia di tutte le altre, ma il <b>battito sinusale che le "
+        f"precede non è stato rilevato</b> dal detector (ampiezza sotto soglia), quindi "
+        f"l'RR misurato somma un intervallo sinusale mancante + il coupling reale. Per "
+        f"questo sono escluse dalle statistiche di coupling e dal tachogramma. Negli "
+        f"esempi sotto si vede il QRS sinusale non marcato nel gap, prima della PVC "
+        f"cerchiata:",
+        NORMAL))
+    for im in lc_imgs:
+        story.append(Spacer(1, 6))
+        story.append(fit_image(im, max_w_mm=170, max_h_mm=58))
 
 story.append(PageBreak())
 
@@ -1345,24 +1416,10 @@ if poincare_img:
 
 story.append(PageBreak())
 
-# ---- COUPLET & FALSE-POSITIVE EXAMPLES ----
-if couplet_imgs or fp_imgs:
-    story.append(Paragraph("Esempi morfologici", H2))
-
-if couplet_imgs:
-    story.append(Paragraph("Couplet (due PVC consecutive)", H3))
-    story.append(Paragraph(
-        f"Osservati <b>{couplets_n} couplet</b> in tutta la sessione: due battiti "
-        f"ectopici di fila senza battito sinusale interposto. Qui alcuni esempi — i "
-        f"due battiti cerchiati in arancione sono entrambi classificati PVC (triangoli "
-        f"rossi).",
-        NORMAL))
-    for im in couplet_imgs:
-        story.append(Spacer(1, 6))
-        story.append(fit_image(im, max_w_mm=170, max_h_mm=70))
-
+# ---- FALSE-POSITIVE EXAMPLES ----
+# (Gli esempi di couplet sono ora in cima, sotto la traccia esemplificativa.)
 if fp_imgs:
-    story.append(Spacer(1, 12))
+    story.append(Paragraph("Esempi morfologici", H2))
     story.append(Paragraph("Battiti riclassificati dalla soglia di ampiezza", H3))
     story.append(Paragraph(
         f"Il solo criterio di forma (rebound profondo o QRS largo) sovrastimava come "
@@ -1382,7 +1439,7 @@ if fp_imgs:
         story.append(Spacer(1, 6))
         story.append(fit_image(im, max_w_mm=170, max_h_mm=65))
 
-if couplet_imgs or fp_imgs:
+if fp_imgs:
     story.append(PageBreak())
 
 # ---- CONCLUSIONS + LIMITS ----
