@@ -72,7 +72,7 @@ else:
 
 # ---------------- DSP / detector constants ----------------
 SAMPLE_HZ          = 250
-WINDOW_S           = 30
+WINDOW_S           = 180   # 3 minuti di traccia scorrevole
 BUF_SIZE           = SAMPLE_HZ * WINDOW_S
 WIDTH_THR          = 0.10
 DETECT_THR_FLOOR   = 0.30
