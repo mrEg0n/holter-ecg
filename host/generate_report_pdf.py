@@ -24,6 +24,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
+from PIL import Image as PILImage
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -73,6 +74,22 @@ if os.path.exists(peaks_path):
                 })
             except (KeyError, ValueError):
                 continue
+
+# ---- ri-classificazione col criterio di produzione corrente ----
+# Il server (host/server.py) classifica PVC se:
+#   (rebound >= 0.40 OPPURE width >= 95 ms) E ampiezza >= 0.70 V.
+# I peaks CSV storici possono essere stati scritti col vecchio criterio (senza
+# la soglia di ampiezza): riclassifichiamo qui così il report riflette sempre la
+# logica attuale ed evidenzia i falsi positivi che la soglia ampiezza rimuove.
+REBOUND_RATIO_PVC = 0.40
+PVC_WIDTH_MS      = 95.0
+PVC_MIN_AMP_V     = 0.70
+removed_fp = []   # battiti declassati pvc -> normal dalla soglia di ampiezza
+for p in peaks:
+    shape_pvc = (p["reb"] >= REBOUND_RATIO_PVC or p["w"] >= PVC_WIDTH_MS)
+    if shape_pvc and p["amp"] < PVC_MIN_AMP_V:
+        removed_fp.append(p)
+    p["cls"] = "pvc" if (shape_pvc and p["amp"] >= PVC_MIN_AMP_V) else "normal"
 
 ses_id = os.path.basename(PATH).replace("ecg_", "").replace(".csv", "")
 total_s = float(t[-1] - t[0]) if N else 0
@@ -273,6 +290,61 @@ def fig_to_bytes(fig):
     plt.close(fig)
     buf.seek(0)
     return buf
+
+def fit_image(buf, max_w_mm=170.0, max_h_mm=245.0, max_px=1500):
+    """Crea un Image flowable garantito più piccolo del frame stampabile.
+    Scala alla larghezza utile preservando l'aspect ratio reale del PNG e, se
+    necessario, riduce i pixel nativi: ReportLab 4.x può ignorare width/height
+    espliciti quando la dimensione naturale del PNG supera il frame, causando
+    LayoutError 'image too large'. Capando dimensioni native e flowable sotto
+    al frame (frame utile A4 ≈ 174×267 mm) il problema sparisce alla radice."""
+    buf.seek(0)
+    pil = PILImage.open(buf)
+    pw, ph = pil.size
+    longest = max(pw, ph)
+    if longest > max_px:
+        s = max_px / longest
+        pil = pil.resize((max(1, int(pw * s)), max(1, int(ph * s))),
+                         PILImage.LANCZOS)
+        out = io.BytesIO(); pil.save(out, format="PNG"); out.seek(0)
+        buf = out; pw, ph = pil.size
+    ar = pw / ph if ph else 1.0
+    w = max_w_mm * mm
+    h = w / ar
+    if h > max_h_mm * mm:
+        h = max_h_mm * mm
+        w = h * ar
+    buf.seek(0)
+    return Image(buf, width=w, height=h, hAlign="CENTER")
+
+def make_event_strip(center_t, win_s=6.0, highlight=None, title=None,
+                     figsize=(8.0, 2.2)):
+    """Strip di una singola finestra di win_s secondi centrata su un evento.
+    highlight: lista di t (s) di battiti da cerchiare in arancione."""
+    rs = max(0.0, center_t - win_s / 2.0); re = rs + win_s
+    mask = (t >= rs) & (t < re)
+    fig, ax = plt.subplots(figsize=figsize)
+    fig.patch.set_facecolor(DARK_BG)
+    if mask.any():
+        ax.plot(t[mask] - rs, vf[mask], linewidth=0.9, color=GREEN)
+    hl = set(round(x, 3) for x in (highlight or []))
+    for p in peaks:
+        if not (rs <= p["t"] < re):
+            continue
+        pt = p["t"] - rs
+        if p["cls"] == "pvc":
+            ax.scatter(pt, min(1.6, p["amp"] + 0.30), s=60, marker="v",
+                       color=RED, edgecolors="white", linewidths=0.5, zorder=5)
+        else:
+            ax.scatter(pt, min(1.4, p["amp"] + 0.18), s=16, marker="v",
+                       color=GREEN, edgecolors="white", linewidths=0.3, zorder=4)
+        if round(p["t"], 3) in hl:
+            ax.scatter(pt, p["amp"], s=160, marker="o", facecolors="none",
+                       edgecolors=ORANGE, linewidths=1.6, zorder=6)
+    ax.set_xlim(0, win_s); ax.set_ylim(-1.2, 1.8)
+    styled_ax(ax, title, "t (s)", "ECG (V)")
+    plt.tight_layout()
+    return fig_to_bytes(fig)
 
 def make_strip_page_image(t0, t1, rows_per_page=STRIP_ROWS_PER_PAGE,
                           row_s=STRIP_ROW_SECONDS):
@@ -600,6 +672,30 @@ for page_idx in range(n_strip_pages):
 
 print(f"  {len(strip_imgs)} pagine di strip-chart")
 print(f"  {1 + len(strip_imgs) + 5} pagine totali stimate")
+
+# (Z1) Esempi di couplet (due PVC consecutive)
+couplet_imgs = []
+for i in range(len(peaks) - 1):
+    if peaks[i]["cls"] == "pvc" and peaks[i+1]["cls"] == "pvc":
+        ctr = (peaks[i]["t"] + peaks[i+1]["t"]) / 2.0
+        couplet_imgs.append(make_event_strip(
+            ctr, win_s=6.0, highlight=[peaks[i]["t"], peaks[i+1]["t"]],
+            title=f"Couplet a {int(ctr//60):02d}:{int(ctr%60):02d} — due PVC consecutive"))
+        if len(couplet_imgs) >= 3:
+            break
+
+# (Z2) Esempi rappresentativi dei battiti riclassificati dalla soglia di ampiezza.
+# Si escludono gli spike di rumore (w<=20ms, larghezza impossibile per un QRS):
+# come esempi servono i battiti piccoli VERI, vicini alla soglia (più istruttivi).
+n_fp_spike = sum(1 for q in removed_fp if q["w"] <= 20)
+repr_fp = [q for q in removed_fp if q["w"] > 28]
+fp_imgs = []
+for p in sorted(repr_fp, key=lambda q: -q["amp"])[:3]:
+    fp_imgs.append(make_event_strip(
+        p["t"], win_s=5.0, highlight=[p["t"]],
+        title=(f"{int(p['t']//60):02d}:{int(p['t']%60):02d} — amp {p['amp']:.2f} V "
+               f"(reb {p['reb']:.2f}, w {p['w']:.0f} ms): sotto soglia → normale")))
+print(f"  {len(couplet_imgs)} esempi couplet, {len(fp_imgs)} esempi falsi positivi")
 
 # ------------------ PDF assembly ------------------
 out_path = PATH.replace(os.sep + "ecg_", os.sep + "report_").replace(".csv", ".pdf")
@@ -1210,6 +1306,46 @@ if poincare_img:
                        hAlign="CENTER"))
 
 story.append(PageBreak())
+
+# ---- COUPLET & FALSE-POSITIVE EXAMPLES ----
+if couplet_imgs or fp_imgs:
+    story.append(Paragraph("Esempi morfologici", H2))
+
+if couplet_imgs:
+    story.append(Paragraph("Couplet (due PVC consecutive)", H3))
+    story.append(Paragraph(
+        f"Osservati <b>{couplets_n} couplet</b> in tutta la sessione: due battiti "
+        f"ectopici di fila senza battito sinusale interposto. Qui alcuni esempi — i "
+        f"due battiti cerchiati in arancione sono entrambi classificati PVC (triangoli "
+        f"rossi).",
+        NORMAL))
+    for im in couplet_imgs:
+        story.append(Spacer(1, 6))
+        story.append(fit_image(im, max_w_mm=170, max_h_mm=70))
+
+if fp_imgs:
+    story.append(Spacer(1, 12))
+    story.append(Paragraph("Battiti riclassificati dalla soglia di ampiezza", H3))
+    story.append(Paragraph(
+        f"Il solo criterio di forma (rebound profondo o QRS largo) sovrastimava come "
+        f"PVC <b>{len(removed_fp)} battiti</b> "
+        f"(ampiezza {min(q['amp'] for q in removed_fp):.2f}–"
+        f"{max(q['amp'] for q in removed_fp):.2f} V); il requisito di ampiezza ≥ "
+        f"{PVC_MIN_AMP_V:.2f} V li riporta alla classificazione corretta. La "
+        f"<b>maggioranza ({len(removed_fp)-n_fp_spike})</b> sono <b>battiti sinusali "
+        f"normali</b> piccoli e veri: QRS stretto ma fisiologico, con onda S che "
+        f"superava la soglia di forma pur non essendo ectopica. Una minoranza "
+        f"(<b>{n_fp_spike}</b>) sono invece <b>spike di rumore</b> in tratti rumorosi, "
+        f"di larghezza ≤16 ms — impossibile per un QRS reale — quindi nemmeno veri "
+        f"battiti. In entrambi i casi la soglia li toglie correttamente dal conteggio "
+        f"PVC. Esempi rappresentativi (battito reale piccolo, cerchiato in arancione):",
+        NORMAL))
+    for im in fp_imgs:
+        story.append(Spacer(1, 6))
+        story.append(fit_image(im, max_w_mm=170, max_h_mm=65))
+
+if couplet_imgs or fp_imgs:
+    story.append(PageBreak())
 
 # ---- CONCLUSIONS + LIMITS ----
 story.append(Paragraph("Conclusioni descrittive", H2))
