@@ -25,3 +25,6 @@ pico/wifi_config.py
 /ecg_*.png
 /peaks_*.csv
 /markers_*.csv
+
+# Auto-generated reports (regenerable via host/dashboard.py and host/generate_report_pdf.py)
+reports/

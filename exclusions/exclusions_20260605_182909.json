@@ -1,0 +1,11 @@
+{
+  "ecg_file": "ecg_20260605_182909.csv",
+  "n_intervals": 1,
+  "total_excluded_s": 1.6453396545314072,
+  "intervals": [
+    {
+      "start": 0.056,
+      "end": 1.702
+    }
+  ]
+}
