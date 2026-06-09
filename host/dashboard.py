@@ -27,6 +27,11 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
+# Font figure = Helvetica Neue (più vicino al SF Pro del body HTML; SF Pro non
+# è caricabile da matplotlib). Fallback su Helvetica/Arial/DejaVu. Standard.
+plt.rcParams["font.family"] = "sans-serif"
+plt.rcParams["font.sans-serif"] = ["Helvetica Neue", "Helvetica", "Arial", "DejaVu Sans"]
+
 # ---------- classifier configuration ----------
 PVC_MIN_AMP = 0.70   # V
 REBOUND_PVC = 0.40
@@ -52,21 +57,51 @@ SKIP_SESSIONS = {
 DARK_BG = "#0d0f12"
 GREEN, RED, BLUE, ORANGE = "#33ff66", "#ff4d6d", "#7ad9ff", "#ffa64d"
 
-# ---------- layout helpers ----------
-# Posizioni esplicite per garantire allineamento perfetto tra figure 2x2
-# (l, b, w, h) in figure-relative coords (0-1). Stesso layout per le 3 figure.
-PANEL_W = 0.32
-PANEL_H = 0.36
-LEFT_COL  = 0.07
-RIGHT_COL = 0.48   # gap orizzontale ampio (0.48 - 0.39 = 0.09)
-BOTTOM_ROW = 0.08
-TOP_ROW    = 0.58  # gap verticale ampio (0.58 - 0.44 = 0.14)
+# ============================================================================
+# STANDARD GRAFICO DELLE FIGURE — applicato a OGNI figura 2x2 della dashboard.
+# Non cambiare i singoli numeri senza aggiornare qui: questo è il riferimento.
+# ============================================================================
+# Layout: figura QUADRATA 12x12 + frazioni uguali (PANEL_W == PANEL_H) →
+# pannelli QUADRATI (0.34*12 = 4.08" per lato). Colonne distanti (gap ~1.6",
+# ospita la colorbar con label verticale a lato); righe più vicine (gap ~1.3").
+# Gap orizzontale e verticale diversi tra loro: scelta voluta.
+FIGSIZE = (12, 12)
+PANEL_W = 0.34
+PANEL_H = 0.34
+LEFT_COL  = 0.035
+RIGHT_COL = 0.51   # colonne distanti: gap ospita colorbar + label verticale
+                   # (0.51 - 0.375 = 0.135 → ~1.6")
+BOTTOM_ROW = 0.07
+TOP_ROW    = 0.52  # righe vicine (gap 0.52 - 0.41 = 0.11 → ~1.3")
+
+# Font size dei plot matplotlib (più piccoli del body CSS, per gerarchia).
+# Standard condiviso da tutte le figure.
+FS_TITLE  = 11
+FS_LABEL  = 9.5
+FS_TICK   = 8.5
+FS_LEGEND = 8.5
+FS_TEXT   = 8
 PANEL_POS = {
     "tl": (LEFT_COL,  TOP_ROW,    PANEL_W, PANEL_H),
     "tr": (RIGHT_COL, TOP_ROW,    PANEL_W, PANEL_H),
     "bl": (LEFT_COL,  BOTTOM_ROW, PANEL_W, PANEL_H),
     "br": (RIGHT_COL, BOTTOM_ROW, PANEL_W, PANEL_H),
 }
+
+def tight_cbar(fig, im, panel, label, fs=8.5):
+    """Colorbar sottile attaccata al bordo destro di `panel` (l,b,w,h).
+    Label VERTICALE a lato (come l'originale). Il gap tra le colonne va tenuto
+    abbastanza ampio da ospitare barra + tick + label senza toccare la y-label
+    del pannello accanto. Il pannello resta quadrato (PANEL_POS intatto)."""
+    l, b, w, h = panel
+    cax = fig.add_axes([l + w + 0.006, b, 0.012, h])
+    cb = fig.colorbar(im, cax=cax, label=label)
+    cax.yaxis.label.set_color("#bbb")
+    cax.yaxis.label.set_fontsize(fs)
+    cax.tick_params(colors="#bbb", labelsize=fs)
+    for sp in cax.spines.values():
+        sp.set_color("#333")
+    return cb
 
 # ---------- I/O helpers ----------
 def label_from_path(ecg_path):
@@ -132,6 +167,163 @@ def collect_traces(t_ecg, vf_arr, peaks, kind="pvc"):
         out.append(v)
     return np.array(out) if out else np.zeros((0, N_SAMPLES))
 
+def pick_example_strip(t_ecg, vf_arr, peaks, excl, pre=10.0, post=10.0):
+    """Finestra ECG 'pulita' rappresentativa per mostrare qualità del segnale +
+    auto-detection. Stessi criteri dei report PDF: PVC sandwich N-PVC-N dopo il
+    1° minuto, lontana >=2s da intervalli esclusi, ampiezza mediana (non outlier).
+    Finestra SIMMETRICA → la PVC di riferimento cade al centro (x=0 in mezzo).
+    Ritorna {t, v, peaks, center, pre, post} oppure None."""
+    if len(t_ecg) == 0 or not peaks:
+        return None
+    def far_excl(ts, m=2.0):
+        return all(not (s - m <= ts <= e + m) for s, e in excl)
+    cand = []
+    for i, p in enumerate(peaks):
+        if p["cls"] != "pvc" or i == 0 or i == len(peaks) - 1:
+            continue
+        if p["t"] < 60:                                  # salta warm-up
+            continue
+        if peaks[i-1]["cls"] != "normal" or peaks[i+1]["cls"] != "normal":
+            continue
+        if not far_excl(p["t"]):
+            continue
+        cand.append(p)
+    if cand:
+        cand.sort(key=lambda q: q["amp"])
+        chosen = cand[len(cand) // 2]                    # ampiezza mediana
+    else:
+        pvc_all = [p for p in peaks if p["cls"] == "pvc"]
+        if not pvc_all:
+            return None
+        chosen = next((p for p in pvc_all if p["t"] >= 60 and far_excl(p["t"])),
+                      pvc_all[0])
+    c = chosen["t"]
+    m = (t_ecg >= c - pre) & (t_ecg <= c + post)
+    if not m.any():
+        return None
+    wp = [{"t": p["t"], "cls": p["cls"], "amp": p["amp"]}
+          for p in peaks if c - pre <= p["t"] <= c + post]
+    return {"t": t_ecg[m], "v": vf_arr[m], "peaks": wp,
+            "center": c, "pre": pre, "post": post}
+
+def _snip(t_ecg, vf_arr, peaks, ctr, half):
+    """Estrae lo snippet {t,v,peaks,center,pre,post} simmetrico attorno a ctr."""
+    m = (t_ecg >= ctr - half) & (t_ecg <= ctr + half)
+    if not m.any():
+        return None
+    wp = [{"t": p["t"], "cls": p["cls"], "amp": p["amp"]}
+          for p in peaks if ctr - half <= p["t"] <= ctr + half]
+    return {"t": t_ecg[m], "v": vf_arr[m], "peaks": wp,
+            "center": ctr, "pre": half, "post": half}
+
+def find_interpolated_strip(t_ecg, vf_arr, peaks, excl, half=10.0, max_ratio=1.30):
+    """PVC interpolata: tra 2 sinus, RR_pre+RR_post ≈ 1× RR sinus (ratio<=1.30,
+    NON compensata ~2×). Sceglie quella col ratio più basso (più nettamente
+    interpolata). Ritorna snippet con extra 'ratio', o None."""
+    if len(t_ecg) == 0:
+        return None
+    def far(ts, m=2.0):
+        return all(not (s - m <= ts <= e + m) for s, e in excl)
+    best = None
+    for i in range(1, len(peaks) - 1):
+        p = peaks[i]
+        if p["cls"] != "pvc" or p["t"] < 60:
+            continue
+        if peaks[i-1]["cls"] != "normal" or peaks[i+1]["cls"] != "normal":
+            continue
+        if not far(p["t"]):
+            continue
+        rr_pre  = peaks[i]["t"]   - peaks[i-1]["t"]
+        rr_post = peaks[i+1]["t"] - peaks[i]["t"]
+        nn = []
+        for j in range(max(0, i-6), min(len(peaks)-1, i+6)):
+            if peaks[j]["cls"] == "normal" and peaks[j+1]["cls"] == "normal":
+                d = peaks[j+1]["t"] - peaks[j]["t"]
+                if 0.4 < d < 1.5:
+                    nn.append(d)
+        if not nn:
+            continue
+        ratio = (rr_pre + rr_post) / float(np.median(nn))
+        if ratio <= max_ratio and (best is None or ratio < best[1]):
+            best = (p["t"], ratio)
+    if best is None:
+        return None
+    snip = _snip(t_ecg, vf_arr, peaks, best[0], half)
+    if snip is not None:
+        snip["ratio"] = best[1]
+    return snip
+
+def find_couplet_strip(t_ecg, vf_arr, peaks, excl, half=10.0, max_rr=700.0):
+    """Miglior couplet (2 PVC consecutive, RR<700ms) della sessione, centrato sul
+    punto medio della coppia. Ritorna snippet con extra 'rr', o None."""
+    if len(t_ecg) == 0:
+        return None
+    def far(ts, m=2.0):
+        return all(not (s - m <= ts <= e + m) for s, e in excl)
+    best = None
+    for i in range(len(peaks) - 1):
+        a, b = peaks[i], peaks[i+1]
+        if a["cls"] != "pvc" or b["cls"] != "pvc" or a["t"] < 60:
+            continue
+        rr = (b["t"] - a["t"]) * 1000
+        if not (200 < rr < max_rr):
+            continue
+        if not (far(a["t"]) and far(b["t"])):
+            continue
+        if best is None or rr < best[1]:
+            best = ((a["t"] + b["t"]) / 2.0, rr)
+    if best is None:
+        return None
+    snip = _snip(t_ecg, vf_arr, peaks, best[0], half)
+    if snip is not None:
+        snip["rr"] = best[1]
+    return snip
+
+def find_burst_strip(t_ecg, vf_arr, peaks, excl, half=10.0, win=10.0, min_n=3):
+    """Finestra di `win` secondi con la MASSIMA densità di PVC della sessione
+    (scarica/burst). Centrata sul cluster. Ritorna snippet con extra 'n', o None."""
+    if len(t_ecg) == 0:
+        return None
+    def far(ts, m=2.0):
+        return all(not (s - m <= ts <= e + m) for s, e in excl)
+    pv = np.array([p["t"] for p in peaks
+                   if p["cls"] == "pvc" and p["t"] >= 60 and far(p["t"])])
+    if len(pv) < min_n:
+        return None
+    counts = np.searchsorted(pv, pv + win, side="right") - np.arange(len(pv))
+    k = int(np.argmax(counts)); n = int(counts[k])
+    if n < min_n:
+        return None
+    ctr = pv[k] + win / 2.0
+    snip = _snip(t_ecg, vf_arr, peaks, ctr, half)
+    if snip is not None:
+        snip["n"] = n
+    return snip
+
+def draw_example_strip(ax, ex, title):
+    """Disegna una strip in stile report: traccia filtrata verde, QRS delle PVC
+    in rosso (±120 ms) + marker triangolo rosso, marker verdi sui sinus.
+    `title` = etichetta breve sopra la strip (adatta alla griglia 2 colonne)."""
+    c = ex["center"]
+    ax.set_facecolor(DARK_BG)
+    ax.plot(ex["t"] - c, ex["v"], lw=0.7, color="#5fcc9e")
+    for p in ex["peaks"]:
+        if p["cls"] == "pvc":
+            wm = (ex["t"] >= p["t"] - 0.12) & (ex["t"] <= p["t"] + 0.12)
+            if wm.any():
+                ax.plot(ex["t"][wm] - c, ex["v"][wm], lw=1.4, color="#ff6b6b")
+            ax.scatter(p["t"] - c, min(1.6, p["amp"] + 0.30), s=40, marker="v",
+                       color="#ff6b6b", edgecolors="white", linewidths=0.4, zorder=5)
+        else:
+            ax.scatter(p["t"] - c, min(1.4, p["amp"] + 0.18), s=10, marker="v",
+                       color="#5fcc9e", edgecolors="white", linewidths=0.25, zorder=4)
+    ax.set_xlim(-ex["pre"], ex["post"]); ax.set_ylim(-1.2, 1.8)
+    ax.tick_params(colors="#bbb", labelsize=FS_TICK)
+    ax.grid(True, alpha=0.18, color="#444", linewidth=0.4)
+    for sp in ax.spines.values():
+        sp.set_color("#333")
+    ax.set_title(title, color="#cfd2d6", fontsize=FS_TICK, pad=3)
+
 def fig_to_b64(fig, dpi=200):
     buf = io.BytesIO()
     fig.savefig(buf, format="png", dpi=dpi, bbox_inches="tight",
@@ -139,6 +331,22 @@ def fig_to_b64(fig, dpi=200):
     plt.close(fig)
     buf.seek(0)
     return base64.b64encode(buf.read()).decode("ascii")
+
+def _png_width(b64):
+    """Larghezza in px da header PNG (IHDR a offset 16), senza dipendenze."""
+    raw = base64.b64decode(b64)
+    return int.from_bytes(raw[16:20], "big")
+
+def disp_width(b64, base=1000, dpi=220):
+    """Larghezza di display (px) che mantiene COSTANTE la scala dei pannelli tra
+    le 3 figure 2x2: `bbox_inches=tight` ritaglia margini diversi (legenda vs
+    colorbar) → larghezze PNG diverse → a parità di max-width i pannelli
+    sembrerebbero di dimensioni diverse. Normalizzando rispetto alla larghezza
+    della figura intera (FIGSIZE[0]*dpi) i pannelli appaiono identici."""
+    if not b64:
+        return base
+    ref_px = FIGSIZE[0] * dpi
+    return round(base * _png_width(b64) / ref_px)
 
 # ---------- main ----------
 def main():
@@ -151,6 +359,9 @@ def main():
     print(f"  {len(ecg_files)} candidate sessions ≥ {MIN_FILE_SIZE_MB} MB")
 
     sessions = []
+    best_couplet = None   # (snippet, session_label)  couplet con RR più stretto
+    best_burst   = None   # (snippet, session_label)  finestra con più PVC
+    interp_candidates = []  # [(snippet, session_label), ...] PVC interpolate
     for ecg_path in ecg_files:
         label, base = label_from_path(ecg_path)
         print(f"  loading {label}...")
@@ -197,7 +408,18 @@ def main():
             "traces_n_raw": traces_n_raw,
             "traces_n_norm": traces_n_norm,
             "coupling_ms": np.array(coupling_ms),
+            "example": pick_example_strip(t_ecg, vf_arr, peaks, excl),
         })
+        # couplet / burst / interpolata migliori a livello di dataset (strip speciali)
+        cpl = find_couplet_strip(t_ecg, vf_arr, peaks, excl)
+        if cpl is not None and (best_couplet is None or cpl["rr"] < best_couplet[0]["rr"]):
+            best_couplet = (cpl, label)
+        brst = find_burst_strip(t_ecg, vf_arr, peaks, excl)
+        if brst is not None and (best_burst is None or brst["n"] > best_burst[0]["n"]):
+            best_burst = (brst, label)
+        itp = find_interpolated_strip(t_ecg, vf_arr, peaks, excl)
+        if itp is not None:
+            interp_candidates.append((itp, label))
     if not sessions:
         print("No valid session found."); return
 
@@ -227,15 +449,8 @@ def main():
     y_min = min(p25.min(), min(m.min() for m in med_per_sess)) - 0.05
     y_max = 1.10
 
-    # font sizes for matplotlib plots (più piccoli del CSS body per gerarchia)
-    FS_TITLE  = 11
-    FS_LABEL  = 9.5
-    FS_TICK   = 8.5
-    FS_LEGEND = 8.5
-    FS_TEXT   = 8
-
     # Figure PVC morphology: posizioni esplicite per allineamento perfetto.
-    fig = plt.figure(figsize=(12, 9), facecolor=DARK_BG)
+    fig = plt.figure(figsize=FIGSIZE, facecolor=DARK_BG)
 
     # (1) — overlay tutte PVC (palette rossa)
     ax = fig.add_axes(PANEL_POS["tl"]); ax.set_facecolor(DARK_BG)
@@ -292,10 +507,7 @@ def main():
         for j in range(len(sessions)):
             ax.text(j, i, f"{corr_matrix[i,j]:.3f}", ha="center", va="center",
                     color="black", fontsize=FS_TEXT-1)
-    cbar = plt.colorbar(im, ax=ax, label="Pearson r", fraction=0.046, pad=0.04)
-    cbar.ax.yaxis.label.set_color("#bbb")
-    cbar.ax.yaxis.label.set_fontsize(FS_LABEL)
-    cbar.ax.tick_params(colors="#bbb", labelsize=FS_TICK)
+    tight_cbar(fig, im, PANEL_POS["bl"], "Pearson r", fs=FS_TICK)
     ax.set_title("Cross-session correlation matrix", color="#cccccc", fontsize=FS_TITLE)
     for sp in ax.spines.values(): sp.set_color("#333")
 
@@ -337,7 +549,7 @@ def main():
         step_hm = max(1, len(all_traces_norm) // 600)
         heatmap_data = all_traces_norm[order][::step_hm]
 
-        fig = plt.figure(figsize=(12, 9), facecolor=DARK_BG)
+        fig = plt.figure(figsize=FIGSIZE, facecolor=DARK_BG)
 
         # (1) PCA scatter + KMeans k=2
         ax = fig.add_axes(PANEL_POS["tl"]); ax.set_facecolor(DARK_BG)
@@ -366,11 +578,7 @@ def main():
         ax.set_title("PVCs sorted by hyperpolarization depth",
                      color="#cccccc", fontsize=FS_TITLE)
         ax.tick_params(colors="#bbb", labelsize=FS_TICK)
-        cbar = plt.colorbar(im, ax=ax, label="Amplitude (norm.)",
-                            fraction=0.046, pad=0.04)
-        cbar.ax.yaxis.label.set_color("#bbb")
-        cbar.ax.yaxis.label.set_fontsize(FS_LABEL)
-        cbar.ax.tick_params(colors="#bbb", labelsize=FS_TICK)
+        tight_cbar(fig, im, PANEL_POS["tr"], "Amplitude (norm.)", fs=FS_TICK)
         for sp in ax.spines.values(): sp.set_color("#333")
 
         # (3) elbow plot
@@ -415,7 +623,7 @@ def main():
     y_min_n = min(p25_n.min(), min(m.min() for m in med_per_sess_n)) - 0.05
     y_max_n = 1.10
 
-    fig = plt.figure(figsize=(12, 9), facecolor=DARK_BG)
+    fig = plt.figure(figsize=FIGSIZE, facecolor=DARK_BG)
 
     # (1,1) — overlay tutti N
     ax = fig.add_axes(PANEL_POS["tl"]); ax.set_facecolor(DARK_BG)
@@ -468,10 +676,7 @@ def main():
         for j in range(len(sessions)):
             ax.text(j, i, f"{corr_matrix_n[i,j]:.3f}", ha="center", va="center",
                     color="black", fontsize=FS_TEXT-1)
-    cbar = plt.colorbar(im, ax=ax, label="Pearson r", fraction=0.046, pad=0.04)
-    cbar.ax.yaxis.label.set_color("#bbb")
-    cbar.ax.yaxis.label.set_fontsize(FS_LABEL)
-    cbar.ax.tick_params(colors="#bbb", labelsize=FS_TICK)
+    tight_cbar(fig, im, PANEL_POS["bl"], "Pearson r", fs=FS_TICK)
     ax.set_title("Cross-session correlation matrix (N beats)",
                  color="#cccccc", fontsize=FS_TITLE)
     for sp in ax.spines.values(): sp.set_color("#333")
@@ -511,33 +716,82 @@ def main():
     p25_others = np.percentile(np.array(others), 25, axis=0)
     p75_others = np.percentile(np.array(others), 75, axis=0)
 
-    # stessa dimensione del pannello correlation matrix nella 4-grid
-    # (figsize=(7, 5.5)) + extra spazio a destra per legenda esterna
-    fig, ax = plt.subplots(figsize=(8, 4.5), facecolor=DARK_BG)
+    # Figura QUADRATA con legenda INTERNA → si mostra alla dimensione di UN
+    # pannello delle figure 2x2 (~340px), non come figura intera.
+    fig, ax = plt.subplots(figsize=(5, 5), facecolor=DARK_BG)
     ax.set_facecolor(DARK_BG); ax.set_box_aspect(1)
     ax.fill_between(TG, p25_others, p75_others, color="#7fd693", alpha=0.20,
-                    label=f"Other {n_sessions-1} sessions (IQR)")
+                    label=f"Other {n_sessions-1} (IQR)")
     ax.plot(TG, median_others, color="#7fd693", lw=2,
-            label=f"Median of other {n_sessions-1}")
-    ax.plot(TG, median_outlier, color="#ff8a8a", lw=2.5,
-            label=f"Outlier {outlier_label}\n(mean r = {outlier_r:.3f})")
+            label=f"Median other {n_sessions-1}")
+    ax.plot(TG, median_outlier, color="#7ad9ff", lw=2.5,
+            label=f"Outlier {short_label(outlier_label)} (r={outlier_r:.3f})")
     ax.axvline(0, color="#888", alpha=0.4, lw=0.8, ls=":")
     ax.set_xlim(-WIN/2, WIN/2)
     ax.set_xlabel("Time relative to sinus peak (s)", color="white", fontsize=FS_LABEL)
     ax.set_ylabel("Amplitude (peak-normalized)", color="white", fontsize=FS_LABEL)
     ax.set_title("Outlier vs other sessions (median N)",
                  color="#cccccc", fontsize=FS_TITLE)
-    # legenda esterna a destra
     leg = ax.legend(facecolor="#1a1d22", labelcolor="white", edgecolor="#333",
-                    fontsize=FS_LEGEND, loc="center left",
-                    bbox_to_anchor=(1.02, 0.5),
-                    handlelength=1.4, handletextpad=0.5,
-                    borderpad=0.6, labelspacing=0.6)
+                    fontsize=FS_LEGEND, loc="upper right",
+                    handlelength=1.2, handletextpad=0.5,
+                    borderpad=0.5, labelspacing=0.4)
     leg.get_frame().set_linewidth(0.5)
     ax.tick_params(colors="#bbb", labelsize=FS_TICK)
     for sp in ax.spines.values(): sp.set_color("#333")
     ax.grid(alpha=0.18, color="#444")
     img_n_outlier = fig_to_b64(fig, dpi=220)
+
+    # ============ EXAMPLE STRIPS: recording quality + PVC auto-detection ============
+    # 10 strip in griglia 2 colonne x 5 righe, finestra ±10 s (20 s) attorno
+    # all'evento. Mix: regolari (varie sessioni) + 1 couplet + 1 burst + 2
+    # interpolate. Stile report: traccia verde, QRS PVC rosso (±120 ms) + marker.
+    # NB: niente testo di definizione dei tipi (couplet/burst/interp) — solo tag.
+    N_STRIPS = 10
+    specials = []   # (snippet, title)
+    if best_couplet is not None:
+        ex, lab = best_couplet
+        specials.append((ex, f"{short_label(lab)} · couplet"))
+    if best_burst is not None:
+        ex, lab = best_burst
+        specials.append((ex, f"{short_label(lab)} · burst"))
+    # fino a 2 interpolate, le più nette (ratio più basso), da sessioni diverse
+    seen_sess = set()
+    for ex, lab in sorted(interp_candidates, key=lambda x: x[0]["ratio"]):
+        if lab in seen_sess:
+            continue
+        seen_sess.add(lab)
+        specials.append((ex, f"{short_label(lab)} · interpolated"))
+        if sum(1 for _, t in specials if "interpolated" in t) >= 2:
+            break
+    # regolari per riempire fino a N_STRIPS, da sessioni diverse per varietà
+    regulars = []
+    for s in sessions:
+        ex = s.get("example")
+        if ex is None:
+            continue
+        c = ex["center"]; mm, ss = int(c // 60), int(c % 60)
+        regulars.append((ex, f"{short_label(s['label'])} · @{mm:02d}:{ss:02d}"))
+    strips = (specials + regulars)[:N_STRIPS]
+
+    img_examples = None
+    if strips:
+        ncol, nrow = 2, (len(strips) + 1) // 2
+        fig, axes = plt.subplots(nrow, ncol, figsize=(13, 1.7 * nrow),
+                                 facecolor=DARK_BG, squeeze=False)
+        flat = axes.ravel()
+        for ax, (ex, title) in zip(flat, strips):
+            draw_example_strip(ax, ex, title)
+        for ax in flat[len(strips):]:      # nasconde celle vuote
+            ax.set_visible(False)
+        fig.suptitle("Example strips (±10 s) — recording quality & automatic PVC detection",
+                     color="#cccccc", fontsize=FS_TITLE, y=0.997)
+        for ax in flat[max(0, len(strips) - ncol):len(strips)]:
+            ax.set_xlabel("Time relative to window centre (s)",
+                          color="#bbb", fontsize=FS_LABEL)
+        fig.subplots_adjust(left=0.05, right=0.99, top=0.95, bottom=0.05,
+                            hspace=0.55, wspace=0.12)
+        img_examples = fig_to_b64(fig, dpi=220)
 
     # tabella mean corr per sessione (HTML)
     outlier_rows = "\n".join(
@@ -596,7 +850,7 @@ def main():
                 gap: 10px; margin: 14px 0; }}
   .stat {{ background:#15171b; padding: 10px 14px; border-radius: 6px;
            border-left: 3px solid #4a90a4; }}
-  .stat .v {{ display:block; font-size:1.4em; color:#e6e8ea; font-weight:600; }}
+  .stat .v {{ display:block; font-size:1.15em; color:#e6e8ea; font-weight:600; }}
   .stat .l {{ display:block; color:#888; font-size:0.78em; margin-top:2px; }}
   .stat.pvc {{ border-left-color: #ff6b6b; }}
   .stat.pvc .v {{ color: #ff8a8a; }}
@@ -637,22 +891,6 @@ def main():
 <div class="updated">
   Last update <code>{now}</code> · refresh by running
   <code>python3 host/dashboard.py</code>
-</div>
-
-<h2>Dataset overview</h2>
-<div class="stat-grid">
-  <div class="stat"><span class="v">{len(sessions)}</span>
-    <span class="l">sessions analyzed</span></div>
-  <div class="stat"><span class="v">{cum_duration:.0f}</span>
-    <span class="l">total minutes ({cum_duration/60:.1f} h)</span></div>
-  <div class="stat heartbeats"><span class="v">{cum_total_pvc + cum_total_norm:,}</span>
-    <span class="l">heartbeats classified (N + PVC)</span></div>
-  <div class="stat pvc"><span class="v">{cum_total_pvc:,}</span>
-    <span class="l">PVCs detected</span></div>
-  <div class="stat burden"><span class="v">{100*cum_total_pvc/max(1,(cum_total_pvc+cum_total_norm)):.1f}%</span>
-    <span class="l">cumulative PVC burden</span></div>
-  <div class="stat"><span class="v">{cum_excluded/60:.1f} min</span>
-    <span class="l">manually excluded as noise</span></div>
 </div>
 
 <details>
@@ -709,6 +947,37 @@ def main():
   </div>
 </details>
 
+<h2>Dataset overview</h2>
+<div class="stat-grid">
+  <div class="stat"><span class="v">{len(sessions)}</span>
+    <span class="l">sessions analyzed</span></div>
+  <div class="stat"><span class="v">{cum_duration:.0f}</span>
+    <span class="l">total minutes ({cum_duration/60:.1f} h)</span></div>
+  <div class="stat heartbeats"><span class="v">{cum_total_pvc + cum_total_norm:,}</span>
+    <span class="l">heartbeats classified (N + PVC)</span></div>
+  <div class="stat pvc"><span class="v">{cum_total_pvc:,}</span>
+    <span class="l">PVCs detected</span></div>
+  <div class="stat burden"><span class="v">{100*cum_total_pvc/max(1,(cum_total_pvc+cum_total_norm)):.1f}%</span>
+    <span class="l">cumulative PVC burden</span></div>
+  <div class="stat"><span class="v">{cum_excluded/60:.1f} min</span>
+    <span class="l">manually excluded as noise</span></div>
+</div>
+
+<h2>Recording quality &amp; PVC auto-detection</h2>
+<div class="commentary">
+  A set of &plusmn;10-second example windows (20&nbsp;s each), selected
+  automatically across sessions and kept away from intervals marked as noise.
+  The continuous trace shows the raw signal quality; the detector output is
+  overlaid on top, exactly as used in every analysis below: the QRS of each PVC
+  is highlighted in <span style="color:#ff8a8a">red</span> (&plusmn;120&nbsp;ms)
+  with a red marker, while <span style="color:#5fcc9e">green</span> markers tag
+  the sinus beats. The mix includes ordinary isolated PVCs plus a couplet, a
+  burst and interpolated beats (tagged in each title).
+</div>
+<img src="data:image/png;base64,{img_examples}" alt="Example strips with PVC detection"
+     style="border:1px solid #25282d; border-radius:6px;
+            max-width: 1100px; display:block; margin: 0 auto;"/>
+
 <h2>PVC morphology analysis</h2>
 <div class="commentary">
   Each PVC is centered on its ectopic peak, normalized to its own amplitude
@@ -720,7 +989,7 @@ def main():
 </div>
 <img src="data:image/png;base64,{img_morphology_4panel}" alt="PVC morphology summary"
      style="border:1px solid #25282d; border-radius:6px;
-            max-width: 1000px; display:block; margin: 0 auto;"/>
+            max-width: {disp_width(img_morphology_4panel)}px; display:block; margin: 0 auto;"/>
 
 <h3>Are PVCs a single continuous population or do they form discrete subtypes?</h3>
 <div class="commentary">
@@ -752,7 +1021,7 @@ def main():
 </div>
 <img src="data:image/png;base64,{img_pvc_continuum}" alt="PVC continuum check"
      style="border:1px solid #25282d; border-radius:6px;
-            max-width: 1000px; display:block; margin: 0 auto;"/>
+            max-width: {disp_width(img_pvc_continuum)}px; display:block; margin: 0 auto;"/>
 
 <h2>Normal beats morphology</h2>
 <div class="commentary">
@@ -766,7 +1035,7 @@ def main():
 </div>
 <img src="data:image/png;base64,{img_n_morphology_4panel}" alt="Normal beat morphology — 4-panel summary"
      style="border:1px solid #25282d; border-radius:6px;
-            max-width: 1000px; display:block; margin: 0 auto;"/>
+            max-width: {disp_width(img_n_morphology_4panel)}px; display:block; margin: 0 auto;"/>
 
 <h3>Cross-session N correlation — outlier inspection</h3>
 <div class="commentary">
@@ -791,9 +1060,9 @@ def main():
   is an interpretation of the observed data, not a confirmed mechanism.</p>
 </div>
 
-<div style="display:grid; grid-template-columns: 280px 680px;
+<div style="display:grid; grid-template-columns: 280px 380px;
             gap: 22px; align-items: center; justify-content: center;
-            margin: 14px auto; max-width: 1020px;">
+            margin: 14px auto; max-width: 720px;">
   <div>
     <table style="margin: 0;">
       <tr><th>Session</th><th>Mean r</th></tr>
