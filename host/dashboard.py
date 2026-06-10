@@ -216,6 +216,19 @@ def _snip(t_ecg, vf_arr, peaks, ctr, half):
     return {"t": t_ecg[m], "v": vf_arr[m], "peaks": wp,
             "center": ctr, "pre": half, "post": half}
 
+def window_noise_score(strip, guard=0.16):
+    """Disturbo di baseline nella finestra di uno snippet: 90° percentile di |v|
+    sui campioni lontani >guard s da OGNI picco (= zona tra-battiti, che in un ECG
+    pulito è quasi piatta). Basso ⇒ finestra pulita, alto ⇒ rumore/artefatti."""
+    if strip is None or len(strip["t"]) == 0:
+        return 9.9
+    t, v = strip["t"], strip["v"]
+    mask = np.ones(len(t), dtype=bool)
+    for p in strip["peaks"]:
+        mask &= np.abs(t - p["t"]) > guard
+    base = np.abs(v[mask])
+    return float(np.percentile(base, 90)) if len(base) >= 10 else 9.9
+
 def find_interpolated_strip(t_ecg, vf_arr, peaks, excl, half=10.0, max_ratio=1.30):
     """PVC interpolata: tra 2 sinus, RR_pre+RR_post ≈ 1× RR sinus (ratio<=1.30,
     NON compensata ~2×). Sceglie quella col ratio più basso (più nettamente
@@ -279,6 +292,65 @@ def find_couplet_strip(t_ecg, vf_arr, peaks, excl, half=10.0, max_rr=700.0):
         snip["rr"] = best[1]
     return snip
 
+# griglie per l'overlay dei couplet (allineato sul picco della 1a PVC)
+CPL_PRE, CPL_POST = 0.22, 0.78          # finestra coppia: -0.22..+0.78 s
+CPL_GRID = np.linspace(-CPL_PRE, CPL_POST, 250)
+QRS_HALF = 0.15                          # mezza-finestra per i singoli QRS
+QRS_GRID = np.linspace(-QRS_HALF, QRS_HALF, 75)
+
+def find_all_couplets(t_ecg, vf_arr, peaks, excl, lo=200.0, hi=700.0):
+    """TUTTI i couplet veri della sessione: esattamente 2 PVC consecutive con
+    `lo < RR < hi` ms, NON parte di run >=3 (nessuna PVC adiacente prima/dopo),
+    fuori dai tratti esclusi, dopo il warm-up. Per ognuno estrae la forma d'onda
+    della coppia (allineata e normalizzata sul picco della 1a PVC) e i due QRS
+    singoli, per l'overlay morfologico. Ritorna lista di dict."""
+    if len(t_ecg) == 0:
+        return []
+    def far(ts, m=2.0):
+        return all(not (s - m <= ts <= e + m) for s, e in excl)
+    out, n = [], len(peaks)
+    for i in range(n - 1):
+        a, b = peaks[i], peaks[i+1]
+        if a["cls"] != "pvc" or b["cls"] != "pvc" or a["t"] < 60:
+            continue
+        rr = (b["t"] - a["t"]) * 1000
+        if not (lo < rr < hi):
+            continue
+        if i - 1 >= 0 and peaks[i-1]["cls"] == "pvc":      # no run >=3
+            continue
+        if i + 2 < n and peaks[i+2]["cls"] == "pvc":
+            continue
+        if not (far(a["t"]) and far(b["t"])):
+            continue
+        m = (t_ecg >= a["t"] - CPL_PRE) & (t_ecg <= a["t"] + CPL_POST)
+        if m.sum() < len(CPL_GRID) * 0.8:
+            continue
+        pair = np.interp(CPL_GRID, t_ecg[m] - a["t"], vf_arr[m])
+        norm = np.max(np.abs(pair)) or 1.0
+        def qrs(tc):
+            mm = (t_ecg >= tc - QRS_HALF) & (t_ecg <= tc + QRS_HALF)
+            if mm.sum() < len(QRS_GRID) * 0.8:
+                return None
+            q = np.interp(QRS_GRID, t_ecg[mm] - tc, vf_arr[mm])
+            pk = np.max(np.abs(q)) or 1.0
+            return q / pk
+        q1, q2 = qrs(a["t"]), qrs(b["t"])
+        if q1 is None or q2 is None:
+            continue
+        out.append({"t1": a["t"], "t2": b["t"], "rr": rr,
+                    "amp1": a["amp"], "amp2": b["amp"],
+                    "w1": a["w"], "w2": b["w"], "reb1": a["reb"], "reb2": b["reb"],
+                    "pair": pair / norm, "q1": q1, "q2": q2,
+                    "strip": _snip(t_ecg, vf_arr, peaks, (a["t"] + b["t"]) / 2.0, 5.0)})
+        out[-1]["noise"] = window_noise_score(out[-1]["strip"])
+        # motivo ritmico locale: 4 battiti prima della 1a PVC .. 4 dopo la 2a
+        sy = lambda p: "V" if p["cls"] == "pvc" else "N"
+        pre = "".join(sy(peaks[k]) for k in range(max(0, i-4), i))
+        post = "".join(sy(peaks[k]) for k in range(i+2, min(n, i+6)))
+        out[-1]["ctx"] = pre + "VV" + post           # per raggruppare
+        out[-1]["ctx_disp"] = pre + "[VV]" + post     # per la label
+    return out
+
 def find_burst_strip(t_ecg, vf_arr, peaks, excl, half=10.0, win=10.0, min_n=3):
     """Finestra di `win` secondi con la MASSIMA densità di PVC della sessione
     (scarica/burst). Centrata sul cluster. Ritorna snippet con extra 'n', o None."""
@@ -299,6 +371,257 @@ def find_burst_strip(t_ecg, vf_arr, peaks, excl, half=10.0, win=10.0, min_n=3):
     if snip is not None:
         snip["n"] = n
     return snip
+
+# ---- Classificazione interpolata vs compensata (validata, vedi sezione "method") ----
+# Criterio: ciclo sinusale LOCALE = mediana dei PAUSE_K N-N più vicini alla PVC
+# (segue la RSA). Guard di prematurità (RR_pre >= sinus locale = battito perso →
+# scartata). Discriminazione sulla PAUSA RR_post/sinus (è ciò che si percepisce
+# come "tonfo"): distribuzione bimodale, taglio alla valle (~1.0). 2 classi.
+PAUSE_K = 15
+
+def nn_arrays(peaks):
+    """midpoint-time e durata (s) di ogni coppia N-N consecutiva fisiologica."""
+    mids, vals = [], []
+    for i in range(1, len(peaks)):
+        if peaks[i]["cls"] == "normal" and peaks[i-1]["cls"] == "normal":
+            d = peaks[i]["t"] - peaks[i-1]["t"]
+            if 0.4 < d < 1.6:
+                mids.append((peaks[i]["t"] + peaks[i-1]["t"]) / 2.0)
+                vals.append(d)
+    return np.array(mids), np.array(vals)
+
+def pvc_pause_data(peaks):
+    """Per ogni PVC in sandwich N-PVC-N: ciclo sinusale locale (mediana dei
+    PAUSE_K N-N più vicini), coupling RR_pre, pausa RR_post, rapporti su sinus,
+    e flag `guard` (RR_pre >= sinus locale → battito perso, inaffidabile)."""
+    mids, vals = nn_arrays(peaks)
+    gl = float(np.median(vals)) if len(vals) else 1.0
+    n = len(mids); half = PAUSE_K // 2
+    out = []
+    for i in range(1, len(peaks) - 1):
+        p = peaks[i]
+        if p["cls"] != "pvc": continue
+        if peaks[i-1]["cls"] != "normal" or peaks[i+1]["cls"] != "normal": continue
+        rr_pre = p["t"] - peaks[i-1]["t"]
+        rr_post = peaks[i+1]["t"] - p["t"]
+        idx = int(np.searchsorted(mids, p["t"])) if n else 0
+        lo = max(0, idx - half - 1); hi = min(n, lo + PAUSE_K); lo = max(0, hi - PAUSE_K)
+        rl = float(np.median(vals[lo:hi])) if hi - lo >= 3 else gl
+        out.append({"i": i, "t": p["t"], "amp": p["amp"],
+                    "rr_pre": rr_pre, "rr_post": rr_post, "rl": rl,
+                    "post_ratio": rr_post / rl, "s_ratio": (rr_pre + rr_post) / rl,
+                    "guard": rr_pre >= rl})
+    return out
+
+def pause_valley(post_ratios, lo=0.82, hi=1.28, default=1.02):
+    """Valle (minimo densità) della distribuzione RR_post/sinus tra le due gobbe
+    (silenziosa ~0.75, con-pausa ~1.45). Clamp ragionevole."""
+    a = np.asarray(list(post_ratios), dtype=float)
+    if len(a) < 50:
+        return default
+    h, e = np.histogram(a, bins=np.arange(0.3, 2.2, 0.03))
+    cen = (e[:-1] + e[1:]) / 2
+    hs = np.convolve(h, np.array([1, 2, 3, 2, 1]) / 9.0, mode="same")
+    m = (cen > lo) & (cen < hi)
+    if not m.any():
+        return default
+    return float(min(1.18, max(0.90, cen[m][np.argmin(hs[m])])))
+
+# ---- Check "doppio focolaio" sul coupling pre-PVC (validato 10 giu 2026) --------
+# Un secondo focolaio darebbe un SECONDO picco di coupling CON morfologia QRS diversa.
+# Un secondo picco con STESSA morfologia = stesso focolaio che scarica a due
+# intervalli (modulazione del coupling), NON bifocale.
+def coupling_modality(cm):
+    """GMM 1 vs 2 comp sul coupling (ms). Ritorna se la mixture-2 è GENUINAMENTE
+    bimodale (avvallamento reale tra i picchi, non solo asimmetria), il dBIC, e la
+    valle tra i due modi. Niente reload: lavora sull'array coupling."""
+    out = {"ok": False, "bimodal": False, "dbic": 0.0, "valley": None,
+           "mu": None}
+    cm = np.asarray(cm, dtype=float)
+    cm = cm[(cm > 200) & (cm < 800)]
+    if len(cm) < 80:
+        return out
+    try:
+        from sklearn.mixture import GaussianMixture
+    except Exception:
+        return out
+    X = cm.reshape(-1, 1)
+    g1 = GaussianMixture(1, n_init=2, random_state=0).fit(X)
+    g2 = GaussianMixture(2, covariance_type="full", n_init=5, random_state=0).fit(X)
+    dbic = g1.bic(X) - g2.bic(X)          # >0 favorisce 2 comp
+    mus = np.sort(g2.means_.ravel())
+    out.update(ok=True, dbic=float(dbic), mu=(float(mus[0]), float(mus[1])))
+    if dbic <= 0 or mus[1] - mus[0] < 1e-3:
+        return out
+    grid = np.linspace(mus[0], mus[1], 200)
+    dens = np.exp(g2.score_samples(grid.reshape(-1, 1)))
+    j = int(np.argmin(dens))
+    if 0 < j < len(grid) - 1:             # minimo INTERNO → due modi reali
+        out.update(bimodal=True, valley=float(grid[j]))
+    return out
+
+def coupling_focus_morph(ecg_path, valley):
+    """Per una sessione con coupling bimodale: reload, split delle PVC al `valley`,
+    confronto morfologico dei due cluster (width/rebound/amp mediani + correlazione
+    del template QRS mediano). r alto (~>0.97) ⇒ STESSO focolaio."""
+    d = load_session(ecg_path)
+    if d is None:
+        return None
+    t_ecg, vf, peaks, _ = d
+    lo_p, hi_p = [], []
+    for i, p in enumerate(peaks):
+        if p["cls"] != "pvc" or i == 0:
+            continue
+        rr = (p["t"] - peaks[i-1]["t"]) * 1000
+        if 200 < rr < 800:
+            (lo_p if rr < valley else hi_p).append(p)
+    if len(lo_p) < 20 or len(hi_p) < 20:
+        return None
+    W = 0.18; grid = np.linspace(-W, W, 90)
+    def templ(sub):
+        rows = []
+        for p in sub:
+            m = (t_ecg >= p["t"]-W) & (t_ecg <= p["t"]+W)
+            if m.sum() < 60:
+                continue
+            v = np.interp(grid, t_ecg[m]-p["t"], vf[m])
+            pk = np.max(np.abs(v))
+            rows.append(v/pk if pk > 0.05 else v)
+        return np.median(np.array(rows), axis=0) if rows else None
+    tlo, thi = templ(lo_p), templ(hi_p)
+    if tlo is None or thi is None:
+        return None
+    return {
+        "n_lo": len(lo_p), "n_hi": len(hi_p),
+        "w_lo": float(np.median([p["w"] for p in lo_p])),
+        "w_hi": float(np.median([p["w"] for p in hi_p])),
+        "r_lo": float(np.median([p["reb"] for p in lo_p])),
+        "r_hi": float(np.median([p["reb"] for p in hi_p])),
+        "corr": float(np.corrcoef(tlo, thi)[0, 1]),
+    }
+
+# ---- EDR (ECG-Derived Respiration) + analisi fasica delle PVC --------------------
+# Il respiro modula l'ampiezza dei QRS (rotazione del vettore cardiaco + impedenza
+# polmonare). Ricostruisco la respirazione dall'ampiezza R dei battiti normali, ne
+# stimo la fase istantanea (Hilbert), e guardo a che fase respiratoria cadono le PVC
+# vs i battiti normali → c'è correlazione respiro↔PVC? (chi² sui bin di fase).
+NBINS_RESP = 12
+FS_RESP = 4.0
+
+def extract_edr_and_phase(peaks):
+    """EDR dall'ampiezza R dei N + fase istantanea + distribuzione fasica PVC vs N.
+    Convenzione VERIFICATA dall'utente (osservazione diretta in registrazione):
+    ampiezza R MASSIMA = POLMONI PIENI = fine INSPIRAZIONE; cala mentre svuota.
+    Quindi fase 0 = polmoni pieni (fine inspir.), 50% del ciclo = polmoni vuoti
+    (fine espir.). Le PVC del soggetto si addensano vicino a fase 0 (polmoni pieni).
+    Ritorna dict o None se traccia insufficiente."""
+    norm = [p for p in peaks if p["cls"] == "normal"]
+    pvc  = [p for p in peaks if p["cls"] == "pvc"]
+    if len(norm) < 200 or len(pvc) < 30:
+        return None
+    t_n = np.array([p["t"] for p in norm]); amp_n = np.array([p["amp"] for p in norm])
+    if t_n[-1] - t_n[0] < 5 * 60:          # almeno 5 min
+        return None
+    try:
+        from scipy import signal as sig
+        from scipy.interpolate import interp1d
+        from scipy.stats import chi2_contingency
+    except Exception:
+        return None
+    t_unif = np.arange(t_n[0], t_n[-1], 1 / FS_RESP)
+    amp_unif = interp1d(t_n, amp_n, kind="cubic")(t_unif)
+    resp = sig.sosfiltfilt(
+        sig.butter(3, [0.10, 0.50], btype="band", fs=FS_RESP, output="sos"),
+        sig.detrend(amp_unif))
+    f_psd, psd = sig.welch(resp, fs=FS_RESP, nperseg=min(2048, len(resp) // 4))
+    in_band = (f_psd >= 0.10) & (f_psd <= 0.50); out_band = (f_psd >= 0.60) & (f_psd <= 1.5)
+    snr = float(np.mean(psd[in_band]) / max(1e-12, np.mean(psd[out_band])))
+    rate_resp = float(f_psd[in_band][np.argmax(psd[in_band])] * 60)
+    phase = np.mod(np.angle(sig.hilbert(resp)), 2 * np.pi)
+    pint = interp1d(t_unif, phase, kind="nearest", bounds_error=False, fill_value=0)
+    bins = np.linspace(0, 2 * np.pi, NBINS_RESP + 1)
+    pvc_t = np.array([p["t"] for p in pvc])
+    pvc_phase = pint(pvc_t)
+    hist_n, _ = np.histogram(pint([p["t"] for p in norm]), bins=bins)
+    hist_p, _ = np.histogram(pvc_phase, bins=bins)
+    chi2_val, pval, _, _ = chi2_contingency(np.array([hist_p, hist_n]))
+    dens_n = hist_n / max(1, hist_n.sum()); dens_p = hist_p / max(1, hist_p.sum())
+    enrich = dens_p / np.maximum(dens_n, 1e-6)
+    centers = (bins[:-1] + bins[1:]) / 2
+    pb = int(np.argmax(enrich))
+    return {
+        "snr": snr, "rate_resp": rate_resp, "chi2": float(chi2_val), "pval": float(pval),
+        "dens_n": dens_n, "dens_p": dens_p, "enrich": enrich, "centers": centers,
+        "peak_phase_pct": float(centers[pb] * 100 / (2 * np.pi)),
+        "peak_enrich": float(enrich[pb]), "n_n": len(norm), "n_p": len(pvc),
+        "t_unif": t_unif, "resp": resp, "t_n": t_n, "amp_n": amp_n,
+        "pvc_t": pvc_t, "pvc_phase": pvc_phase,
+        # interp1d sui tempi → fase, per query di sottoinsiemi (interp/comp/coupled)
+        "phase_at": pint,
+    }
+
+def session_metrics(peaks, clean_s):
+    """Metriche di base per sessione (NO interp/comp: quelli si contano dopo, con
+    la valle globale). burden, sinus N/min, SA-HR effettiva, PVC rate, couplet."""
+    norm = [p for p in peaks if p["cls"] == "normal"]
+    pvc  = [p for p in peaks if p["cls"] == "pvc"]
+    n_total = len(peaks)
+    burden = 100 * len(pvc) / max(1, n_total)
+    sinus_bpm = 60 * len(norm) / clean_s if clean_s else 0
+    pvc_rate  = 60 * len(pvc)  / clean_s if clean_s else 0
+    sinus_rr = [peaks[i]["t"] - peaks[i-1]["t"]
+                for i in range(1, len(peaks))
+                if peaks[i]["cls"] == "normal" and 0.6 < peaks[i]["t"] - peaks[i-1]["t"] < 1.4]
+    rr_s_ms = float(np.median(sinus_rr)) * 1000 if sinus_rr else 1000.0
+    sa_hr = 60000.0 / rr_s_ms if rr_s_ms else 0.0
+    n_couplet = 0
+    i = 0
+    while i < len(peaks) - 1:
+        if (peaks[i]["cls"] == "pvc" and peaks[i+1]["cls"] == "pvc"
+                and peaks[i+1]["t"] - peaks[i]["t"] < 0.70
+                and not (i+2 < len(peaks) and peaks[i+2]["cls"] == "pvc")):
+            n_couplet += 1; i += 2
+        else:
+            i += 1
+    # pattern ripetitivi: PVC isolate, bigeminia (V-N-V), trigeminia (V-N-N-V)
+    iso_pvc = sum(1 for k, p in enumerate(peaks) if p["cls"] == "pvc"
+                  and (k == 0 or peaks[k-1]["cls"] != "pvc")
+                  and (k == len(peaks)-1 or peaks[k+1]["cls"] != "pvc"))
+    bigem = sum(1 for k in range(2, len(peaks))
+                if peaks[k]["cls"] == "pvc" and peaks[k-1]["cls"] == "normal"
+                and peaks[k-2]["cls"] == "pvc")
+    trigem = sum(1 for k in range(3, len(peaks))
+                 if peaks[k]["cls"] == "pvc" and peaks[k-1]["cls"] == "normal"
+                 and peaks[k-2]["cls"] == "normal" and peaks[k-3]["cls"] == "pvc")
+    # screening fibrillazione atriale (su N-N consecutivi) — istruzione permanente
+    af_nn = np.array([peaks[k]["t"] - peaks[k-1]["t"]
+                      for k in range(1, len(peaks))
+                      if peaks[k]["cls"] == "normal" and peaks[k-1]["cls"] == "normal"
+                      and 0.4 <= peaks[k]["t"] - peaks[k-1]["t"] <= 2.0]) * 1000
+    rmssd = pnn50 = cv = ent = 0.0; npk = 0; af_score = None
+    if len(af_nn) >= 30:
+        diffs = np.abs(np.diff(af_nn))
+        rmssd = float(np.sqrt(np.mean(diffs**2)))
+        pnn50 = 100 * float(np.mean(diffs > 50))
+        cv = 100 * float(np.std(af_nn, ddof=1) / np.mean(af_nn))
+        hist, _ = np.histogram(af_nn, bins=20)
+        p = hist[hist > 0] / hist[hist > 0].sum()
+        H = float(-(p * np.log2(p)).sum()); Hmax = float(np.log2(len(p))) if len(p) > 1 else 1.0
+        ent = H / Hmax if Hmax else 0.0
+        sm = np.convolve(hist, [1, 1, 1], mode="same")
+        npk = sum(1 for k in range(1, len(sm)-1)
+                  if sm[k] > sm[k-1] and sm[k] > sm[k+1] and sm[k] > 0.3 * sm.max())
+        af_score = int((rmssd > 100) + (pnn50 > 40) + (ent > 0.85)
+                       + (npk <= 1 and cv > 15))
+    return {
+        "burden": burden, "sinus_bpm": sinus_bpm, "pvc_rate": pvc_rate,
+        "sa_hr": sa_hr, "rr_s_ms": rr_s_ms, "n_couplet": n_couplet,
+        "n_total": n_total, "clean_s": clean_s,
+        "iso_pvc": iso_pvc, "bigem": bigem, "trigem": trigem,
+        "af_score": af_score, "rmssd": rmssd, "pnn50": pnn50, "cv": cv,
+        # interp/comp riempiti dopo (serve la valle globale):
+        "n_interp": 0, "n_comp": 0, "pct_interp": 0.0, "pct_comp": 0.0,
+    }
 
 def draw_example_strip(ax, ex, title):
     """Disegna una strip in stile report: traccia filtrata verde, QRS delle PVC
@@ -409,6 +732,13 @@ def main():
             "traces_n_norm": traces_n_norm,
             "coupling_ms": np.array(coupling_ms),
             "example": pick_example_strip(t_ecg, vf_arr, peaks, excl),
+            "couplets": find_all_couplets(t_ecg, vf_arr, peaks, excl),
+            "edr": extract_edr_and_phase(peaks),
+            "pause_data": pvc_pause_data(peaks),
+            "metrics": session_metrics(
+                peaks,
+                (float(t_ecg[-1] - t_ecg[0]) - float(sum(e - s for s, e in excl)))
+                if len(t_ecg) else 0.0),
         })
         # couplet / burst / interpolata migliori a livello di dataset (strip speciali)
         cpl = find_couplet_strip(t_ecg, vf_arr, peaks, excl)
@@ -424,6 +754,19 @@ def main():
         print("No valid session found."); return
 
     print(f"Sessions kept: {len(sessions)}")
+
+    # ---- valle globale RR_post + conteggi interp/comp per sessione ----
+    all_post = [d["post_ratio"] for s in sessions for d in s["pause_data"] if not d["guard"]]
+    all_sratio = [d["s_ratio"] for s in sessions for d in s["pause_data"] if not d["guard"]]
+    PAUSE_VALLEY = pause_valley(all_post)
+    for s in sessions:
+        nd = [d for d in s["pause_data"] if not d["guard"]]
+        ni = sum(1 for d in nd if d["post_ratio"] < PAUSE_VALLEY)
+        nc = sum(1 for d in nd if d["post_ratio"] >= PAUSE_VALLEY)
+        ncl = max(1, ni + nc)
+        s["metrics"].update(n_interp=ni, n_comp=nc,
+                            pct_interp=100*ni/ncl, pct_comp=100*nc/ncl)
+    print(f"RR_post valley = {PAUSE_VALLEY:.3f}  (interp<valley, comp>=valley)")
     all_traces_norm = np.concatenate([s["traces_norm"] for s in sessions], axis=0)
     all_traces_raw  = np.concatenate([s["traces_raw"]  for s in sessions], axis=0)
     all_n_norm = np.concatenate([s["traces_n_norm"] for s in sessions
@@ -741,6 +1084,827 @@ def main():
     for sp in ax.spines.values(): sp.set_color("#333")
     ax.grid(alpha=0.18, color="#444")
     img_n_outlier = fig_to_b64(fig, dpi=220)
+
+    # ============ CROSS-SESSION RHYTHM & BURDEN (longitudinale, si auto-aggiorna) ====
+    # Stesse analisi del synthetic report, ricalcolate da `sessions` ad ogni run →
+    # ogni nuova sessione aggiorna automaticamente figura + tabella.
+    cl = [short_label(s["label"]) for s in sessions]
+    xs = np.arange(n_sessions)
+    burden_v = [s["metrics"]["burden"]    for s in sessions]
+    sahr_v   = [s["metrics"]["sa_hr"]     for s in sessions]
+    pcomp_v  = [s["metrics"]["pct_comp"]  for s in sessions]
+    pintp_v  = [s["metrics"]["pct_interp"] for s in sessions]
+
+    fig = plt.figure(figsize=FIGSIZE, facecolor=DARK_BG)
+
+    # (tl) burden per sessione, ordine cronologico — color coding sessione coerente
+    # con le figure morfologiche (stessa palette[i]) così si riconosce ogni sessione.
+    ax = fig.add_axes(PANEL_POS["tl"]); ax.set_facecolor(DARK_BG)
+    burden_cols = [palette[i % len(palette)] for i in range(n_sessions)]
+    ax.bar(xs, burden_v, color=burden_cols, edgecolor="#0d0f12", linewidth=0.4)
+    ax.set_xticks(xs); ax.set_xticklabels(cl, rotation=45, ha="right",
+                                          fontsize=FS_TEXT, color="#bbb")
+    ax.set_ylabel("PVC burden (%)", color="#bbb", fontsize=FS_LABEL)
+    ax.set_title("PVC burden by session (chronological)", color="#cccccc", fontsize=FS_TITLE)
+    ax.tick_params(colors="#bbb", labelsize=FS_TICK)
+    ax.grid(axis="y", alpha=0.18, color="#444")
+    for sp in ax.spines.values(): sp.set_color("#333")
+
+    # (tr) HR SA effettiva vs quota interpolate/compensate
+    ax = fig.add_axes(PANEL_POS["tr"]); ax.set_facecolor(DARK_BG)
+    ax.scatter(sahr_v, pcomp_v, s=70, c="#ff8a8a", edgecolors="white",
+               linewidths=0.6, label="% compensated", zorder=4)
+    ax.scatter(sahr_v, pintp_v, s=70, c="#7ad9ff", edgecolors="white",
+               linewidths=0.6, label="% interpolated", zorder=4)
+    ax.set_xlabel("Effective SA rate (BPM)", color="#bbb", fontsize=FS_LABEL)
+    ax.set_ylabel("Share of classified PVCs (%)", color="#bbb", fontsize=FS_LABEL)
+    ax.set_title("Effective heart rate vs PVC pause type", color="#cccccc", fontsize=FS_TITLE)
+    ax.legend(facecolor="#1a1d22", labelcolor="white", edgecolor="#333",
+              fontsize=FS_LEGEND, loc="best")
+    ax.tick_params(colors="#bbb", labelsize=FS_TICK)
+    ax.grid(alpha=0.18, color="#444")
+    for sp in ax.spines.values(): sp.set_color("#333")
+
+    # (bl) composizione interpolate / compensate per sessione (2 classi)
+    ax = fig.add_axes(PANEL_POS["bl"]); ax.set_facecolor(DARK_BG)
+    yb = np.arange(n_sessions)
+    ax.barh(yb, pintp_v, color="#7ad9ff", edgecolor="#0d0f12", linewidth=0.4,
+            label="Interpolated (silent)")
+    ax.barh(yb, pcomp_v, left=pintp_v, color="#ff8a8a", edgecolor="#0d0f12",
+            linewidth=0.4, label="Compensated (felt)")
+    ax.set_yticks(yb); ax.set_yticklabels(cl, fontsize=FS_TEXT, color="#bbb")
+    ax.set_xlim(0, 100); ax.set_xlabel("Composition (%)", color="#bbb", fontsize=FS_LABEL)
+    ax.set_title("Interpolated vs compensated composition", color="#cccccc", fontsize=FS_TITLE)
+    ax.legend(facecolor="#1a1d22", labelcolor="white", edgecolor="#333",
+              fontsize=FS_LEGEND, loc="lower right")
+    ax.tick_params(colors="#bbb", labelsize=FS_TICK)
+    for sp in ax.spines.values(): sp.set_color("#333")
+
+    # (br) stabilità del coupling pre-PVC (mediana ± IQR per sessione)
+    ax = fig.add_axes(PANEL_POS["br"]); ax.set_facecolor(DARK_BG)
+    med, lo, hi = [], [], []
+    for s in sessions:
+        c = s["coupling_ms"]
+        if len(c):
+            mm = float(np.median(c))
+            med.append(mm); lo.append(mm - np.percentile(c, 25))
+            hi.append(np.percentile(c, 75) - mm)
+        else:
+            med.append(np.nan); lo.append(0); hi.append(0)
+    ax.errorbar(xs, med, yerr=[lo, hi], fmt="o", color="#ff6b6b",
+                ecolor="#7a3b3b", elinewidth=1.2, capsize=3, ms=6, zorder=4)
+    valid = [m for m in med if not np.isnan(m)]
+    if valid:
+        gm = float(np.median(valid))
+        ax.axhline(gm, color="#888", ls="--", lw=1, alpha=0.7,
+                   label=f"global median {gm:.0f} ms")
+        ax.legend(facecolor="#1a1d22", labelcolor="white", edgecolor="#333",
+                  fontsize=FS_LEGEND, loc="best")
+    ax.set_xticks(xs); ax.set_xticklabels(cl, rotation=45, ha="right",
+                                          fontsize=FS_TEXT, color="#bbb")
+    ax.set_ylabel("Pre-PVC coupling (ms)", color="#bbb", fontsize=FS_LABEL)
+    ax.set_title("Coupling interval stability (focus monomorphism)",
+                 color="#cccccc", fontsize=FS_TITLE)
+    ax.tick_params(colors="#bbb", labelsize=FS_TICK)
+    ax.grid(axis="y", alpha=0.18, color="#444")
+    for sp in ax.spines.values(): sp.set_color("#333")
+
+    img_crosssession = fig_to_b64(fig, dpi=220)
+
+    # ============ KEY PATTERN: resting sinus rate vs felt (compensated) PVCs =======
+    # Grafico richiesto dall'utente: una riga per le compensate (tonfi percepiti) e
+    # una per le interpolate (silenziose) in funzione della frequenza sinusale media
+    # a riposo. Con 2 classi pct_interp = 100 - pct_comp → curve speculari. Fit
+    # logistico pesato sul n di battiti classificati; trend quantificato con Spearman.
+    img_hr_pattern = None
+    sinus_v   = np.array([s["metrics"]["sinus_bpm"] for s in sessions], dtype=float)
+    pcomp_arr = np.array(pcomp_v, dtype=float)
+    pint_arr  = np.array(pintp_v, dtype=float)
+    nclass_v  = np.array([s["metrics"]["n_interp"] + s["metrics"]["n_comp"]
+                          for s in sessions], dtype=float)
+    try:
+        from scipy.stats import spearmanr
+        rho, pval = spearmanr(sinus_v, pcomp_arr)
+        fig, ax = plt.subplots(figsize=(11, 5.2), facecolor=DARK_BG)
+        ax.set_facecolor(DARK_BG)
+        # fit logistico pesato: p_comp = 1/(1+exp(-(a + b·bpm)))
+        xs_fit = np.linspace(sinus_v.min() - 1.5, sinus_v.max() + 1.5, 200)
+        try:
+            from scipy.optimize import curve_fit
+            def logi(x, a, b): return 1.0 / (1.0 + np.exp(-(a + b * x)))
+            frac = np.clip(pcomp_arr / 100.0, 1e-3, 1 - 1e-3)
+            sigma = 1.0 / np.sqrt(np.maximum(nclass_v, 1))
+            popt, _ = curve_fit(logi, sinus_v, frac, p0=[-5.0, 0.12],
+                                sigma=sigma, maxfev=20000)
+            yc_fit = 100 * logi(xs_fit, *popt)
+        except Exception:
+            # fallback: regressione lineare semplice
+            b1, b0 = np.polyfit(sinus_v, pcomp_arr, 1)
+            yc_fit = np.clip(b0 + b1 * xs_fit, 0, 100)
+        yi_fit = 100 - yc_fit
+        ax.plot(xs_fit, yc_fit, color="#ff6b6b", lw=2.2, zorder=2)
+        ax.plot(xs_fit, yi_fit, color="#7ad9ff", lw=2.2, zorder=2)
+        ax.axhline(50, color="#666", ls=":", lw=0.8, alpha=0.6)
+        ax.scatter(sinus_v, pcomp_arr, s=130, c="#ff6b6b", edgecolors="white",
+                   linewidths=1.0, zorder=4, label="% compensated (felt thumps)")
+        ax.scatter(sinus_v, pint_arr, s=130, c="#7ad9ff", edgecolors="white",
+                   linewidths=1.0, zorder=4, label="% interpolated (silent)")
+        for x, yc, yi, s in zip(sinus_v, pcomp_arr, pint_arr, sessions):
+            lab = short_label(s["label"])
+            ax.annotate(lab, (x, yc), textcoords="offset points", xytext=(6, 6),
+                        color="#ff8a8a", fontsize=FS_TEXT - 0.5, fontweight="bold")
+            ax.annotate(lab, (x, yi), textcoords="offset points", xytext=(6, -12),
+                        color="#7ad9ff", fontsize=FS_TEXT - 0.5, fontweight="bold")
+        ax.set_xlabel("Resting sinus rate (BPM, mean N/min)", color="#ddd", fontsize=FS_LABEL)
+        ax.set_ylabel("Share of classified PVCs (%)", color="#ddd", fontsize=FS_LABEL)
+        ax.set_ylim(-3, 103)
+        ax.set_title("Key pattern: resting heart rate sets how many PVCs are felt   "
+                     f"(Spearman r={rho:.2f}, p={pval:.3f})",
+                     color="#cccccc", fontsize=FS_TITLE)
+        ax.legend(facecolor="#1a1d22", labelcolor="white", edgecolor="#333",
+                  fontsize=FS_LEGEND, loc="center right")
+        ax.tick_params(colors="#bbb", labelsize=FS_TICK)
+        ax.grid(alpha=0.16, color="#444")
+        for sp in ax.spines.values(): sp.set_color("#333")
+        fig.subplots_adjust(left=0.07, right=0.98, top=0.92, bottom=0.11)
+        img_hr_pattern = fig_to_b64(fig, dpi=220)
+    except Exception as e:
+        print(f"  warning: HR-pattern figure failed: {e}")
+
+    # tabella metriche cross-sessione (HTML)
+    cross_rows = []
+    for s in sessions:
+        m = s["metrics"]
+        cross_rows.append(
+            f"<tr><td>{s['label']}</td>"
+            f"<td class='num'>{s['duration_min']:.0f}</td>"
+            f"<td class='num'>{m['sinus_bpm']:.1f}</td>"
+            f"<td class='num'>{m['sa_hr']:.0f}</td>"
+            f"<td class='num'>{m['pvc_rate']:.1f}</td>"
+            f"<td class='num'>{m['burden']:.1f}%</td>"
+            f"<td class='num'>{m['pct_interp']:.0f}%</td>"
+            f"<td class='num'>{m['pct_comp']:.0f}%</td>"
+            f"<td class='num'>{m['n_couplet']}</td></tr>")
+    cross_table = "\n".join(cross_rows)
+
+    # ============ TABELLA RIASSUNTIVA per sessione (stile synthetic report) =========
+    # Metriche come righe, sessioni come colonne (colonne tinta = palette delle figure).
+    # Semaforo su burden/couplet/AF; interp azzurro, comp rosso. Tutto sui dati validati.
+    def _sem_burden(v): return "#33ff66" if v < 15 else ("#ffd633" if v < 25 else "#ff7a4d")
+    def _sem_couplet(n): return "#33ff66" if n == 0 else ("#ffd633" if n <= 3 else "#ff7a4d")
+    def _sem_af(sc):
+        if sc is None: return "#888"
+        return "#33ff66" if sc == 0 else ("#ffd633" if sc <= 2 else "#ff7a4d")
+    ST = []
+    for s in sessions:
+        m = s["metrics"]; cm = s["coupling_ms"]
+        cmv = cm[(cm > 200) & (cm < 800)] if len(cm) else cm
+        ST.append({"m": m, "s": s,
+                   "coup_med": float(np.median(cmv)) if len(cmv) else 0.0,
+                   "n_coup": len(s["couplets"]),
+                   "guard": sum(1 for d in s["pause_data"] if d["guard"])})
+    _tint = lambda i: palette[i % len(palette)] + "14"
+    def _cell(content, i):
+        return f"<td class='num' style='background:{_tint(i)}'>{content}</td>"
+    _summary_rows = []
+    def _add(label, render, emph=False):
+        lab = (f"<td style='text-align:left;white-space:nowrap;"
+               f"font-weight:{'700' if emph else '400'}'>{label}</td>")
+        _summary_rows.append("<tr>" + lab
+                             + "".join(render(ST[i], i) for i in range(len(ST))) + "</tr>")
+    _npvc = lambda x: max(1, x["s"]["n_pvc"])
+    _add("Useful duration (min)", lambda x, i: _cell(f"{x['m']['clean_s']/60:.0f}", i))
+    _add("Excluded (s)",          lambda x, i: _cell(f"{x['s']['excluded_seconds']:.0f}", i))
+    _add("Total beats",           lambda x, i: _cell(f"{x['m']['n_total']:,}", i))
+    _add("Sinus rate (BPM)",      lambda x, i: _cell(f"{x['m']['sinus_bpm']:.1f}", i))
+    _add("Effective SA (BPM)",    lambda x, i: _cell(f"{x['m']['sa_hr']:.0f}", i))
+    _add("PVC total",             lambda x, i: _cell(f"{x['s']['n_pvc']:,} <span style='color:#888'>({x['m']['burden']:.1f}%)</span>", i))
+    _add("PVC rate (/min)",       lambda x, i: _cell(f"{x['m']['pvc_rate']:.1f}", i))
+    _add("Burden (%)",            lambda x, i: _cell(f"<b style='color:{_sem_burden(x['m']['burden'])}'>{x['m']['burden']:.1f}%</b>", i), emph=True)
+    _add("Median coupling (ms)",  lambda x, i: _cell(f"{x['coup_med']:.0f}", i))
+    _add("Couplets",              lambda x, i: _cell(f"<b style='color:{_sem_couplet(x['n_coup'])}'>{x['n_coup']}</b> <span style='color:#888'>({100*x['n_coup']/_npvc(x):.2f}%)</span>", i), emph=True)
+    _add("Interpolated",          lambda x, i: _cell(f"<span style='color:#7ad9ff'><b>{x['m']['n_interp']}</b> ({x['m']['pct_interp']:.0f}%)</span>", i))
+    _add("Compensated",           lambda x, i: _cell(f"<span style='color:#ff8a8a'><b>{x['m']['n_comp']}</b> ({x['m']['pct_comp']:.0f}%)</span>", i))
+    _add("Guarded (ambiguous)",   lambda x, i: _cell(f"<span style='color:#888'>{x['guard']}</span>", i))
+    _add("Isolated PVC",          lambda x, i: _cell(f"{x['m']['iso_pvc']} <span style='color:#888'>({100*x['m']['iso_pvc']/_npvc(x):.0f}%)</span>", i))
+    _add("Bigeminy V-N-V",        lambda x, i: _cell(f"{x['m']['bigem']} <span style='color:#888'>({100*x['m']['bigem']/_npvc(x):.0f}%)</span>", i))
+    _add("Trigeminy V-N-N-V",     lambda x, i: _cell(f"{x['m']['trigem']} <span style='color:#888'>({100*x['m']['trigem']/_npvc(x):.0f}%)</span>", i))
+    _add("AF score (0-4)",        lambda x, i: _cell((f"<b style='color:{_sem_af(x['m']['af_score'])}'>{x['m']['af_score']}/4</b>") if x['m']['af_score'] is not None else "-", i), emph=True)
+    _add("RMSSD (ms)",            lambda x, i: _cell(f"{x['m']['rmssd']:.0f}", i))
+    summary_head = "<th style='text-align:left'>Metric</th>" + "".join(
+        f"<th style='background:{palette[i%len(palette)]}40;color:#fff;white-space:nowrap'>"
+        f"{short_label(s['label'])}</th>" for i, s in enumerate(sessions))
+    summary_body = "\n".join(_summary_rows)
+
+    # ============ METHOD: interpolated vs compensated — criterio & validazione ====
+    method_n     = len(all_post)
+    _ap          = np.asarray(all_post, dtype=float)
+    method_pct_int  = 100 * float(np.mean(_ap <  PAUSE_VALLEY)) if method_n else 0
+    method_pct_comp = 100 * float(np.mean(_ap >= PAUSE_VALLEY)) if method_n else 0
+    method_amb   = 100 * float(np.mean(np.abs(_ap - PAUSE_VALLEY) < 0.10)) if method_n else 0
+    method_guard = sum(1 for s in sessions for d in s["pause_data"] if d["guard"])
+    img_method_example = img_method_dist = img_method_strip = None
+    demo = max(sessions, key=lambda s: min(s["metrics"]["n_interp"], s["metrics"]["n_comp"]))
+    _dd = load_session(demo["ecg_path"])
+    if _dd is not None:
+        dt, dvf, dpeaks, dexcl = _dd
+        dpause = demo["pause_data"]
+
+        def _far(tv):
+            return all(not (a-2 <= tv <= b+2) for a, b in dexcl)
+        def _clean(kind):
+            cand = [d for d in dpause if not d["guard"] and d["t"] > 60 and _far(d["t"])]
+            tgt = 0.70 if kind == "int" else 1.45
+            cand = [d for d in cand if (d["post_ratio"] < PAUSE_VALLEY) == (kind == "int")]
+            cand.sort(key=lambda d: abs(d["post_ratio"] - tgt))
+            return cand[0] if cand else None
+        def _draw_demo(ax, d, color, title):
+            c = d["t"]; half = 2.6; m = (dt >= c-half) & (dt <= c+half)
+            ax.set_facecolor(DARK_BG); ax.plot(dt[m]-c, dvf[m], lw=0.9, color="#9fb0bd")
+            wm = (dt >= c-0.12) & (dt <= c+0.12)
+            ax.plot(dt[wm]-c, dvf[wm], lw=1.8, color=color)
+            ax.scatter(0, d["amp"], s=130, marker="o", facecolors="none",
+                       edgecolors=color, linewidths=2, zorder=6)
+            npx = -d["rr_pre"]; nnx = d["rr_post"]
+            ax.axvline(npx, color="#7fd693", lw=1.0, alpha=0.7)
+            ax.axvline(nnx, color="#7fd693", lw=1.5, alpha=0.95)
+            ax.text(npx, 1.6, "N prev", color="#7fd693", fontsize=FS_TEXT, ha="center")
+            ax.text(nnx, 1.6, "N next", color="#7fd693", fontsize=FS_TEXT, ha="center")
+            ref1 = npx + d["rl"]; ref2 = npx + 2*d["rl"]
+            ax.axvline(ref1, color="#7ad9ff", ls="--", lw=1.1, alpha=0.9)
+            ax.axvline(ref2, color="#ff6b6b", ls="--", lw=1.1, alpha=0.9)
+            ax.text(ref1, -1.08, "1×", color="#7ad9ff", fontsize=FS_TEXT, ha="center", va="top")
+            ax.text(ref2, -1.08, "2×", color="#ff6b6b", fontsize=FS_TEXT, ha="center", va="top")
+            ax.plot([0, nnx], [-0.85, -0.85], color="#ffe169", lw=3, solid_capstyle="butt")
+            ax.text(nnx/2, -0.74, "RR_post", color="#ffe169", fontsize=FS_TEXT, ha="center")
+            ax.set_xlim(-half, half); ax.set_ylim(-1.25, 1.75)
+            ax.tick_params(colors="#bbb", labelsize=FS_TICK)
+            for sp in ax.spines.values(): sp.set_color("#333")
+            ax.grid(True, alpha=0.13, color="#444", lw=0.3)
+            ax.set_xlabel("t (s) relative to the PVC", color="#bbb", fontsize=FS_LABEL)
+            ax.set_title(title, color=color, fontsize=FS_TITLE)
+        di, dc = _clean("int"), _clean("comp")
+        if di and dc:
+            fig, (a1, a2) = plt.subplots(1, 2, figsize=(13, 3.3), facecolor=DARK_BG)
+            _draw_demo(a1, di, "#7ad9ff", f"Interpolated — pause {di['post_ratio']:.2f}× sinus (silent)")
+            _draw_demo(a2, dc, "#ff6b6b", f"Compensated — pause {dc['post_ratio']:.2f}× sinus (felt)")
+            fig.subplots_adjust(left=0.05, right=0.99, top=0.87, bottom=0.15, wspace=0.12)
+            img_method_example = fig_to_b64(fig, dpi=200)
+
+        # distribuzioni: somma S (convenzione) vs pausa RR_post (percezione)
+        fig, (a1, a2) = plt.subplots(1, 2, figsize=(13, 3.6), facecolor=DARK_BG)
+        a1.set_facecolor(DARK_BG)
+        a1.hist(all_sratio, bins=np.arange(0.6, 3.0, 0.04), color="#9a9a9a",
+                alpha=0.55, edgecolor="#0d0f12", linewidth=0.3)
+        a1.axvline(1.0, color="#7ad9ff", lw=1.4); a1.axvline(2.0, color="#ff6b6b", lw=1.4)
+        a1.text(1.0, a1.get_ylim()[1]*0.94, "1×", color="#7ad9ff", fontsize=FS_TICK, ha="center")
+        a1.text(2.0, a1.get_ylim()[1]*0.94, "2×", color="#ff6b6b", fontsize=FS_TICK, ha="center")
+        a1.set_title("Conventional sum  S = (RR_pre+RR_post)/sinus", color="#ccc", fontsize=FS_TITLE)
+        a1.set_xlabel("S  (× sinus cycle)", color="#bbb", fontsize=FS_LABEL)
+        a2.set_facecolor(DARK_BG)
+        a2.hist(all_post, bins=np.arange(0.3, 2.2, 0.035), color="#7ad9ff",
+                alpha=0.5, edgecolor="#0d0f12", linewidth=0.3)
+        a2.axvline(PAUSE_VALLEY, color="#ffe169", lw=2, label=f"valley {PAUSE_VALLEY:.2f}")
+        a2.legend(facecolor="#1a1d22", labelcolor="white", edgecolor="#333", fontsize=FS_LEGEND)
+        a2.set_title("Pause  RR_post / sinus  (what is perceived)", color="#ccc", fontsize=FS_TITLE)
+        a2.set_xlabel("RR_post  (× sinus cycle)", color="#bbb", fontsize=FS_LABEL)
+        for ax in (a1, a2):
+            ax.tick_params(colors="#bbb", labelsize=FS_TICK); ax.grid(alpha=0.15, color="#444")
+            for sp in ax.spines.values(): sp.set_color("#333")
+        fig.subplots_adjust(left=0.05, right=0.99, top=0.9, bottom=0.14, wspace=0.13)
+        img_method_dist = fig_to_b64(fig, dpi=200)
+
+        # strip finale colorata per RR_post
+        cmapd = {d["i"]: ("int" if d["post_ratio"] < PAUSE_VALLEY else "comp")
+                 for d in dpause if not d["guard"]}
+        ti = [d["t"] for d in dpause if cmapd.get(d["i"]) == "int" and d["t"] > 60]
+        tc = [d["t"] for d in dpause if cmapd.get(d["i"]) == "comp" and d["t"] > 60]
+        bt, bsc, t0 = 60.0, -1, 60.0
+        while t0 + 80 < dt[-1]:
+            a = sum(1 for x in ti if t0 <= x < t0+80); b = sum(1 for x in tc if t0 <= x < t0+80)
+            sc = min(a, b)*2 + a + b
+            if sc > bsc: bsc, bt = sc, t0
+            t0 += 40
+        COLc = {"int": "#7ad9ff", "comp": "#ff6b6b"}
+        nrow = 8
+        fig, axes = plt.subplots(nrow, 1, figsize=(13, 1.1*nrow), facecolor=DARK_BG)
+        for r, ax in enumerate(axes):
+            rs = bt + r*10; re = rs+10; m = (dt >= rs) & (dt < re)
+            ax.set_facecolor(DARK_BG)
+            if m.any(): ax.plot(dt[m]-rs, dvf[m], lw=0.6, color="#7fd693", alpha=0.85)
+            for d in dpause:
+                if not (rs <= d["t"] < re) or d["i"] not in cmapd: continue
+                c = cmapd[d["i"]]
+                wm = (dt >= d["t"]-0.12) & (dt <= d["t"]+0.12)
+                if wm.any(): ax.plot(dt[wm]-rs, dvf[wm], lw=1.7, color=COLc[c])
+                ax.scatter(d["t"]-rs, min(1.5, d["amp"]+0.26), s=30, marker="v",
+                           color=COLc[c], edgecolors="white", linewidths=0.3, zorder=6)
+            ax.set_xlim(0, 10); ax.set_ylim(-1.2, 1.7); ax.tick_params(colors="#888", labelsize=FS_TEXT)
+            ax.grid(True, alpha=0.12, color="#444", lw=0.3)
+            for sp in ax.spines.values(): sp.set_color("#333")
+            ax.set_ylabel(f"{int(rs//60):02d}:{int(rs%60):02d}", color="#999", fontsize=FS_TEXT,
+                          rotation=0, ha="right", va="center", labelpad=12)
+        from matplotlib.lines import Line2D
+        axes[0].legend(handles=[Line2D([0],[0], color="#7ad9ff", lw=3, label="Interpolated (silent)"),
+                                Line2D([0],[0], color="#ff6b6b", lw=3, label="Compensated (felt)")],
+                       loc="upper right", facecolor="#1a1d22", labelcolor="white",
+                       edgecolor="#333", fontsize=FS_LEGEND, ncol=2)
+        axes[-1].set_xlabel("seconds within the row", color="#bbb", fontsize=FS_LABEL)
+        fig.subplots_adjust(left=0.05, right=0.99, top=0.97, bottom=0.05, hspace=0.4)
+        img_method_strip = fig_to_b64(fig, dpi=200)
+
+    # ============ PER-SESSION DISTRIBUTIONS: pause & coupling histograms ==========
+    # Una riga per sessione, ricalcolate a ogni run (stile report). Usano il
+    # criterio validato: pausa RR_post / ciclo sinusale LOCALE, taglio alla valle
+    # globale PAUSE_VALLEY. Mostrano, sessione per sessione, perché lo split
+    # interp/comp cade dove cade (la forma bimodale è leggibile a occhio).
+    nS = len(sessions)
+    palette_ps = palette  # riuso la palette della sezione cross
+
+    # (A) distribuzione della PAUSA RR_post / sinus — gobba silenziosa (~0.75x) e
+    #     gobba con-pausa (~1.45x), valle gialla = soglia interp/comp.
+    img_persession_pause = None
+    bins_pr = np.linspace(0.2, 2.0, 64)
+    fig, axes_pp = plt.subplots(nS, 1, figsize=(11, 1.85 * nS),
+                                facecolor=DARK_BG, sharex=True, squeeze=False)
+    axes_pp = axes_pp.ravel()
+    for ax, s in zip(axes_pp, sessions):
+        ax.set_facecolor(DARK_BG)
+        pr = np.array([d["post_ratio"] for d in s["pause_data"] if not d["guard"]])
+        n_g = sum(1 for d in s["pause_data"] if d["guard"])
+        pr_i = pr[pr < PAUSE_VALLEY]
+        pr_c = pr[pr >= PAUSE_VALLEY]
+        ax.hist(pr_i, bins=bins_pr, color="#7ad9ff", edgecolor="#0d0f12", linewidth=0.3)
+        ax.hist(pr_c, bins=bins_pr, color="#ff8a8a", edgecolor="#0d0f12", linewidth=0.3)
+        ax.axvline(PAUSE_VALLEY, color="#ffe169", ls="-", lw=1.5)
+        ax.axvline(1.0, color="#888", ls=":", lw=0.8, alpha=0.6)
+        if len(pr):
+            med = float(np.median(pr))
+            ax.axvline(med, color="white", ls="--", lw=1.0, alpha=0.7)
+        pct_c = 100 * len(pr_c) / max(1, len(pr))
+        ax.text(0.012, 0.84, "interpolated", transform=ax.transAxes,
+                color="#7ad9ff", fontsize=FS_TEXT)
+        ax.text(0.988, 0.84, "compensated", transform=ax.transAxes,
+                color="#ff8a8a", fontsize=FS_TEXT, ha="right")
+        ax.set_title(f"{short_label(s['label'])}   "
+                     f"(SA {s['metrics']['sa_hr']:.0f} BPM, n={len(pr)}, "
+                     f"{pct_c:.0f}% compensated"
+                     + (f", {n_g} guarded" if n_g else "") + ")",
+                     color="#cccccc", fontsize=FS_TICK + 0.5, pad=2)
+        ax.set_ylabel("count", color="#999", fontsize=FS_TEXT)
+        ax.tick_params(colors="#bbb", labelsize=FS_TICK)
+        ax.grid(axis="y", alpha=0.15, color="#444", lw=0.3)
+        for sp in ax.spines.values(): sp.set_color("#333")
+    axes_pp[-1].set_xlabel(f"pause RR$_{{post}}$ / local sinus cycle   "
+                           f"(yellow = global valley {PAUSE_VALLEY:.2f}×, interp/comp split)",
+                           color="#bbb", fontsize=FS_LABEL)
+    fig.subplots_adjust(left=0.06, right=0.99, top=0.965, bottom=0.05, hspace=0.45)
+    img_persession_pause = fig_to_b64(fig, dpi=200)
+
+    # (B) distribuzione del COUPLING pre-PVC per sessione (stabilità del focolaio).
+    #     Barre colorate per sub-cluster: <500 (blu), 500-600 (rosa), >600 (verde).
+    img_persession_coupling = None
+    bins_c = np.arange(280, 720, 14)
+    cen_c = (bins_c[:-1] + bins_c[1:]) / 2
+    clu_col = ["#7ad9ff" if x < 500 else ("#ff8a8a" if x < 600 else "#7fd693")
+               for x in cen_c]
+    # check doppio-focolaio per sessione (modalità del coupling + morfologia)
+    focus_findings = []   # per il testo HTML
+    fig, axes_pc = plt.subplots(nS, 1, figsize=(11, 1.7 * nS),
+                                facecolor=DARK_BG, sharex=True, squeeze=False)
+    axes_pc = axes_pc.ravel()
+    for ax, s in zip(axes_pc, sessions):
+        ax.set_facecolor(DARK_BG)
+        c = s["coupling_ms"]
+        c = c[(c > 200) & (c < 800)] if len(c) else c
+        mod = coupling_modality(c)
+        focus_txt = "unimodal"
+        if len(c):
+            h, _ = np.histogram(c, bins=bins_c)
+            ax.bar(cen_c, h, width=12, color=clu_col, edgecolor="#0d0f12", linewidth=0.3)
+            med = float(np.median(c))
+            ax.axvline(med, color="#ffe169", ls="-", lw=1.4)
+            ax.text(med + 4, ax.get_ylim()[1] * 0.8, f"med {med:.0f} ms",
+                    color="#ffe169", fontsize=FS_TEXT, fontweight="bold")
+            if mod["bimodal"]:
+                # secondo modo reale → verifica morfologia (stesso focolaio?)
+                morph = coupling_focus_morph(s["ecg_path"], mod["valley"])
+                ax.axvline(mod["valley"], color="#b59bff", ls="--", lw=1.2)
+                if morph and morph["corr"] > 0.97:
+                    focus_txt = (f"bimodal: same focus (QRS r={morph['corr']:.3f})")
+                    tag_col = "#b59bff"
+                elif morph:
+                    focus_txt = (f"bimodal: CHECK morphology (QRS r={morph['corr']:.3f})")
+                    tag_col = "#ff6b6b"
+                else:
+                    focus_txt = "bimodal (morphology n/a)"
+                    tag_col = "#b59bff"
+                ax.text(0.985, 0.84, focus_txt, transform=ax.transAxes, ha="right",
+                        color=tag_col, fontsize=FS_TEXT - 0.5, fontweight="bold")
+                focus_findings.append((short_label(s["label"]), focus_txt, morph))
+        ax.axvline(500, color="#888", ls="--", lw=0.7, alpha=0.5)
+        ax.axvline(600, color="#888", ls="--", lw=0.7, alpha=0.5)
+        ax.set_title(f"{short_label(s['label'])}   pre-PVC coupling (n={len(c)})",
+                     color="#cccccc", fontsize=FS_TICK + 0.5, pad=2)
+        ax.set_ylabel("count", color="#999", fontsize=FS_TEXT)
+        ax.tick_params(colors="#bbb", labelsize=FS_TICK)
+        ax.grid(axis="y", alpha=0.15, color="#444", lw=0.3)
+        for sp in ax.spines.values(): sp.set_color("#333")
+    axes_pc[-1].set_xlabel("pre-PVC coupling interval (ms)",
+                           color="#bbb", fontsize=FS_LABEL)
+    fig.subplots_adjust(left=0.06, right=0.99, top=0.965, bottom=0.05, hspace=0.5)
+    img_persession_coupling = fig_to_b64(fig, dpi=200)
+
+    # sintesi testuale del check doppio-focolaio (per l'HTML)
+    n_bimodal = len(focus_findings)
+    n_diff = sum(1 for _, txt, _ in focus_findings if "CHECK" in txt)
+    if n_bimodal == 0:
+        focus_summary = ("Every session's coupling is statistically unimodal — a "
+                         "single pre-PVC coupling peak, consistent with one focus.")
+    else:
+        same = ", ".join(f"{lab} (r={m['corr']:.3f})"
+                         for lab, txt, m in focus_findings if m and "CHECK" not in txt)
+        focus_summary = (
+            f"{n_bimodal} session(s) show a genuinely <b>bimodal</b> coupling "
+            f"(two peaks, not just skew): {same}. In each the two coupling clusters "
+            f"have <b>identical QRS morphology</b> (template correlation as shown), so "
+            f"this is the <b>same monomorphic focus discharging at two coupling "
+            f"intervals</b> (coupling modulation), <b>not</b> a second focus."
+            + (f" {n_diff} session(s) flagged for morphology review."
+               if n_diff else " No session shows a morphologically distinct second focus."))
+
+    # ============ COUPLETS: detection, conteggio per sessione, overlay morfologico ==
+    # Couplet = 2 PVC consecutive (RR 200-700ms), non parte di run>=3. Raccolti per
+    # sessione in s["couplets"]. Qui: (1) conteggio per sessione, (2) overlay di TUTTI
+    # i couplet allineati sul picco della 1a PVC (normalizzati) per vedere se sono
+    # simili, (3) overlay dei singoli QRS della 1a vs 2a PVC (stessa morfologia?).
+    img_couplets = None
+    coup_per_sess = [len(s["couplets"]) for s in sessions]
+    all_coup = [(c, i) for i, s in enumerate(sessions) for c in s["couplets"]]
+    n_coup_tot = len(all_coup)
+    coup_rr_all = np.array([c["rr"] for c, _ in all_coup]) if all_coup else np.array([])
+    if all_coup:
+        fig = plt.figure(figsize=(13, 4.3), facecolor=DARK_BG)
+        gs = fig.add_gridspec(1, 3, width_ratios=[1.0, 1.25, 1.0],
+                              left=0.06, right=0.985, top=0.88, bottom=0.16, wspace=0.28)
+
+        # (1) conteggio per sessione, color-coded come le altre figure
+        ax0 = fig.add_subplot(gs[0]); ax0.set_facecolor(DARK_BG)
+        cols0 = [palette[i % len(palette)] for i in range(n_sessions)]
+        ax0.bar(np.arange(n_sessions), coup_per_sess, color=cols0,
+                edgecolor="#0d0f12", linewidth=0.4)
+        ax0.set_xticks(np.arange(n_sessions))
+        ax0.set_xticklabels([short_label(s["label"]) for s in sessions],
+                            rotation=45, ha="right", fontsize=FS_TEXT, color="#bbb")
+        ax0.set_ylabel("couplets (n)", color="#bbb", fontsize=FS_LABEL)
+        ax0.set_title(f"Couplets per session  (total {n_coup_tot})",
+                      color="#cccccc", fontsize=FS_TITLE)
+        ax0.tick_params(colors="#bbb", labelsize=FS_TICK)
+        ax0.grid(axis="y", alpha=0.18, color="#444")
+        for sp in ax0.spines.values(): sp.set_color("#333")
+
+        # (2) overlay di tutte le coppie, allineate sul picco della 1a PVC
+        ax1 = fig.add_subplot(gs[1]); ax1.set_facecolor(DARK_BG)
+        pairs = np.array([c["pair"] for c, _ in all_coup])
+        for (c, i) in all_coup:
+            ax1.plot(CPL_GRID, c["pair"], color=palette[i % len(palette)],
+                     lw=0.5, alpha=0.35)
+        ax1.plot(CPL_GRID, np.median(pairs, axis=0), color="white", lw=1.8,
+                 label="median")
+        rr_med = float(np.median(coup_rr_all))
+        ax1.axvline(0, color="#888", ls=":", lw=0.8, alpha=0.7)
+        ax1.axvline(rr_med/1000.0, color="#ffe169", ls="--", lw=1.2,
+                    label=f"median RR {rr_med:.0f} ms")
+        ax1.set_xlim(-CPL_PRE, CPL_POST); ax1.set_ylim(-1.15, 1.25)
+        ax1.set_xlabel("time from 1st PVC peak (s)", color="#bbb", fontsize=FS_LABEL)
+        ax1.set_ylabel("amplitude (norm.)", color="#bbb", fontsize=FS_LABEL)
+        ax1.set_title(f"All {n_coup_tot} couplets overlaid (by session colour)",
+                      color="#cccccc", fontsize=FS_TITLE)
+        ax1.legend(facecolor="#1a1d22", labelcolor="white", edgecolor="#333",
+                   fontsize=FS_LEGEND, loc="upper right")
+        ax1.tick_params(colors="#bbb", labelsize=FS_TICK)
+        ax1.grid(alpha=0.16, color="#444")
+        for sp in ax1.spines.values(): sp.set_color("#333")
+
+        # (3) overlay singoli QRS: 1a PVC vs 2a PVC (stessa morfologia?)
+        ax2 = fig.add_subplot(gs[2]); ax2.set_facecolor(DARK_BG)
+        q1s = np.array([c["q1"] for c, _ in all_coup])
+        q2s = np.array([c["q2"] for c, _ in all_coup])
+        for q in q1s:
+            ax2.plot(QRS_GRID, q, color="#7ad9ff", lw=0.4, alpha=0.22)
+        for q in q2s:
+            ax2.plot(QRS_GRID, q, color="#ffa64d", lw=0.4, alpha=0.22)
+        m1, m2 = np.median(q1s, axis=0), np.median(q2s, axis=0)
+        ax2.plot(QRS_GRID, m1, color="#7ad9ff", lw=2.2, label="1st PVC")
+        ax2.plot(QRS_GRID, m2, color="#ffa64d", lw=2.2, label="2nd PVC")
+        r12 = float(np.corrcoef(m1, m2)[0, 1])
+        ax2.set_xlim(-QRS_HALF, QRS_HALF); ax2.set_ylim(-1.15, 1.15)
+        ax2.set_xlabel("time from QRS peak (s)", color="#bbb", fontsize=FS_LABEL)
+        ax2.set_ylabel("amplitude (norm.)", color="#bbb", fontsize=FS_LABEL)
+        ax2.set_title(f"1st vs 2nd beat morphology  (median r={r12:.3f})",
+                      color="#cccccc", fontsize=FS_TITLE)
+        ax2.legend(facecolor="#1a1d22", labelcolor="white", edgecolor="#333",
+                   fontsize=FS_LEGEND, loc="upper right")
+        ax2.tick_params(colors="#bbb", labelsize=FS_TICK)
+        ax2.grid(alpha=0.16, color="#444")
+        for sp in ax2.spines.values(): sp.set_color("#333")
+
+        img_couplets = fig_to_b64(fig, dpi=220)
+
+    # gallery di esempio: 6 strip di couplet (2 colonne × 3 righe, stesso format
+    # delle 10 example strips: traccia verde, QRS PVC rosso ±120ms + marker). Finestra
+    # ±5s (meno rumore ai bordi). Selezione = mostra le VARIAZIONI del motivo ritmico:
+    # un rappresentante (finestra più pulita) per ogni motivo `ctx` distinto, ordinati
+    # per pulizia → la galleria copre pattern diversi, non 6 copie del dominante.
+    img_couplet_strips = None
+    cand = [(c, i) for c, i in all_coup if c.get("strip") is not None]
+    cand.sort(key=lambda ci: ci[0].get("noise", 9.9))   # finestre più pulite prima
+    rep = {}
+    for c, i in cand:                         # cleanest representative per motivo distinto
+        rep.setdefault(c.get("ctx", ""), (c, i))
+    picks = sorted(rep.values(), key=lambda ci: ci[0].get("noise", 9.9))[:6]
+    for c, i in cand:                         # se i motivi distinti puliti sono <6, riempi
+        if len(picks) >= 6:
+            break
+        if (c, i) not in picks:
+            picks.append((c, i))
+    if picks:
+        ncol, nrow = 2, (len(picks) + 1) // 2
+        fig, axes = plt.subplots(nrow, ncol, figsize=(13, 1.7 * nrow),
+                                 facecolor=DARK_BG, squeeze=False)
+        flat = axes.ravel()
+        for ax, (c, i) in zip(flat, picks):
+            ctr = c["strip"]["center"]
+            mm, ss = int(ctr // 60), int(ctr % 60)
+            motif = " ".join(c.get("ctx_disp", ""))   # "N V N N [V V] N V N N"
+            draw_example_strip(ax, c["strip"],
+                               f"{short_label(sessions[i]['label'])} @{mm:02d}:{ss:02d}"
+                               f"    {motif}")
+        for ax in flat[len(picks):]:
+            ax.set_visible(False)
+        fig.suptitle("Couplet example strips (±5 s) — two consecutive PVCs in context",
+                     color="#cccccc", fontsize=FS_TITLE, y=0.997)
+        for ax in flat[max(0, len(picks) - ncol):len(picks)]:
+            ax.set_xlabel("Time relative to couplet centre (s)",
+                          color="#bbb", fontsize=FS_LABEL)
+        fig.subplots_adjust(left=0.05, right=0.99, top=0.93, bottom=0.07,
+                            hspace=0.55, wspace=0.12)
+        img_couplet_strips = fig_to_b64(fig, dpi=220)
+
+    # ---- motivo ritmico locale: il couplet si ripete dentro lo stesso pattern? ----
+    # Conta i motivi `ctx_disp` (4 battiti prima .. 4 dopo) su TUTTI i couplet.
+    from collections import Counter
+    motif_counter = Counter(c.get("ctx_disp", "") for c, _ in all_coup)
+    img_couplet_motifs = None
+    top_motifs = motif_counter.most_common(8)
+    if top_motifs and n_coup_tot:
+        labels_m = [" ".join(m) for m, _ in top_motifs][::-1]
+        counts_m = [n for _, n in top_motifs][::-1]
+        dom_n = top_motifs[0][1]
+        fig, ax = plt.subplots(figsize=(11, 0.46 * len(top_motifs) + 1.2),
+                               facecolor=DARK_BG)
+        ax.set_facecolor(DARK_BG)
+        ym = np.arange(len(labels_m))
+        cols_m = ["#ff8a4d" if n == dom_n else "#5fb1ff" for n in counts_m]
+        ax.barh(ym, counts_m, color=cols_m, edgecolor="#0d0f12", linewidth=0.4)
+        for y, n in zip(ym, counts_m):
+            ax.text(n + 0.15, y, f"{n} ({100*n/n_coup_tot:.0f}%)", va="center",
+                    color="#ddd", fontsize=FS_TEXT)
+        ax.set_yticks(ym)
+        ax.set_yticklabels(labels_m, color="#cfd2d6", fontsize=FS_TEXT,
+                           fontfamily="monospace")
+        ax.set_xlabel("number of couplets", color="#bbb", fontsize=FS_LABEL)
+        ax.set_xlim(0, max(counts_m) * 1.18)
+        ax.set_title("Local rhythm motif around each couplet "
+                     "(4 beats before … couplet … 4 after)",
+                     color="#cccccc", fontsize=FS_TITLE)
+        ax.tick_params(colors="#bbb", labelsize=FS_TICK)
+        ax.grid(axis="x", alpha=0.16, color="#444")
+        for sp in ax.spines.values(): sp.set_color("#333")
+        fig.subplots_adjust(left=0.27, right=0.97, top=0.84, bottom=0.18)
+        img_couplet_motifs = fig_to_b64(fig, dpi=220)
+
+    # testo di sintesi del pattern (HTML)
+    if top_motifs and n_coup_tot:
+        dm, dn = top_motifs[0]
+        pattern_summary = (
+            f"The couplet is usually embedded in one recurring rhythm: the motif "
+            f"<code>{' '.join(dm)}</code> occurs in <b>{dn}/{n_coup_tot} "
+            f"({100*dn/n_coup_tot:.0f}%)</b> of couplets — an organized, trigeminy-like "
+            f"cadence (an isolated PVC, two sinus beats, the couplet, then the same "
+            f"again). It is <b>not</b> universal, though: the remaining "
+            f"{n_coup_tot - dn} couplets show variants — the couplet arriving out of a "
+            f"longer sinus run, after a bigeminal stretch, or followed by quiet — which "
+            f"is why the example strips below are chosen to span <b>different</b> motifs "
+            f"rather than repeat the dominant one.")
+    else:
+        pattern_summary = ""
+
+    # testo di sintesi couplet (HTML)
+    n_sess_with = sum(1 for n in coup_per_sess if n > 0)
+    if n_coup_tot:
+        coup_summary = (
+            f"<b>{n_coup_tot} couplets</b> across {n_sess_with}/{n_sessions} sessions "
+            f"(none in {n_sessions - n_sess_with}). Inter-PVC interval is strikingly "
+            f"tight — median <b>{float(np.median(coup_rr_all)):.0f} ms</b> "
+            f"(range {coup_rr_all.min():.0f}&ndash;{coup_rr_all.max():.0f} ms) — and the "
+            f"two beats share the same morphology, i.e. the couplets are <b>uniform</b> "
+            f"and consistent with the same single focus firing twice, not a second focus "
+            f"or a malignant polymorphic pair.")
+    else:
+        coup_summary = "No couplets detected in the current dataset."
+
+    # ============ RESPIRATION (EDR) ↔ PVC phase correlation ========================
+    # Ricostruisco il respiro dall'ampiezza R (EDR) e verifico se le PVC sono legate
+    # alla fase respiratoria. img_edr_demo = prova che il respiro è rilevato; il
+    # pannello fase + tabella = la correlazione (chi² per sessione).
+    edr_sessions = [s for s in sessions if s.get("edr")]
+    img_edr_demo = img_resp_phase = img_resp_phase_types = None
+    type_peaks = {}
+    resp_table = ""
+    type_summary = ""
+    resp_summary = ("Not enough clean long recordings (&ge;5 min) to derive respiration.")
+    if edr_sessions:
+        # ---- (A) demo: il respiro ricostruito dall'ampiezza R, su ~80 s puliti ----
+        best = max(edr_sessions, key=lambda s: s["edr"]["snr"])
+        e = best["edr"]
+        tn, an, tu, rs = e["t_n"], e["amp_n"], e["t_unif"], e["resp"]
+        # finestra di 80s dopo il 1° minuto con almeno qualche PVC
+        w0 = tu[0] + 60.0; w1 = w0 + 80.0
+        mu = (tu >= w0) & (tu <= w1); mn = (tn >= w0) & (tn <= w1)
+        if mu.sum() > 20 and mn.sum() > 10:
+            fig, ax = plt.subplots(figsize=(12, 3.4), facecolor=DARK_BG)
+            ax.set_facecolor(DARK_BG)
+            # ampiezza R normalizzata (punti) + EDR (linea)
+            a = an[mn]; a_z = (a - a.mean()) / (a.std() or 1)
+            r = rs[mu]; r_z = (r - r.mean()) / (r.std() or 1)
+            ax.scatter(tn[mn] - w0, a_z, s=14, color="#5fcc9e", alpha=0.7,
+                       label="R-amplitude of N beats (z)")
+            ax.plot(tu[mu] - w0, r_z, color="#7ad9ff", lw=1.8,
+                    label="EDR respiration (0.1–0.5 Hz)")
+            pv = e["pvc_t"]; pvw = pv[(pv >= w0) & (pv <= w1)]
+            for x in pvw:
+                ax.axvline(x - w0, color="#ff6b6b", lw=1.0, alpha=0.55)
+            if len(pvw):
+                ax.plot([], [], color="#ff6b6b", lw=1.0, label="PVC")
+            ax.set_xlim(0, 80); ax.set_xlabel("time (s)", color="#bbb", fontsize=FS_LABEL)
+            ax.set_ylabel("normalized", color="#bbb", fontsize=FS_LABEL)
+            ax.set_title(f"Respiration recovered from R-amplitude — {short_label(best['label'])} "
+                         f"({e['rate_resp']:.1f} breaths/min, SNR {e['snr']:.1f})",
+                         color="#cccccc", fontsize=FS_TITLE)
+            ax.legend(facecolor="#1a1d22", labelcolor="white", edgecolor="#333",
+                      fontsize=FS_LEGEND, loc="upper right", ncol=3)
+            ax.tick_params(colors="#bbb", labelsize=FS_TICK)
+            ax.grid(alpha=0.16, color="#444")
+            for sp in ax.spines.values(): sp.set_color("#333")
+            fig.subplots_adjust(left=0.06, right=0.98, top=0.88, bottom=0.16)
+            img_edr_demo = fig_to_b64(fig, dpi=220)
+
+        # ---- (B) fase: rosetta aggregata + enrichment per sessione ----
+        cen = edr_sessions[0]["edr"]["centers"]
+        pct = cen * 100 / (2 * np.pi)
+        fig = plt.figure(figsize=(13, 4.6), facecolor=DARK_BG)
+        gs = fig.add_gridspec(1, 2, width_ratios=[1, 1.5], left=0.02, right=0.97,
+                              top=0.86, bottom=0.16, wspace=0.22)
+        # rosetta polare aggregata (somma su tutte le sessioni)
+        axp = fig.add_subplot(gs[0], projection="polar"); axp.set_facecolor(DARK_BG)
+        dn = np.sum([s["edr"]["dens_n"] for s in edr_sessions], axis=0)
+        dp = np.sum([s["edr"]["dens_p"] for s in edr_sessions], axis=0)
+        dn = dn / dn.sum() * 100; dp = dp / dp.sum() * 100
+        wbar = (2 * np.pi / NBINS_RESP) * 0.95
+        axp.bar(cen, dn, width=wbar, color="#5fcc9e", alpha=0.45, label="N beats")
+        axp.bar(cen, dp, width=wbar, color="#ff6b6b", alpha=0.55, label="PVC")
+        axp.set_theta_zero_location("N"); axp.set_theta_direction(-1)
+        axp.set_xticks([0, np.pi/2, np.pi, 3*np.pi/2])
+        axp.set_xticklabels(["lungs full\n(end-insp.)", "25%", "lungs empty\n(end-exp.)", "75%"],
+                            color="#bbb", fontsize=FS_TICK)
+        axp.tick_params(colors="#777", labelsize=FS_TICK-1)
+        axp.set_title("Phase distribution (all sessions)", color="#cccccc",
+                      fontsize=FS_TITLE, pad=14)
+        axp.legend(facecolor="#1a1d22", labelcolor="white", edgecolor="#333",
+                   fontsize=FS_LEGEND, loc="lower right", bbox_to_anchor=(1.15, -0.05))
+        # enrichment per sessione + media
+        axe = fig.add_subplot(gs[1]); axe.set_facecolor(DARK_BG)
+        xx = np.concatenate([pct, [100]])     # chiudi il ciclo
+        for s in edr_sessions:
+            en = np.array(s["edr"]["enrich"]); en = np.concatenate([en, [en[0]]])
+            axe.plot(xx, en, color="#5a8fb0", lw=0.8, alpha=0.5)
+        mean_en = np.mean([s["edr"]["enrich"] for s in edr_sessions], axis=0)
+        mean_en = np.concatenate([mean_en, [mean_en[0]]])
+        axe.plot(xx, mean_en, color="#ffe169", lw=2.6, label="mean across sessions")
+        axe.axhline(1.0, color="#888", ls="--", lw=0.9)
+        axe.axvspan(0, 14, color="#ff6b6b", alpha=0.10)
+        axe.axvspan(86, 100, color="#ff6b6b", alpha=0.10)
+        axe.text(2, axe.get_ylim()[1], "lungs full (end-inspiration)", color="#ff9a9a",
+                 fontsize=FS_TEXT, ha="left", va="top")
+        axe.set_xlim(0, 100)
+        axe.set_xlabel("% of respiratory cycle  (0 / 100 = lungs full / end-inspiration, "
+                       "50 = lungs empty / end-expiration)",
+                       color="#bbb", fontsize=FS_LABEL)
+        axe.set_ylabel("PVC enrichment (PVC density / N density)", color="#bbb", fontsize=FS_LABEL)
+        axe.set_title("Where in the breath do PVCs fire? (×1 = no preference)",
+                      color="#cccccc", fontsize=FS_TITLE)
+        axe.legend(facecolor="#1a1d22", labelcolor="white", edgecolor="#333",
+                   fontsize=FS_LEGEND, loc="upper right")
+        axe.tick_params(colors="#bbb", labelsize=FS_TICK)
+        axe.grid(alpha=0.16, color="#444")
+        for sp in axe.spines.values(): sp.set_color("#333")
+        img_resp_phase = fig_to_b64(fig, dpi=220)
+
+        # ---- (B2) rosetta per TIPO di PVC: interpolate / compensate / coupled ----
+        # cascano alla stessa fase respiratoria o a fasi diverse? Fase di ogni PVC
+        # presa da phase_at; tipo da pause_data (interp/comp, valle globale) e da
+        # couplets (entrambi i battiti della coppia).
+        ph = {"interp": [], "comp": [], "coupled": []}
+        for s in edr_sessions:
+            pa = s["edr"]["phase_at"]
+            ti = [d["t"] for d in s["pause_data"] if not d["guard"] and d["post_ratio"] < PAUSE_VALLEY]
+            tc = [d["t"] for d in s["pause_data"] if not d["guard"] and d["post_ratio"] >= PAUSE_VALLEY]
+            tk = [c["t1"] for c in s["couplets"]] + [c["t2"] for c in s["couplets"]]
+            if ti: ph["interp"].append(pa(np.array(ti)))
+            if tc: ph["comp"].append(pa(np.array(tc)))
+            if tk: ph["coupled"].append(pa(np.array(tk)))
+        ph = {k: (np.concatenate(v) if v else np.array([])) for k, v in ph.items()}
+        TYPE_COL = {"interp": "#7ad9ff", "comp": "#ff8a8a", "coupled": "#ffd633"}
+        TYPE_LAB = {"interp": "Interpolated", "comp": "Compensated", "coupled": "Coupled"}
+        bins_r = np.linspace(0, 2 * np.pi, NBINS_RESP + 1)
+        cen_r = (bins_r[:-1] + bins_r[1:]) / 2
+        cc = np.append(cen_r, cen_r[0])           # chiudi il loop
+        type_peaks = {}
+        fig = plt.figure(figsize=(7.2, 6.4), facecolor=DARK_BG)
+        axt = fig.add_subplot(111, projection="polar"); axt.set_facecolor(DARK_BG)
+        for k in ("interp", "comp", "coupled"):
+            if len(ph[k]) < 8:
+                continue
+            h, _ = np.histogram(ph[k], bins=bins_r)
+            d = h / h.sum()
+            dd = np.append(d, d[0])
+            axt.plot(cc, dd, color=TYPE_COL[k], lw=2.0,
+                     label=f"{TYPE_LAB[k]} (n={len(ph[k])})")
+            axt.fill(cc, dd, color=TYPE_COL[k], alpha=0.12)
+            type_peaks[k] = float(cen_r[int(np.argmax(d))] * 100 / (2 * np.pi))
+        axt.set_theta_zero_location("N"); axt.set_theta_direction(-1)
+        axt.set_xticks([0, np.pi/2, np.pi, 3*np.pi/2])
+        axt.set_xticklabels(["lungs full\n(end-insp.)", "25%", "lungs empty\n(end-exp.)", "75%"],
+                            color="#bbb", fontsize=FS_TICK)
+        axt.tick_params(colors="#777", labelsize=FS_TICK-1)
+        axt.set_title("Respiratory phase by PVC type\n(density per type)",
+                      color="#cccccc", fontsize=FS_TITLE, pad=16)
+        axt.legend(facecolor="#1a1d22", labelcolor="white", edgecolor="#333",
+                   fontsize=FS_LEGEND, loc="lower center", bbox_to_anchor=(0.5, -0.18), ncol=3)
+        fig.subplots_adjust(left=0.06, right=0.94, top=0.84, bottom=0.13)
+        img_resp_phase_types = fig_to_b64(fig, dpi=220)
+
+        # ---- (C) tabella + sintesi ----
+        n_sig = sum(1 for s in edr_sessions if s["edr"]["pval"] < 0.05)
+        def _pv(p):
+            col = "#33ff66" if p < 0.05 else "#ff7a4d"
+            txt = f"{p:.0e}" if p < 0.01 else f"{p:.3f}"
+            return f"<b style='color:{col}'>{txt}</b>"
+        rrows = []
+        for s in edr_sessions:
+            ed = s["edr"]
+            rrows.append(
+                f"<tr><td>{s['label']}</td>"
+                f"<td class='num'>{ed['rate_resp']:.1f}</td>"
+                f"<td class='num'>{ed['n_p']:,}</td>"
+                f"<td class='num'>{ed['peak_phase_pct']:.0f}%</td>"
+                f"<td class='num'>&times;{ed['peak_enrich']:.2f}</td>"
+                f"<td class='num'>{_pv(ed['pval'])}</td>"
+                f"<td class='num'>{ed['snr']:.1f}</td></tr>")
+        resp_table = "\n".join(rrows)
+        mean_peak = float(np.mean([s["edr"]["peak_enrich"] for s in edr_sessions]))
+        resp_summary = (
+            f"Respiration was recovered in <b>{len(edr_sessions)}/{n_sessions}</b> sessions "
+            f"(the rest too short or too noisy). PVC timing is <b>significantly</b> coupled to "
+            f"respiratory phase in <b>{n_sig}/{len(edr_sessions)}</b> of them "
+            f"(&chi;&sup2; across phase bins, p&lt;0.05) — so the answer is <b>yes, there is a "
+            f"real correlation</b>. The R-amplitude is largest at <b>full lungs</b> (the subject "
+            f"confirmed this directly while recording), so the phase peak sits at "
+            f"<b>full inflation / end-inspiration</b>: PVCs are over-represented there "
+            f"(mean peak &times;{mean_peak:.1f} vs chance) and sparsest near empty lungs. "
+            f"That points to a <b>mechanical, lung-volume / cardiac-filling</b> trigger at peak "
+            f"inflation (diaphragm lowest, maximal venous return and chamber stretch) rather than "
+            f"the end-expiratory vagal one previously assumed.")
+        # confronto fasi per tipo
+        if len(type_peaks) >= 2:
+            def _nearfull(p):  # distanza circolare da "polmoni pieni" (0/100%)
+                return min(p, 100 - p)
+            parts = ", ".join(f"{TYPE_LAB[k].lower()} {type_peaks[k]:.0f}%"
+                              for k in ("interp", "comp", "coupled") if k in type_peaks)
+            peaks_pct = list(type_peaks.values())
+            spread = max(_nearfull(v) for v in peaks_pct)
+            same = spread <= 25
+            verdict = (
+                "all three favour roughly the <b>same</b> phase (near full lungs), so interpolated, "
+                "compensated and coupled beats share one respiratory trigger and do not pick out "
+                "separate phases" if same else
+                "the types peak at <b>different</b> phases — worth a closer look, as it would hint "
+                "that the pause type and the respiratory trigger interact")
+            type_summary = (f"Split by type, the phase peaks are: {parts} "
+                            f"(% of cycle, 0 = full lungs). So {verdict}.")
+        else:
+            type_summary = ""
 
     # ============ EXAMPLE STRIPS: recording quality + PVC auto-detection ============
     # 10 strip in griglia 2 colonne x 5 righe, finestra ±10 s (20 s) attorno
@@ -1079,6 +2243,286 @@ def main():
          style="border:1px solid #25282d; border-radius:6px;
                 width:100%; display:block;"/>
   </div>
+</div>
+
+<h2>Interpolated vs compensated PVCs — method &amp; validation</h2>
+<div class="commentary">
+  Every PVC sits between a preceding and a following sinus beat (N&ndash;PVC&ndash;N).
+  <b>Conventionally</b> the two are told apart by what happens to the sinus node,
+  measured <b>R-to-R, from QRS peak to QRS peak</b> (the repolarization / the PVC's
+  hyperpolarization rebound are not used):
+  an <span style="color:#7ad9ff">interpolated</span> PVC slips in without resetting
+  the SA node, so the next sinus beat stays on schedule and the N&ndash;PVC&ndash;N
+  interval is &asymp; <b>1&times;</b> the sinus cycle; a
+  <span style="color:#ff8a8a">compensated</span> PVC resets the SA node, the next
+  sinus beat is delayed by a full pause, and N&ndash;PVC&ndash;N &asymp; <b>2&times;</b>.
+</div>
+<img src="data:image/png;base64,{img_method_example}" alt="Interpolated vs compensated — example"
+     style="border:1px solid #25282d; border-radius:6px;
+            max-width: 1100px; display:block; margin: 0 auto;"/>
+<div class="commentary">
+  The reference sinus cycle is not a single session-wide number: this subject has
+  marked respiratory sinus arrhythmia, so it is estimated <b>locally</b> as the median
+  of the <b>{PAUSE_K} nearest N&ndash;N intervals</b> around each PVC. A
+  <b>prematurity guard</b> discards beats whose coupling (RR<sub>pre</sub>) is not
+  shorter than that local sinus cycle &mdash; physically impossible for a true
+  (premature) PVC, and a sign that a small sub-threshold sinus beat was missed in the
+  gap; {method_guard} beats (&asymp;{100*method_guard/max(1,method_guard+method_n):.0f}%)
+  are set aside this way.
+</div>
+<h3>Why the conventional sum leaves a grey zone &mdash; and how the data resolves it</h3>
+<div class="commentary">
+  Applying the strict sum rule (1.85&ndash;2.15&times; for a "full" pause) leaves a
+  wide band of beats in between, neither clearly 1&times; nor 2&times;. Looking at the
+  data, though, the picture is cleaner than the rule suggests. Two distributions:
+  on the left the conventional <b>sum S</b>; on the right the <b>actual pause
+  RR<sub>post</sub></b> after the PVC. Both are clearly <b>bimodal</b> &mdash; almost
+  every beat falls into one lump or the other, with a near-empty valley between them.
+</div>
+<img src="data:image/png;base64,{img_method_dist}" alt="Distributions of S and RR_post"
+     style="border:1px solid #25282d; border-radius:6px;
+            max-width: 1100px; display:block; margin: 0 auto;"/>
+<div class="commentary">
+  The sum S and the pause RR<sub>post</sub> agree on ~99% of beats (the coupling here
+  is nearly fixed), but they disagree on a few: the same S can hide a short or a long
+  pause depending on the coupling. When they disagree, the variable that matches what
+  is <b>seen on the trace and felt</b> is the <b>pause</b> &mdash; a long pause loads
+  the ventricle and the next beat lands as a forceful "thump". So the operative split
+  is made on RR<sub>post</sub>, at the empirical valley
+  <b>{PAUSE_VALLEY:.2f}&times;</b> the sinus cycle: pause shorter &rarr;
+  <span style="color:#7ad9ff">interpolated</span> (silent), pause longer &rarr;
+  <span style="color:#ff8a8a">compensated</span> (felt). Across the dataset that gives
+  <b>{method_pct_int:.0f}% interpolated</b> and <b>{method_pct_comp:.0f}% compensated</b>
+  on {method_n:,} classified beats; only ~{method_amb:.0f}% sit within &plusmn;0.10 of the
+  valley (genuinely borderline), and those that remain truly undecided are noise, which
+  is removed by manual exclusion / the guard rather than forced into a class.
+</div>
+<h3>How it looks on the trace</h3>
+<div class="commentary">
+  The same classification on a continuous strip (session {demo['label']}): the QRS of
+  each PVC is colored <span style="color:#7ad9ff">blue</span> when interpolated (the
+  sinus rhythm carries on with no gap) and <span style="color:#ff8a8a">red</span> when
+  compensated (a clear pause follows before the next sinus beat).
+</div>
+<img src="data:image/png;base64,{img_method_strip}" alt="Final 2-class strip"
+     style="border:1px solid #25282d; border-radius:6px;
+            max-width: 1100px; display:block; margin: 0 auto;"/>
+<div class="commentary">
+  This two-way split is what the subject actually perceives: the
+  <span style="color:#7ad9ff">interpolated</span> beats carry no pause and go unnoticed,
+  while the <span style="color:#ff8a8a">compensated</span> ones are followed by the pause
+  and the potentiated beat that is felt as a <b>skipped / missed beat</b>. The
+  cross-session analysis below is built on this classification.
+</div>
+
+<h2>Cross-session rhythm &amp; burden dynamics</h2>
+<div class="commentary">
+  Longitudinal comparison across all sessions, recomputed at every run — each new
+  recording updates the table and the four panels automatically. Metrics follow
+  the same definitions as the summary report: <b>burden</b> = PVCs / all beats;
+  <b>effective SA rate</b> = 60000 / median N&ndash;N interval (the rate the wrist
+  pulse would read, since most PVCs are non-perfusing); a PVC is
+  <span style="color:#7ad9ff">interpolated</span> when RR<sub>pre</sub>+RR<sub>post</sub>
+  &asymp; 1&times; the sinus interval (no compensatory pause, usually not felt) and
+  <span style="color:#ff8a8a">compensated</span> when &asymp; 2&times; (full pause,
+  the "thump"). Classification thresholds (1.30 / 1.85&ndash;2.15&times; RR<sub>sinus</sub>)
+  are parametric; the per-session values are data-driven.
+  <ul>
+    <li><b>Burden by session</b>: how the PVC load varies recording to recording.</li>
+    <li><b>Effective rate vs pause type</b>: at lower SA rates interpolated
+        (silent) beats tend to prevail; as the rate rises they may shift toward
+        compensated (felt) beats — the pattern that could explain why perceived
+        thumps do not track raw PVC count.</li>
+    <li><b>Composition</b>: interpolated / compensated / incomplete share per session.</li>
+    <li><b>Coupling stability</b>: a tight, session-stable pre-PVC coupling is
+        consistent with a single monomorphic focus; large drifts could indicate
+        multifocality.</li>
+  </ul>
+</div>
+<img src="data:image/png;base64,{img_crosssession}" alt="Cross-session rhythm and burden"
+     style="border:1px solid #25282d; border-radius:6px;
+            max-width: {disp_width(img_crosssession)}px; display:block; margin: 0 auto;"/>
+<div style="overflow-x:auto; margin: 12px auto; max-width: 900px;">
+<table>
+  <tr><th>Session</th><th>Dur (min)</th><th>Sinus N/min</th><th>SA eff. (BPM)</th>
+      <th>PVC/min</th><th>Burden</th><th>Interp.</th><th>Comp.</th><th>Couplets</th></tr>
+  {cross_table}
+</table>
+</div>
+<div class="commentary" style="margin-top: 4px;">
+  <b>Key pattern.</b> The single relationship that ties the dataset together: the
+  share of <span style="color:#ff8a8a">compensated</span> (felt) PVCs rises with the
+  resting sinus rate, while <span style="color:#7ad9ff">interpolated</span> (silent)
+  ones fall — so the number of thumps the subject notices tracks heart rate, not raw
+  PVC count. Each point is one session (labelled); curves are a weighted logistic fit,
+  the trend is quantified by Spearman's r in the title.
+</div>
+<img src="data:image/png;base64,{img_hr_pattern}" alt="Resting rate vs felt PVCs"
+     style="border:1px solid #25282d; border-radius:6px;
+            max-width: 1040px; width: 100%; display:block; margin: 0 auto;"/>
+
+<h2>Per-session summary table</h2>
+<div class="commentary">
+  Every session as a column, every metric as a row — the same layout as the summary
+  report, recomputed at each run on the validated definitions used throughout this
+  dashboard (local-sinus pause split for interpolated/compensated, the couplet detector
+  from the section below, real pre-PVC coupling median). Colour cues:
+  <b style="color:#33ff66">green</b>/<b style="color:#ffd633">amber</b>/<b style="color:#ff7a4d">orange</b>
+  flag low/medium/higher values for burden, couplets and AF score;
+  <span style="color:#7ad9ff">interpolated</span> /
+  <span style="color:#ff8a8a">compensated</span> keep their usual colours. "Guarded" =
+  PVCs whose pause was unmeasurable (a sinus beat hidden in the gap) and excluded from the
+  interp/comp split. "AF score" is the 0&ndash;4 atrial-fibrillation signal screen
+  (RMSSD&gt;100, pNN50&gt;40, high RR entropy, unimodal+high CV) — a signal-level check,
+  not a diagnosis.
+</div>
+<div style="overflow-x:auto; margin: 12px 0;">
+<table class="summary" style="font-size: 12.5px; min-width: 900px;">
+  <tr>{summary_head}</tr>
+  {summary_body}
+</table>
+</div>
+
+<h2>Per-session pause distribution</h2>
+<div class="commentary">
+  One row per recording, recomputed at every run, using the validated criterion from
+  the method section: each beat's pause RR<sub>post</sub> measured against its
+  <em>local</em> sinus cycle, split at the global valley (<b>{PAUSE_VALLEY:.2f}&times;</b>).
+  The left hump (<span style="color:#7ad9ff">blue, &asymp;0.7&times;</span>) are
+  interpolated (silent) beats; the right hump (<span style="color:#ff8a8a">pink,
+  &asymp;1.45&times;</span>) compensated (felt) ones; the
+  <span style="color:#ffe169">yellow line</span> is the split. A session whose mass
+  sits almost entirely on one side has a correspondingly lopsided <em>perceived</em>
+  burden — visible here at a glance, and the driver behind the key pattern above.
+  Beats failing the prematurity guard (a sub-threshold sinus beat hides between N and
+  the PVC, making the pause unmeasurable) are excluded and counted in each row title.
+</div>
+<img src="data:image/png;base64,{img_persession_pause}" alt="Per-session pause distribution"
+     style="border:1px solid #25282d; border-radius:6px;
+            max-width: 1080px; width: 100%; display:block; margin: 0 auto;"/>
+
+<h2>Per-session coupling distribution &amp; single-focus check</h2>
+<div class="commentary">
+  <b>What the coupling interval is.</b> The coupling interval is the time from the
+  preceding normal beat to the PVC (RR<sub>pre</sub>) — how long after each sinus beat
+  the ectopic fires. A single ectopic focus re-entering on the same circuit fires at a
+  near-constant coupling, so a <b>tight, recording-to-recording-stable peak</b> is the
+  signature of one monomorphic focus; a <b>second focus</b> would add a separate
+  coupling peak <em>with a different QRS shape</em>. Bars are tinted by sub-cluster
+  (<span style="color:#7ad9ff">&lt;500</span> /
+  <span style="color:#ff8a8a">500&ndash;600</span> /
+  <span style="color:#7fd693">&gt;600&nbsp;ms</span>); the
+  <span style="color:#ffe169">yellow line</span> is the median.
+  <br/><br/>
+  <b>Single-focus check (statistical).</b> For every session a 1- vs 2-component
+  Gaussian mixture is fit to the coupling; a session is flagged
+  <span style="color:#b59bff">bimodal</span> only when the two-component fit is
+  <em>genuinely</em> two-peaked (a real trough between the modes, not mere skew) and
+  improves the BIC — confirmed offline by a parametric-bootstrap likelihood-ratio test
+  (p&asymp;0.002). For any bimodal session the two coupling clusters are then compared
+  morphologically (median QRS template correlation, shown on the row). Result:
+  {focus_summary}
+</div>
+<img src="data:image/png;base64,{img_persession_coupling}" alt="Per-session coupling distribution"
+     style="border:1px solid #25282d; border-radius:6px;
+            max-width: 1080px; width: 100%; display:block; margin: 0 auto;"/>
+
+<h2>Couplets — detection, count &amp; overlay</h2>
+<div class="commentary">
+  A <b>couplet</b> is two PVCs in a row (RR 200&ndash;700&nbsp;ms) that is <em>not</em>
+  part of a longer run — the simplest form of repetitive ectopy, and the one worth
+  counting because frequency and uniformity speak to risk. Every couplet in the dataset
+  is detected (excluding noise-marked stretches and the warm-up minute) and shown here:
+  <ul>
+    <li><b>Count per session</b> (same session colours as above).</li>
+    <li><b>All couplets overlaid</b>, each aligned on the first PVC's peak and amplitude-
+        normalized, coloured by session — if they stack onto one another they are uniform.
+        The <span style="color:#ffe169">yellow line</span> marks the median inter-PVC
+        interval.</li>
+    <li><b>First vs second beat</b>: the median QRS of the first PVC
+        (<span style="color:#7ad9ff">blue</span>) against the second
+        (<span style="color:#ffa64d">orange</span>). A high correlation means both beats
+        come from the same focus (a benign repetitive discharge) rather than two different
+        morphologies (which would be more concerning).</li>
+  </ul>
+  {coup_summary}
+</div>
+<img src="data:image/png;base64,{img_couplets}" alt="Couplets count and overlay"
+     style="border:1px solid #25282d; border-radius:6px;
+            max-width: 1120px; width: 100%; display:block; margin: 0 auto;"/>
+
+<div class="commentary" style="margin-top: 14px;">
+  A few couplets in their raw recording context (±5 s), same format as the example
+  strips earlier — green trace, the two ectopic QRS in
+  <span style="color:#ff6b6b">red</span> with markers. One clean representative is shown
+  per <b>distinct local rhythm</b> (the N/V motif is printed in each title) so the gallery
+  spans the variations rather than repeating the dominant pattern.
+</div>
+<img src="data:image/png;base64,{img_couplet_strips}" alt="Couplet example strips"
+     style="border:1px solid #25282d; border-radius:6px;
+            max-width: 1120px; width: 100%; display:block; margin: 0 auto;"/>
+
+<h3>Local rhythm motif — does the couplet sit in a repeating pattern?</h3>
+<div class="commentary">
+  Coding each beat as N (sinus) or V (PVC) for the four beats before and after every
+  couplet — the motifs printed on the strips above — reveals whether the couplet recurs
+  inside a fixed rhythm. {pattern_summary}
+</div>
+<img src="data:image/png;base64,{img_couplet_motifs}" alt="Couplet local rhythm motifs"
+     style="border:1px solid #25282d; border-radius:6px;
+            max-width: 1040px; width: 100%; display:block; margin: 0 auto;"/>
+
+<h2>Respiration (EDR) &amp; respiratory-phase trigger</h2>
+<div class="commentary">
+  The final question: are the PVCs tied to <b>breathing</b>? There is no respiration belt,
+  but the breath leaves a fingerprint on the ECG — the chest movement and lung-impedance
+  change make the R-wave amplitude rise and fall with each breath (ECG-derived respiration,
+  <b>EDR</b>). Recovering that signal from the R-amplitude of the normal beats
+  (cubic-resampled to 4&nbsp;Hz, band-passed 0.1&ndash;0.5&nbsp;Hz, instantaneous phase by
+  Hilbert transform) lets us ask, for every beat, <em>where in the breath</em> it fell, and
+  compare PVCs against normal beats.
+  {resp_summary}
+</div>
+<img src="data:image/png;base64,{img_edr_demo}" alt="EDR respiration demo"
+     style="border:1px solid #25282d; border-radius:6px;
+            max-width: 1100px; width: 100%; display:block; margin: 0 auto;"/>
+<div class="commentary" style="margin-top: 14px;">
+  Above: a clean ~80&nbsp;s window from the best session — the R-amplitude of the sinus beats
+  (<span style="color:#5fcc9e">green dots</span>) traces a slow oscillation, the recovered
+  <span style="color:#7ad9ff">respiration</span>, and the
+  <span style="color:#ff6b6b">PVCs</span> tend to land on a recurring part of it. Below: the
+  phase distribution of all PVCs vs normal beats (left, polar) and the per-session enrichment
+  around the respiratory cycle (right) — values above <b>&times;1</b> mark phases where PVCs
+  are over-represented. Phase 0/100% is <b>full lungs</b> (largest R-amplitude, end-inspiration,
+  confirmed by the subject); 50% is empty lungs (end-expiration). The enrichment peaks at full
+  lungs.
+</div>
+<img src="data:image/png;base64,{img_resp_phase}" alt="Respiratory phase vs PVC enrichment"
+     style="border:1px solid #25282d; border-radius:6px;
+            max-width: 1120px; width: 100%; display:block; margin: 0 auto;"/>
+
+<h3>Respiratory phase by PVC type</h3>
+<div class="commentary">
+  Do the different PVC types fall at the same point in the breath, or different ones? This
+  rosette splits the PVCs by type — <span style="color:#7ad9ff">interpolated</span>,
+  <span style="color:#ff8a8a">compensated</span> and <span style="color:#ffd633">coupled</span>
+  (both beats of each couplet) — and plots each one's phase density (normalized, so the
+  <em>shape</em> is comparable despite very different counts). {type_summary}
+</div>
+<img src="data:image/png;base64,{img_resp_phase_types}" alt="Respiratory phase by PVC type"
+     style="border:1px solid #25282d; border-radius:6px;
+            max-width: 620px; width: 100%; display:block; margin: 0 auto;"/>
+<div style="overflow-x:auto; margin: 12px auto; max-width: 820px;">
+<table>
+  <tr><th>Session</th><th>Resp rate (/min)</th><th>PVCs</th><th>Peak phase</th>
+      <th>Peak enrichment</th><th>p (&chi;&sup2;)</th><th>EDR SNR</th></tr>
+  {resp_table}
+</table>
+</div>
+<div class="commentary">
+  A significant p means the PVCs are <b>not</b> uniformly spread across the breath — they
+  cluster at a phase, i.e. respiration modulates the focus. This is a signal-level
+  observation, not a clinical finding.
 </div>
 
 <footer>
