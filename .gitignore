@@ -26,5 +26,10 @@ pico/wifi_config.py
 /peaks_*.csv
 /markers_*.csv
 
-# Auto-generated reports (regenerable via host/dashboard.py and host/generate_report_pdf.py)
-reports/
+# Reports: ignora gli output auto-generati (HTML/PDF/docx) ma TRACCIA il sorgente
+# LaTeX scritto a mano + le figure/tabelle necessarie a compilarlo.
+reports/*
+!reports/holter_report.tex
+!reports/tables.tex
+!reports/figs/
+!reports/figs_manual/

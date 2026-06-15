@@ -392,6 +392,25 @@ def add_marker():
     markers_log.write(f'{marker["t_s"]:.4f},"{escaped}"\n')
     return {"ok": True, "marker": marker}
 
+@app.route("/mark", methods=["POST"])
+def add_mark_now():
+    """Come /marker, ma il server stampa il marker col campione CORRENTE: il
+    client manda solo {text} (usato da host/event_logger.py per gli esperimenti
+    di provocazione). Cosi il tempo e' esatto sull'orologio della registrazione."""
+    data = request.get_json(silent=True) or {}
+    text = (data.get("text") or "").strip()
+    if not text:
+        return {"error": "missing text"}, 400
+    text = text[:200]
+    with state["lock"]:
+        n = int(state.get("samples_seen", 0))
+        marker = {"n": n, "t_s": n / SAMPLE_HZ, "text": text}
+        state["markers"].append(marker)
+        state["markers_revision"] += 1
+    escaped = text.replace('"', '""')
+    markers_log.write(f'{marker["t_s"]:.4f},"{escaped}"\n')
+    return {"ok": True, "marker": marker}
+
 @app.route("/markers", methods=["GET"])
 def list_markers():
     with state["lock"]:

@@ -1,24 +1,45 @@
 """
-Master Dashboard for self-monitored Holter ECG.
+Holter ECG — generatore del report cumulativo (host/dashboard.py).
 
-Scans all session files under logs/, applies the same classification pipeline,
-loads manual noise exclusions from exclusions/, and produces a single
-self-contained HTML report that aggregates all analyses across sessions and
-grows with each new recording.
+COSA FA, in breve:
+  legge tutte le registrazioni in logs/  →  applica la pipeline di
+  classificazione  →  costruisce le figure (matplotlib)  →  le incolla dentro
+  un unico file HTML autosufficiente  →  reports/holter_dashboard.html
+  (il PDF è quell'HTML stampato con Chrome headless, vedi in fondo).
 
-Sections currently implemented:
-  - Device & acquisition setup
-  - Dataset summary (sessions table + cumulative counts)
-  - Morphology analysis (overlay, per-session medians, cross-session
-    correlation matrix, hyperpolarization-depth distribution)
+────────────────────────────────────────────────────────────────────────────
+MAPPA DEL FILE — dove cercare cosa (usa la ricerca del tuo editor sui marcatori)
+────────────────────────────────────────────────────────────────────────────
+  1. CONFIG          → in cima: soglie del detector, colori, costanti
+                       (cerca:  "classifier configuration",  "DARK_BG")
+  2. FUNZIONI        → la "matematica": caricamento e analisi, una funzione
+                       per concetto.  (cerca:  "def load_session",
+                       "def pvc_pause_data",  "def extract_edr_and_phase")
+  3. def main()      → il cuore: calcola le metriche e COSTRUISCE LE FIGURE.
+                       Ogni blocco-figura ha un banner:  "# ==== ... ===="
+                       e finisce con  img_qualcosa = fig_to_b64(fig).
+  4. TEMPLATE HTML   → in fondo, nella grande stringa che inizia con  html = f
+                       (cerca proprio:  html = f ).
+                       ► QUI STANNO TUTTI I TESTI DEL REPORT ◄
+                       - i titoli sono i tag  <h2>...</h2>
+                       - le descrizioni sono i  <div class="commentary">...</div>
+                       - le figure si inseriscono con  {img_qualcosa}
+                       - i numeri calcolati si inseriscono con  {nome_variabile}
 
-Designed to be extensible: add new sections (rhythm dynamics, respiratory
-phase analysis, posture correlation, etc.) by appending to the `report_html`
-sections.
+EDITARE I TESTI A MANO (la parte che ti interessa):
+  Vai in fondo, nel template HTML, e cambia il testo dentro <h2> o
+  <div class="commentary">. Attenzione a 2 sole cose, perché è una f-string:
+    • una graffa LETTERALE va RADDOPPIATA:  scrivi  {{  e  }}  (non  {  } )
+    • {qualcosa} senza raddoppio = "inserisci qui il valore della variabile
+      qualcosa". Se non sai cos'è, non toccarlo.
+  Il resto è normale HTML: <b>grassetto</b>, <br/> a capo, <span style="...">.
 
-Usage:
-    python3 host/morphology_dashboard.py
-        → writes reports/holter_dashboard.html
+RIGENERARE:
+    python3 host/dashboard.py                 → riscrive reports/holter_dashboard.html
+    poi (per il PDF) stampa l'HTML da Chrome, oppure chiedi a me.
+
+AGGIUNGERE UNA SESSIONE:  metti il CSV in logs/, segna il rumore con
+    python3 host/mark_exclusions.py logs/ecg_*.csv  e rigenera. Si aggiorna tutto.
 """
 import csv, json, os, glob, base64, io
 from datetime import datetime
@@ -54,8 +75,8 @@ SKIP_SESSIONS = {
     "20260605_131136",  # electrodes inverted (polarity reversed)
 }
 
-DARK_BG = "#0d0f12"
-GREEN, RED, BLUE, ORANGE = "#33ff66", "#ff4d6d", "#7ad9ff", "#ffa64d"
+DARK_BG = "#ffffff"
+GREEN, RED, BLUE, ORANGE = "#1b8a3a", "#c0304f", "#1f7fb0", "#cc7a1f"
 
 # ============================================================================
 # STANDARD GRAFICO DELLE FIGURE — applicato a OGNI figura 2x2 della dashboard.
@@ -96,11 +117,11 @@ def tight_cbar(fig, im, panel, label, fs=8.5):
     l, b, w, h = panel
     cax = fig.add_axes([l + w + 0.006, b, 0.012, h])
     cb = fig.colorbar(im, cax=cax, label=label)
-    cax.yaxis.label.set_color("#bbb")
+    cax.yaxis.label.set_color("#555555")
     cax.yaxis.label.set_fontsize(fs)
-    cax.tick_params(colors="#bbb", labelsize=fs)
+    cax.tick_params(colors="#555555", labelsize=fs)
     for sp in cax.spines.values():
-        sp.set_color("#333")
+        sp.set_color("#c8c8c8")
     return cb
 
 # ---------- I/O helpers ----------
@@ -629,23 +650,23 @@ def draw_example_strip(ax, ex, title):
     `title` = etichetta breve sopra la strip (adatta alla griglia 2 colonne)."""
     c = ex["center"]
     ax.set_facecolor(DARK_BG)
-    ax.plot(ex["t"] - c, ex["v"], lw=0.7, color="#5fcc9e")
+    ax.plot(ex["t"] - c, ex["v"], lw=0.7, color="#2f8a63")
     for p in ex["peaks"]:
         if p["cls"] == "pvc":
             wm = (ex["t"] >= p["t"] - 0.12) & (ex["t"] <= p["t"] + 0.12)
             if wm.any():
-                ax.plot(ex["t"][wm] - c, ex["v"][wm], lw=1.4, color="#ff6b6b")
+                ax.plot(ex["t"][wm] - c, ex["v"][wm], lw=1.4, color="#cc3b30")
             ax.scatter(p["t"] - c, min(1.6, p["amp"] + 0.30), s=40, marker="v",
-                       color="#ff6b6b", edgecolors="white", linewidths=0.4, zorder=5)
+                       color="#cc3b30", edgecolors="#1a1a1a", linewidths=0.4, zorder=5)
         else:
             ax.scatter(p["t"] - c, min(1.4, p["amp"] + 0.18), s=10, marker="v",
-                       color="#5fcc9e", edgecolors="white", linewidths=0.25, zorder=4)
+                       color="#2f8a63", edgecolors="#1a1a1a", linewidths=0.25, zorder=4)
     ax.set_xlim(-ex["pre"], ex["post"]); ax.set_ylim(-1.2, 1.8)
-    ax.tick_params(colors="#bbb", labelsize=FS_TICK)
-    ax.grid(True, alpha=0.18, color="#444", linewidth=0.4)
+    ax.tick_params(colors="#555555", labelsize=FS_TICK)
+    ax.grid(True, alpha=0.18, color="#dcdcdc", linewidth=0.4)
     for sp in ax.spines.values():
-        sp.set_color("#333")
-    ax.set_title(title, color="#cfd2d6", fontsize=FS_TICK, pad=3)
+        sp.set_color("#c8c8c8")
+    ax.set_title(title, color="#1f1f1f", fontsize=FS_TICK, pad=3)
 
 def fig_to_b64(fig, dpi=200):
     buf = io.BytesIO()
@@ -799,78 +820,78 @@ def main():
     ax = fig.add_axes(PANEL_POS["tl"]); ax.set_facecolor(DARK_BG)
     step = max(1, len(all_traces_norm) // 500)
     for tr in all_traces_norm[::step]:
-        ax.plot(TG, tr, color="#ff8a8a", lw=0.4, alpha=0.06)
-    ax.fill_between(TG, p25, p75, color="#ff6b6b", alpha=0.25, label="IQR")
-    ax.plot(TG, med_all, color="#ff6b6b", lw=2.5, label="Median")
-    ax.axvline(0, color="#888", alpha=0.4, lw=0.8, ls=":")
+        ax.plot(TG, tr, color="#d2685f", lw=0.4, alpha=0.06)
+    ax.fill_between(TG, p25, p75, color="#cc3b30", alpha=0.25, label="IQR")
+    ax.plot(TG, med_all, color="#cc3b30", lw=2.5, label="Median")
+    ax.axvline(0, color="#6a6a6a", alpha=0.4, lw=0.8, ls=":")
     ax.set_xlim(-WIN/2, WIN/2); ax.set_ylim(y_min, y_max)
-    ax.set_ylabel("Amplitude (peak-normalized)", color="white", fontsize=FS_LABEL)
-    ax.set_xlabel("Time relative to ectopic peak (s)", color="white", fontsize=FS_LABEL)
+    ax.set_ylabel("Amplitude (peak-normalized)", color="#1a1a1a", fontsize=FS_LABEL)
+    ax.set_xlabel("Time relative to ectopic peak (s)", color="#1a1a1a", fontsize=FS_LABEL)
     ax.set_title(f"All PVCs overlaid — median ± IQR  (n={len(all_traces_norm):,})",
-                 color="#cccccc", fontsize=FS_TITLE)
-    ax.legend(facecolor="#1a1d22", labelcolor="white", edgecolor="#333",
+                 color="#1f1f1f", fontsize=FS_TITLE)
+    ax.legend(facecolor="#f2efe9", labelcolor="#1a1a1a", edgecolor="#c8c8c8",
               fontsize=FS_LEGEND, loc="upper right")
-    ax.tick_params(colors="#bbb", labelsize=FS_TICK)
-    for sp in ax.spines.values(): sp.set_color("#333")
-    ax.grid(alpha=0.18, color="#444")
+    ax.tick_params(colors="#555555", labelsize=FS_TICK)
+    for sp in ax.spines.values(): sp.set_color("#c8c8c8")
+    ax.grid(alpha=0.18, color="#dcdcdc")
 
     # (2) — mediane per sessione, STESSI assi, legenda VERTICALE FUORI A DESTRA
     ax = fig.add_axes(PANEL_POS["tr"], sharex=fig.axes[0], sharey=fig.axes[0])
     ax.set_facecolor(DARK_BG)
-    palette = ["#5fb1ff","#ff8a4d","#ff6b8a","#7fd693","#b598ff",
-               "#ffe169","#5fcc9e","#ff9ec7","#7ac8ff","#ffb37d","#cc9966",
-               "#8fb3c8","#d49fcc","#a8d6a3","#e0b8a0","#9aa6c4"]
+    palette = ["#3b6ea5","#c4622d","#3f8a4f","#8a5fb0","#9c6b3f",
+               "#1f8f8f","#c45a8f","#7a7a7a","#6a8a3a","#9a4f6a",
+               "#4f6a9a","#b8860b","#a0563f","#5f7a5f","#8f5a8f","#5a7d9a"]
     for i, s in enumerate(sessions):
         col = palette[i % len(palette)]
         m = np.median(s["traces_norm"], axis=0)
         ax.plot(TG, m, color=col, lw=1.1,
                 label=f"{short_label(s['label'])} (n={len(s['traces_norm'])})")
-    ax.axvline(0, color="#888", alpha=0.4, lw=0.8, ls=":")
-    ax.set_xlabel("Time relative to ectopic peak (s)", color="white", fontsize=FS_LABEL)
-    ax.set_title("Median morphology by session", color="#cccccc", fontsize=FS_TITLE)
+    ax.axvline(0, color="#6a6a6a", alpha=0.4, lw=0.8, ls=":")
+    ax.set_xlabel("Time relative to ectopic peak (s)", color="#1a1a1a", fontsize=FS_LABEL)
+    ax.set_title("Median morphology by session", color="#1f1f1f", fontsize=FS_TITLE)
     # legenda verticale FUORI dal box, sul lato destro
-    leg = ax.legend(facecolor="#1a1d22", labelcolor="white", edgecolor="#333",
+    leg = ax.legend(facecolor="#f2efe9", labelcolor="#1a1a1a", edgecolor="#c8c8c8",
                     fontsize=FS_TEXT-1, loc="center left",
                     bbox_to_anchor=(1.02, 0.5), ncol=1,
                     handlelength=1.4, handletextpad=0.5, borderpad=0.6,
                     labelspacing=0.5)
     leg.get_frame().set_linewidth(0.5)
-    ax.tick_params(colors="#bbb", labelsize=FS_TICK)
-    for sp in ax.spines.values(): sp.set_color("#333")
-    ax.grid(alpha=0.18, color="#444")
+    ax.tick_params(colors="#555555", labelsize=FS_TICK)
+    for sp in ax.spines.values(): sp.set_color("#c8c8c8")
+    ax.grid(alpha=0.18, color="#dcdcdc")
 
     # (3) — correlation matrix nel pannello (1, 0)
     labs = [short_label(s["label"]) for s in sessions]
     ax = fig.add_axes(PANEL_POS["bl"]); ax.set_facecolor(DARK_BG)
     im = ax.imshow(corr_matrix, cmap="RdYlGn", vmin=0.95, vmax=1.0, aspect="auto")
     ax.set_xticks(range(len(sessions))); ax.set_yticks(range(len(sessions)))
-    ax.set_xticklabels(labs, color="#bbb", rotation=45, ha="right", fontsize=FS_TEXT)
-    ax.set_yticklabels(labs, color="#bbb", fontsize=FS_TEXT)
+    ax.set_xticklabels(labs, color="#555555", rotation=45, ha="right", fontsize=FS_TEXT)
+    ax.set_yticklabels(labs, color="#555555", fontsize=FS_TEXT)
     for i in range(len(sessions)):
         for j in range(len(sessions)):
             ax.text(j, i, f"{corr_matrix[i,j]:.3f}", ha="center", va="center",
                     color="black", fontsize=FS_TEXT-1)
     tight_cbar(fig, im, PANEL_POS["bl"], "Pearson r", fs=FS_TICK)
-    ax.set_title("Cross-session correlation matrix", color="#cccccc", fontsize=FS_TITLE)
-    for sp in ax.spines.values(): sp.set_color("#333")
+    ax.set_title("Cross-session correlation matrix", color="#1f1f1f", fontsize=FS_TITLE)
+    for sp in ax.spines.values(): sp.set_color("#c8c8c8")
 
     # (4) — coupling interval distribution (RR_pre tutti PVC)
     ax = fig.add_axes(PANEL_POS["br"]); ax.set_facecolor(DARK_BG)
     if len(all_coupling) > 0:
-        ax.hist(all_coupling, bins=60, color="#ff8a8a", edgecolor="#0d0f12",
+        ax.hist(all_coupling, bins=60, color="#d2685f", edgecolor="#ffffff",
                 linewidth=0.3, density=True, alpha=0.85)
         med_c = float(np.median(all_coupling))
         ax.axvline(med_c, color="yellow", ls="--", lw=1.2, alpha=0.8,
                    label=f"median {med_c:.0f} ms")
-        ax.legend(facecolor="#1a1d22", labelcolor="white", edgecolor="#333",
+        ax.legend(facecolor="#f2efe9", labelcolor="#1a1a1a", edgecolor="#c8c8c8",
                   fontsize=FS_LEGEND, loc="upper right")
-    ax.set_xlabel("Coupling interval RR_pre (ms)", color="#bbb", fontsize=FS_LABEL)
-    ax.set_ylabel("Density", color="#bbb", fontsize=FS_LABEL)
+    ax.set_xlabel("Coupling interval RR_pre (ms)", color="#555555", fontsize=FS_LABEL)
+    ax.set_ylabel("Density", color="#555555", fontsize=FS_LABEL)
     ax.set_title(f"Coupling interval distribution  (n={len(all_coupling):,})",
-                 color="#cccccc", fontsize=FS_TITLE)
-    ax.tick_params(colors="#bbb", labelsize=FS_TICK)
-    for sp in ax.spines.values(): sp.set_color("#333")
-    ax.grid(alpha=0.18, color="#444")
+                 color="#1f1f1f", fontsize=FS_TITLE)
+    ax.tick_params(colors="#555555", labelsize=FS_TICK)
+    for sp in ax.spines.values(): sp.set_color("#c8c8c8")
+    ax.grid(alpha=0.18, color="#dcdcdc")
 
     img_morphology_4panel = fig_to_b64(fig, dpi=220)
 
@@ -896,19 +917,19 @@ def main():
 
         # (1) PCA scatter + KMeans k=2
         ax = fig.add_axes(PANEL_POS["tl"]); ax.set_facecolor(DARK_BG)
-        for c, col, name in [(0, "#7ad9ff", "A"), (1, "#ff8a8a", "B")]:
+        for c, col, name in [(0, "#1f7fb0", "A"), (1, "#d2685f", "B")]:
             mask = clusters_2 == c
             ax.scatter(X_2d[mask, 0], X_2d[mask, 1], c=col, s=6, alpha=0.45,
                        label=f"Cluster {name} (n={mask.sum():,})")
-        ax.set_xlabel("PC1", color="white", fontsize=FS_LABEL)
-        ax.set_ylabel("PC2", color="white", fontsize=FS_LABEL)
+        ax.set_xlabel("PC1", color="#1a1a1a", fontsize=FS_LABEL)
+        ax.set_ylabel("PC2", color="#1a1a1a", fontsize=FS_LABEL)
         ax.set_title("PCA + K-means k=2 — artificial bipartition?",
-                     color="#cccccc", fontsize=FS_TITLE)
-        ax.legend(facecolor="#1a1d22", labelcolor="white", edgecolor="#333",
+                     color="#1f1f1f", fontsize=FS_TITLE)
+        ax.legend(facecolor="#f2efe9", labelcolor="#1a1a1a", edgecolor="#c8c8c8",
                   fontsize=FS_LEGEND, loc="upper right")
-        ax.tick_params(colors="#bbb", labelsize=FS_TICK)
-        for sp in ax.spines.values(): sp.set_color("#333")
-        ax.grid(alpha=0.18, color="#444")
+        ax.tick_params(colors="#555555", labelsize=FS_TICK)
+        for sp in ax.spines.values(): sp.set_color("#c8c8c8")
+        ax.grid(alpha=0.18, color="#dcdcdc")
 
         # (2) heatmap PVC ordinate per profondità trough
         ax = fig.add_axes(PANEL_POS["tr"]); ax.set_facecolor(DARK_BG)
@@ -916,37 +937,37 @@ def main():
                        extent=[TG[0], TG[-1], 0, len(heatmap_data)],
                        vmin=-0.6, vmax=1.0, origin="lower")
         ax.set_xlabel("Time relative to ectopic peak (s)",
-                      color="white", fontsize=FS_LABEL)
-        ax.set_ylabel("PVCs sorted by trough depth", color="white", fontsize=FS_LABEL)
+                      color="#1a1a1a", fontsize=FS_LABEL)
+        ax.set_ylabel("PVCs sorted by trough depth", color="#1a1a1a", fontsize=FS_LABEL)
         ax.set_title("PVCs sorted by hyperpolarization depth",
-                     color="#cccccc", fontsize=FS_TITLE)
-        ax.tick_params(colors="#bbb", labelsize=FS_TICK)
+                     color="#1f1f1f", fontsize=FS_TITLE)
+        ax.tick_params(colors="#555555", labelsize=FS_TICK)
         tight_cbar(fig, im, PANEL_POS["tr"], "Amplitude (norm.)", fs=FS_TICK)
-        for sp in ax.spines.values(): sp.set_color("#333")
+        for sp in ax.spines.values(): sp.set_color("#c8c8c8")
 
         # (3) elbow plot
         ax = fig.add_axes(PANEL_POS["bl"]); ax.set_facecolor(DARK_BG)
-        ax.plot(range(1, 7), inertias, marker="o", color="#ffe169", lw=2, ms=8)
-        ax.set_xlabel("k (number of clusters)", color="white", fontsize=FS_LABEL)
-        ax.set_ylabel("Within-cluster sum of squares", color="white", fontsize=FS_LABEL)
+        ax.plot(range(1, 7), inertias, marker="o", color="#b8860b", lw=2, ms=8)
+        ax.set_xlabel("k (number of clusters)", color="#1a1a1a", fontsize=FS_LABEL)
+        ax.set_ylabel("Within-cluster sum of squares", color="#1a1a1a", fontsize=FS_LABEL)
         ax.set_title("Elbow plot — discrete clusters?",
-                     color="#cccccc", fontsize=FS_TITLE)
-        ax.tick_params(colors="#bbb", labelsize=FS_TICK)
-        for sp in ax.spines.values(): sp.set_color("#333")
-        ax.grid(alpha=0.18, color="#444")
+                     color="#1f1f1f", fontsize=FS_TITLE)
+        ax.tick_params(colors="#555555", labelsize=FS_TICK)
+        for sp in ax.spines.values(): sp.set_color("#c8c8c8")
+        ax.grid(alpha=0.18, color="#dcdcdc")
 
         # (4) trough depth distribution (spostata qui dal pannello morfologia)
         ax = fig.add_axes(PANEL_POS["br"]); ax.set_facecolor(DARK_BG)
-        ax.hist(trough_depth, bins=60, color="#ff8a8a", edgecolor="#0d0f12",
+        ax.hist(trough_depth, bins=60, color="#d2685f", edgecolor="#ffffff",
                 linewidth=0.3, density=True, alpha=0.85)
         ax.set_xlabel("Post-QRS trough depth (peak-normalized)",
-                      color="#bbb", fontsize=FS_LABEL)
-        ax.set_ylabel("Density", color="#bbb", fontsize=FS_LABEL)
+                      color="#555555", fontsize=FS_LABEL)
+        ax.set_ylabel("Density", color="#555555", fontsize=FS_LABEL)
         ax.set_title(f"Hyperpolarization depth distribution  (n={len(trough_depth):,})",
-                     color="#cccccc", fontsize=FS_TITLE)
-        ax.tick_params(colors="#bbb", labelsize=FS_TICK)
-        for sp in ax.spines.values(): sp.set_color("#333")
-        ax.grid(alpha=0.18, color="#444")
+                     color="#1f1f1f", fontsize=FS_TITLE)
+        ax.tick_params(colors="#555555", labelsize=FS_TICK)
+        for sp in ax.spines.values(): sp.set_color("#c8c8c8")
+        ax.grid(alpha=0.18, color="#dcdcdc")
 
         img_pvc_continuum = fig_to_b64(fig, dpi=220)
     except Exception as e:
@@ -972,20 +993,20 @@ def main():
     ax = fig.add_axes(PANEL_POS["tl"]); ax.set_facecolor(DARK_BG)
     step_n = max(1, len(all_n_norm) // 500)
     for tr in all_n_norm[::step_n]:
-        ax.plot(TG, tr, color="#5fcc9e", lw=0.4, alpha=0.06)
-    ax.fill_between(TG, p25_n, p75_n, color="#7fd693", alpha=0.25, label="IQR")
-    ax.plot(TG, med_all_n, color="#7fd693", lw=2.5, label="Median")
-    ax.axvline(0, color="#888", alpha=0.4, lw=0.8, ls=":")
+        ax.plot(TG, tr, color="#2f8a63", lw=0.4, alpha=0.06)
+    ax.fill_between(TG, p25_n, p75_n, color="#2e8b57", alpha=0.25, label="IQR")
+    ax.plot(TG, med_all_n, color="#2e8b57", lw=2.5, label="Median")
+    ax.axvline(0, color="#6a6a6a", alpha=0.4, lw=0.8, ls=":")
     ax.set_xlim(-WIN/2, WIN/2); ax.set_ylim(y_min_n, y_max_n)
-    ax.set_ylabel("Amplitude (peak-normalized)", color="white", fontsize=FS_LABEL)
-    ax.set_xlabel("Time relative to sinus peak (s)", color="white", fontsize=FS_LABEL)
+    ax.set_ylabel("Amplitude (peak-normalized)", color="#1a1a1a", fontsize=FS_LABEL)
+    ax.set_xlabel("Time relative to sinus peak (s)", color="#1a1a1a", fontsize=FS_LABEL)
     ax.set_title(f"All N beats overlaid (sampled, n={len(all_n_norm):,}) — median ± IQR",
-                 color="#cccccc", fontsize=FS_TITLE)
-    ax.legend(facecolor="#1a1d22", labelcolor="white", edgecolor="#333",
+                 color="#1f1f1f", fontsize=FS_TITLE)
+    ax.legend(facecolor="#f2efe9", labelcolor="#1a1a1a", edgecolor="#c8c8c8",
               fontsize=FS_LEGEND, loc="upper right")
-    ax.tick_params(colors="#bbb", labelsize=FS_TICK)
-    for sp in ax.spines.values(): sp.set_color("#333")
-    ax.grid(alpha=0.18, color="#444")
+    ax.tick_params(colors="#555555", labelsize=FS_TICK)
+    for sp in ax.spines.values(): sp.set_color("#c8c8c8")
+    ax.grid(alpha=0.18, color="#dcdcdc")
 
     # (1,2) — mediane N per sessione
     ax = fig.add_axes(PANEL_POS["tr"], sharex=fig.axes[-1], sharey=fig.axes[-1])
@@ -996,49 +1017,49 @@ def main():
         m = np.median(s["traces_n_norm"], axis=0)
         ax.plot(TG, m, color=col, lw=1.1,
                 label=f"{short_label(s['label'])} (n={len(s['traces_n_norm'])})")
-    ax.axvline(0, color="#888", alpha=0.4, lw=0.8, ls=":")
-    ax.set_xlabel("Time relative to sinus peak (s)", color="white", fontsize=FS_LABEL)
-    ax.set_title("Median N morphology by session", color="#cccccc", fontsize=FS_TITLE)
-    leg = ax.legend(facecolor="#1a1d22", labelcolor="white", edgecolor="#333",
+    ax.axvline(0, color="#6a6a6a", alpha=0.4, lw=0.8, ls=":")
+    ax.set_xlabel("Time relative to sinus peak (s)", color="#1a1a1a", fontsize=FS_LABEL)
+    ax.set_title("Median N morphology by session", color="#1f1f1f", fontsize=FS_TITLE)
+    leg = ax.legend(facecolor="#f2efe9", labelcolor="#1a1a1a", edgecolor="#c8c8c8",
                     fontsize=FS_TEXT-1, loc="center left",
                     bbox_to_anchor=(1.02, 0.5), ncol=1,
                     handlelength=1.4, handletextpad=0.5, borderpad=0.6,
                     labelspacing=0.5)
     leg.get_frame().set_linewidth(0.5)
-    ax.tick_params(colors="#bbb", labelsize=FS_TICK)
-    for sp in ax.spines.values(): sp.set_color("#333")
-    ax.grid(alpha=0.18, color="#444")
+    ax.tick_params(colors="#555555", labelsize=FS_TICK)
+    for sp in ax.spines.values(): sp.set_color("#c8c8c8")
+    ax.grid(alpha=0.18, color="#dcdcdc")
 
     # (2,1) — correlation matrix N
     ax = fig.add_axes(PANEL_POS["bl"]); ax.set_facecolor(DARK_BG)
     im = ax.imshow(corr_matrix_n, cmap="RdYlGn", vmin=0.95, vmax=1.0, aspect="auto")
     ax.set_xticks(range(len(sessions))); ax.set_yticks(range(len(sessions)))
-    ax.set_xticklabels(labs, color="#bbb", rotation=45, ha="right", fontsize=FS_TEXT)
-    ax.set_yticklabels(labs, color="#bbb", fontsize=FS_TEXT)
+    ax.set_xticklabels(labs, color="#555555", rotation=45, ha="right", fontsize=FS_TEXT)
+    ax.set_yticklabels(labs, color="#555555", fontsize=FS_TEXT)
     for i in range(len(sessions)):
         for j in range(len(sessions)):
             ax.text(j, i, f"{corr_matrix_n[i,j]:.3f}", ha="center", va="center",
                     color="black", fontsize=FS_TEXT-1)
     tight_cbar(fig, im, PANEL_POS["bl"], "Pearson r", fs=FS_TICK)
     ax.set_title("Cross-session correlation matrix (N beats)",
-                 color="#cccccc", fontsize=FS_TITLE)
-    for sp in ax.spines.values(): sp.set_color("#333")
+                 color="#1f1f1f", fontsize=FS_TITLE)
+    for sp in ax.spines.values(): sp.set_color("#c8c8c8")
 
     # (2,2) — direct comparison: median PVC vs median N (overlap)
     ax = fig.add_axes(PANEL_POS["br"]); ax.set_facecolor(DARK_BG)
-    ax.plot(TG, med_all_n,  color="#7fd693", lw=2.5, label=f"N (median, n={len(all_n_norm):,})")
-    ax.plot(TG, med_all,    color="#ff6b6b", lw=2.5, label=f"PVC (median, n={len(all_traces_norm):,})")
-    ax.axvline(0, color="#888", alpha=0.4, lw=0.8, ls=":")
+    ax.plot(TG, med_all_n,  color="#2e8b57", lw=2.5, label=f"N (median, n={len(all_n_norm):,})")
+    ax.plot(TG, med_all,    color="#cc3b30", lw=2.5, label=f"PVC (median, n={len(all_traces_norm):,})")
+    ax.axvline(0, color="#6a6a6a", alpha=0.4, lw=0.8, ls=":")
     ax.set_xlim(-WIN/2, WIN/2)
-    ax.set_xlabel("Time relative to peak (s)", color="white", fontsize=FS_LABEL)
-    ax.set_ylabel("Amplitude (peak-normalized)", color="white", fontsize=FS_LABEL)
+    ax.set_xlabel("Time relative to peak (s)", color="#1a1a1a", fontsize=FS_LABEL)
+    ax.set_ylabel("Amplitude (peak-normalized)", color="#1a1a1a", fontsize=FS_LABEL)
     ax.set_title("N vs PVC — median morphology comparison",
-                 color="#cccccc", fontsize=FS_TITLE)
-    ax.legend(facecolor="#1a1d22", labelcolor="white", edgecolor="#333",
+                 color="#1f1f1f", fontsize=FS_TITLE)
+    ax.legend(facecolor="#f2efe9", labelcolor="#1a1a1a", edgecolor="#c8c8c8",
               fontsize=FS_LEGEND, loc="upper right")
-    ax.tick_params(colors="#bbb", labelsize=FS_TICK)
-    for sp in ax.spines.values(): sp.set_color("#333")
-    ax.grid(alpha=0.18, color="#444")
+    ax.tick_params(colors="#555555", labelsize=FS_TICK)
+    for sp in ax.spines.values(): sp.set_color("#c8c8c8")
+    ax.grid(alpha=0.18, color="#dcdcdc")
 
     img_n_morphology_4panel = fig_to_b64(fig, dpi=220)
 
@@ -1063,26 +1084,26 @@ def main():
     # pannello delle figure 2x2 (~340px), non come figura intera.
     fig, ax = plt.subplots(figsize=(5, 5), facecolor=DARK_BG)
     ax.set_facecolor(DARK_BG); ax.set_box_aspect(1)
-    ax.fill_between(TG, p25_others, p75_others, color="#7fd693", alpha=0.20,
+    ax.fill_between(TG, p25_others, p75_others, color="#2e8b57", alpha=0.20,
                     label=f"Other {n_sessions-1} (IQR)")
-    ax.plot(TG, median_others, color="#7fd693", lw=2,
+    ax.plot(TG, median_others, color="#2e8b57", lw=2,
             label=f"Median other {n_sessions-1}")
-    ax.plot(TG, median_outlier, color="#7ad9ff", lw=2.5,
+    ax.plot(TG, median_outlier, color="#1f7fb0", lw=2.5,
             label=f"Outlier {short_label(outlier_label)} (r={outlier_r:.3f})")
-    ax.axvline(0, color="#888", alpha=0.4, lw=0.8, ls=":")
+    ax.axvline(0, color="#6a6a6a", alpha=0.4, lw=0.8, ls=":")
     ax.set_xlim(-WIN/2, WIN/2)
-    ax.set_xlabel("Time relative to sinus peak (s)", color="white", fontsize=FS_LABEL)
-    ax.set_ylabel("Amplitude (peak-normalized)", color="white", fontsize=FS_LABEL)
+    ax.set_xlabel("Time relative to sinus peak (s)", color="#1a1a1a", fontsize=FS_LABEL)
+    ax.set_ylabel("Amplitude (peak-normalized)", color="#1a1a1a", fontsize=FS_LABEL)
     ax.set_title("Outlier vs other sessions (median N)",
-                 color="#cccccc", fontsize=FS_TITLE)
-    leg = ax.legend(facecolor="#1a1d22", labelcolor="white", edgecolor="#333",
+                 color="#1f1f1f", fontsize=FS_TITLE)
+    leg = ax.legend(facecolor="#f2efe9", labelcolor="#1a1a1a", edgecolor="#c8c8c8",
                     fontsize=FS_LEGEND, loc="upper right",
                     handlelength=1.2, handletextpad=0.5,
                     borderpad=0.5, labelspacing=0.4)
     leg.get_frame().set_linewidth(0.5)
-    ax.tick_params(colors="#bbb", labelsize=FS_TICK)
-    for sp in ax.spines.values(): sp.set_color("#333")
-    ax.grid(alpha=0.18, color="#444")
+    ax.tick_params(colors="#555555", labelsize=FS_TICK)
+    for sp in ax.spines.values(): sp.set_color("#c8c8c8")
+    ax.grid(alpha=0.18, color="#dcdcdc")
     img_n_outlier = fig_to_b64(fig, dpi=220)
 
     # ============ CROSS-SESSION RHYTHM & BURDEN (longitudinale, si auto-aggiorna) ====
@@ -1101,44 +1122,44 @@ def main():
     # con le figure morfologiche (stessa palette[i]) così si riconosce ogni sessione.
     ax = fig.add_axes(PANEL_POS["tl"]); ax.set_facecolor(DARK_BG)
     burden_cols = [palette[i % len(palette)] for i in range(n_sessions)]
-    ax.bar(xs, burden_v, color=burden_cols, edgecolor="#0d0f12", linewidth=0.4)
+    ax.bar(xs, burden_v, color=burden_cols, edgecolor="#ffffff", linewidth=0.4)
     ax.set_xticks(xs); ax.set_xticklabels(cl, rotation=45, ha="right",
-                                          fontsize=FS_TEXT, color="#bbb")
-    ax.set_ylabel("PVC burden (%)", color="#bbb", fontsize=FS_LABEL)
-    ax.set_title("PVC burden by session (chronological)", color="#cccccc", fontsize=FS_TITLE)
-    ax.tick_params(colors="#bbb", labelsize=FS_TICK)
-    ax.grid(axis="y", alpha=0.18, color="#444")
-    for sp in ax.spines.values(): sp.set_color("#333")
+                                          fontsize=FS_TEXT, color="#555555")
+    ax.set_ylabel("PVC burden (%)", color="#555555", fontsize=FS_LABEL)
+    ax.set_title("PVC burden by session (chronological)", color="#1f1f1f", fontsize=FS_TITLE)
+    ax.tick_params(colors="#555555", labelsize=FS_TICK)
+    ax.grid(axis="y", alpha=0.18, color="#dcdcdc")
+    for sp in ax.spines.values(): sp.set_color("#c8c8c8")
 
     # (tr) HR SA effettiva vs quota interpolate/compensate
     ax = fig.add_axes(PANEL_POS["tr"]); ax.set_facecolor(DARK_BG)
-    ax.scatter(sahr_v, pcomp_v, s=70, c="#ff8a8a", edgecolors="white",
+    ax.scatter(sahr_v, pcomp_v, s=70, c="#d2685f", edgecolors="#1a1a1a",
                linewidths=0.6, label="% compensated", zorder=4)
-    ax.scatter(sahr_v, pintp_v, s=70, c="#7ad9ff", edgecolors="white",
+    ax.scatter(sahr_v, pintp_v, s=70, c="#1f7fb0", edgecolors="#1a1a1a",
                linewidths=0.6, label="% interpolated", zorder=4)
-    ax.set_xlabel("Effective SA rate (BPM)", color="#bbb", fontsize=FS_LABEL)
-    ax.set_ylabel("Share of classified PVCs (%)", color="#bbb", fontsize=FS_LABEL)
-    ax.set_title("Effective heart rate vs PVC pause type", color="#cccccc", fontsize=FS_TITLE)
-    ax.legend(facecolor="#1a1d22", labelcolor="white", edgecolor="#333",
+    ax.set_xlabel("Effective SA rate (BPM)", color="#555555", fontsize=FS_LABEL)
+    ax.set_ylabel("Share of classified PVCs (%)", color="#555555", fontsize=FS_LABEL)
+    ax.set_title("Effective heart rate vs PVC pause type", color="#1f1f1f", fontsize=FS_TITLE)
+    ax.legend(facecolor="#f2efe9", labelcolor="#1a1a1a", edgecolor="#c8c8c8",
               fontsize=FS_LEGEND, loc="best")
-    ax.tick_params(colors="#bbb", labelsize=FS_TICK)
-    ax.grid(alpha=0.18, color="#444")
-    for sp in ax.spines.values(): sp.set_color("#333")
+    ax.tick_params(colors="#555555", labelsize=FS_TICK)
+    ax.grid(alpha=0.18, color="#dcdcdc")
+    for sp in ax.spines.values(): sp.set_color("#c8c8c8")
 
     # (bl) composizione interpolate / compensate per sessione (2 classi)
     ax = fig.add_axes(PANEL_POS["bl"]); ax.set_facecolor(DARK_BG)
     yb = np.arange(n_sessions)
-    ax.barh(yb, pintp_v, color="#7ad9ff", edgecolor="#0d0f12", linewidth=0.4,
+    ax.barh(yb, pintp_v, color="#1f7fb0", edgecolor="#ffffff", linewidth=0.4,
             label="Interpolated (silent)")
-    ax.barh(yb, pcomp_v, left=pintp_v, color="#ff8a8a", edgecolor="#0d0f12",
+    ax.barh(yb, pcomp_v, left=pintp_v, color="#d2685f", edgecolor="#ffffff",
             linewidth=0.4, label="Compensated (felt)")
-    ax.set_yticks(yb); ax.set_yticklabels(cl, fontsize=FS_TEXT, color="#bbb")
-    ax.set_xlim(0, 100); ax.set_xlabel("Composition (%)", color="#bbb", fontsize=FS_LABEL)
-    ax.set_title("Interpolated vs compensated composition", color="#cccccc", fontsize=FS_TITLE)
-    ax.legend(facecolor="#1a1d22", labelcolor="white", edgecolor="#333",
+    ax.set_yticks(yb); ax.set_yticklabels(cl, fontsize=FS_TEXT, color="#555555")
+    ax.set_xlim(0, 100); ax.set_xlabel("Composition (%)", color="#555555", fontsize=FS_LABEL)
+    ax.set_title("Interpolated vs compensated composition", color="#1f1f1f", fontsize=FS_TITLE)
+    ax.legend(facecolor="#f2efe9", labelcolor="#1a1a1a", edgecolor="#c8c8c8",
               fontsize=FS_LEGEND, loc="lower right")
-    ax.tick_params(colors="#bbb", labelsize=FS_TICK)
-    for sp in ax.spines.values(): sp.set_color("#333")
+    ax.tick_params(colors="#555555", labelsize=FS_TICK)
+    for sp in ax.spines.values(): sp.set_color("#c8c8c8")
 
     # (br) stabilità del coupling pre-PVC (mediana ± IQR per sessione)
     ax = fig.add_axes(PANEL_POS["br"]); ax.set_facecolor(DARK_BG)
@@ -1151,23 +1172,23 @@ def main():
             hi.append(np.percentile(c, 75) - mm)
         else:
             med.append(np.nan); lo.append(0); hi.append(0)
-    ax.errorbar(xs, med, yerr=[lo, hi], fmt="o", color="#ff6b6b",
+    ax.errorbar(xs, med, yerr=[lo, hi], fmt="o", color="#cc3b30",
                 ecolor="#7a3b3b", elinewidth=1.2, capsize=3, ms=6, zorder=4)
     valid = [m for m in med if not np.isnan(m)]
     if valid:
         gm = float(np.median(valid))
-        ax.axhline(gm, color="#888", ls="--", lw=1, alpha=0.7,
+        ax.axhline(gm, color="#6a6a6a", ls="--", lw=1, alpha=0.7,
                    label=f"global median {gm:.0f} ms")
-        ax.legend(facecolor="#1a1d22", labelcolor="white", edgecolor="#333",
+        ax.legend(facecolor="#f2efe9", labelcolor="#1a1a1a", edgecolor="#c8c8c8",
                   fontsize=FS_LEGEND, loc="best")
     ax.set_xticks(xs); ax.set_xticklabels(cl, rotation=45, ha="right",
-                                          fontsize=FS_TEXT, color="#bbb")
-    ax.set_ylabel("Pre-PVC coupling (ms)", color="#bbb", fontsize=FS_LABEL)
+                                          fontsize=FS_TEXT, color="#555555")
+    ax.set_ylabel("Pre-PVC coupling (ms)", color="#555555", fontsize=FS_LABEL)
     ax.set_title("Coupling interval stability (focus monomorphism)",
-                 color="#cccccc", fontsize=FS_TITLE)
-    ax.tick_params(colors="#bbb", labelsize=FS_TICK)
-    ax.grid(axis="y", alpha=0.18, color="#444")
-    for sp in ax.spines.values(): sp.set_color("#333")
+                 color="#1f1f1f", fontsize=FS_TITLE)
+    ax.tick_params(colors="#555555", labelsize=FS_TICK)
+    ax.grid(axis="y", alpha=0.18, color="#dcdcdc")
+    for sp in ax.spines.values(): sp.set_color("#c8c8c8")
 
     img_crosssession = fig_to_b64(fig, dpi=220)
 
@@ -1202,30 +1223,30 @@ def main():
             b1, b0 = np.polyfit(sinus_v, pcomp_arr, 1)
             yc_fit = np.clip(b0 + b1 * xs_fit, 0, 100)
         yi_fit = 100 - yc_fit
-        ax.plot(xs_fit, yc_fit, color="#ff6b6b", lw=2.2, zorder=2)
-        ax.plot(xs_fit, yi_fit, color="#7ad9ff", lw=2.2, zorder=2)
+        ax.plot(xs_fit, yc_fit, color="#cc3b30", lw=2.2, zorder=2)
+        ax.plot(xs_fit, yi_fit, color="#1f7fb0", lw=2.2, zorder=2)
         ax.axhline(50, color="#666", ls=":", lw=0.8, alpha=0.6)
-        ax.scatter(sinus_v, pcomp_arr, s=130, c="#ff6b6b", edgecolors="white",
+        ax.scatter(sinus_v, pcomp_arr, s=130, c="#cc3b30", edgecolors="#1a1a1a",
                    linewidths=1.0, zorder=4, label="% compensated (felt thumps)")
-        ax.scatter(sinus_v, pint_arr, s=130, c="#7ad9ff", edgecolors="white",
+        ax.scatter(sinus_v, pint_arr, s=130, c="#1f7fb0", edgecolors="#1a1a1a",
                    linewidths=1.0, zorder=4, label="% interpolated (silent)")
         for x, yc, yi, s in zip(sinus_v, pcomp_arr, pint_arr, sessions):
             lab = short_label(s["label"])
             ax.annotate(lab, (x, yc), textcoords="offset points", xytext=(6, 6),
-                        color="#ff8a8a", fontsize=FS_TEXT - 0.5, fontweight="bold")
+                        color="#d2685f", fontsize=FS_TEXT - 0.5, fontweight="bold")
             ax.annotate(lab, (x, yi), textcoords="offset points", xytext=(6, -12),
-                        color="#7ad9ff", fontsize=FS_TEXT - 0.5, fontweight="bold")
-        ax.set_xlabel("Resting sinus rate (BPM, mean N/min)", color="#ddd", fontsize=FS_LABEL)
-        ax.set_ylabel("Share of classified PVCs (%)", color="#ddd", fontsize=FS_LABEL)
+                        color="#1f7fb0", fontsize=FS_TEXT - 0.5, fontweight="bold")
+        ax.set_xlabel("Resting sinus rate (BPM, mean N/min)", color="#333333", fontsize=FS_LABEL)
+        ax.set_ylabel("Share of classified PVCs (%)", color="#333333", fontsize=FS_LABEL)
         ax.set_ylim(-3, 103)
         ax.set_title("Key pattern: resting heart rate sets how many PVCs are felt   "
                      f"(Spearman r={rho:.2f}, p={pval:.3f})",
-                     color="#cccccc", fontsize=FS_TITLE)
-        ax.legend(facecolor="#1a1d22", labelcolor="white", edgecolor="#333",
+                     color="#1f1f1f", fontsize=FS_TITLE)
+        ax.legend(facecolor="#f2efe9", labelcolor="#1a1a1a", edgecolor="#c8c8c8",
                   fontsize=FS_LEGEND, loc="center right")
-        ax.tick_params(colors="#bbb", labelsize=FS_TICK)
-        ax.grid(alpha=0.16, color="#444")
-        for sp in ax.spines.values(): sp.set_color("#333")
+        ax.tick_params(colors="#555555", labelsize=FS_TICK)
+        ax.grid(alpha=0.16, color="#dcdcdc")
+        for sp in ax.spines.values(): sp.set_color("#c8c8c8")
         fig.subplots_adjust(left=0.07, right=0.98, top=0.92, bottom=0.11)
         img_hr_pattern = fig_to_b64(fig, dpi=220)
     except Exception as e:
@@ -1250,11 +1271,11 @@ def main():
     # ============ TABELLA RIASSUNTIVA per sessione (stile synthetic report) =========
     # Metriche come righe, sessioni come colonne (colonne tinta = palette delle figure).
     # Semaforo su burden/couplet/AF; interp azzurro, comp rosso. Tutto sui dati validati.
-    def _sem_burden(v): return "#33ff66" if v < 15 else ("#ffd633" if v < 25 else "#ff7a4d")
-    def _sem_couplet(n): return "#33ff66" if n == 0 else ("#ffd633" if n <= 3 else "#ff7a4d")
+    def _sem_burden(v): return "#1b8a3a" if v < 15 else ("#b8860b" if v < 25 else "#cc5a2a")
+    def _sem_couplet(n): return "#1b8a3a" if n == 0 else ("#b8860b" if n <= 3 else "#cc5a2a")
     def _sem_af(sc):
-        if sc is None: return "#888"
-        return "#33ff66" if sc == 0 else ("#ffd633" if sc <= 2 else "#ff7a4d")
+        if sc is None: return "#6a6a6a"
+        return "#1b8a3a" if sc == 0 else ("#b8860b" if sc <= 2 else "#cc5a2a")
     ST = []
     for s in sessions:
         m = s["metrics"]; cm = s["coupling_ms"]
@@ -1268,7 +1289,7 @@ def main():
         return f"<td class='num' style='background:{_tint(i)}'>{content}</td>"
     _summary_rows = []
     def _add(label, render, emph=False):
-        lab = (f"<td style='text-align:left;white-space:nowrap;"
+        lab = (f"<td style='text-align:left;#1a1a1a-space:nowrap;"
                f"font-weight:{'700' if emph else '400'}'>{label}</td>")
         _summary_rows.append("<tr>" + lab
                              + "".join(render(ST[i], i) for i in range(len(ST))) + "</tr>")
@@ -1278,21 +1299,21 @@ def main():
     _add("Total beats",           lambda x, i: _cell(f"{x['m']['n_total']:,}", i))
     _add("Sinus rate (BPM)",      lambda x, i: _cell(f"{x['m']['sinus_bpm']:.1f}", i))
     _add("Effective SA (BPM)",    lambda x, i: _cell(f"{x['m']['sa_hr']:.0f}", i))
-    _add("PVC total",             lambda x, i: _cell(f"{x['s']['n_pvc']:,} <span style='color:#888'>({x['m']['burden']:.1f}%)</span>", i))
+    _add("PVC total",             lambda x, i: _cell(f"{x['s']['n_pvc']:,} <span style='color:#6a6a6a'>({x['m']['burden']:.1f}%)</span>", i))
     _add("PVC rate (/min)",       lambda x, i: _cell(f"{x['m']['pvc_rate']:.1f}", i))
     _add("Burden (%)",            lambda x, i: _cell(f"<b style='color:{_sem_burden(x['m']['burden'])}'>{x['m']['burden']:.1f}%</b>", i), emph=True)
     _add("Median coupling (ms)",  lambda x, i: _cell(f"{x['coup_med']:.0f}", i))
-    _add("Couplets",              lambda x, i: _cell(f"<b style='color:{_sem_couplet(x['n_coup'])}'>{x['n_coup']}</b> <span style='color:#888'>({100*x['n_coup']/_npvc(x):.2f}%)</span>", i), emph=True)
-    _add("Interpolated",          lambda x, i: _cell(f"<span style='color:#7ad9ff'><b>{x['m']['n_interp']}</b> ({x['m']['pct_interp']:.0f}%)</span>", i))
-    _add("Compensated",           lambda x, i: _cell(f"<span style='color:#ff8a8a'><b>{x['m']['n_comp']}</b> ({x['m']['pct_comp']:.0f}%)</span>", i))
-    _add("Guarded (ambiguous)",   lambda x, i: _cell(f"<span style='color:#888'>{x['guard']}</span>", i))
-    _add("Isolated PVC",          lambda x, i: _cell(f"{x['m']['iso_pvc']} <span style='color:#888'>({100*x['m']['iso_pvc']/_npvc(x):.0f}%)</span>", i))
-    _add("Bigeminy V-N-V",        lambda x, i: _cell(f"{x['m']['bigem']} <span style='color:#888'>({100*x['m']['bigem']/_npvc(x):.0f}%)</span>", i))
-    _add("Trigeminy V-N-N-V",     lambda x, i: _cell(f"{x['m']['trigem']} <span style='color:#888'>({100*x['m']['trigem']/_npvc(x):.0f}%)</span>", i))
+    _add("Couplets",              lambda x, i: _cell(f"<b style='color:{_sem_couplet(x['n_coup'])}'>{x['n_coup']}</b> <span style='color:#6a6a6a'>({100*x['n_coup']/_npvc(x):.2f}%)</span>", i), emph=True)
+    _add("Interpolated",          lambda x, i: _cell(f"<span style='color:#1f7fb0'><b>{x['m']['n_interp']}</b> ({x['m']['pct_interp']:.0f}%)</span>", i))
+    _add("Compensated",           lambda x, i: _cell(f"<span style='color:#d2685f'><b>{x['m']['n_comp']}</b> ({x['m']['pct_comp']:.0f}%)</span>", i))
+    _add("Guarded (ambiguous)",   lambda x, i: _cell(f"<span style='color:#6a6a6a'>{x['guard']}</span>", i))
+    _add("Isolated PVC",          lambda x, i: _cell(f"{x['m']['iso_pvc']} <span style='color:#6a6a6a'>({100*x['m']['iso_pvc']/_npvc(x):.0f}%)</span>", i))
+    _add("Bigeminy V-N-V",        lambda x, i: _cell(f"{x['m']['bigem']} <span style='color:#6a6a6a'>({100*x['m']['bigem']/_npvc(x):.0f}%)</span>", i))
+    _add("Trigeminy V-N-N-V",     lambda x, i: _cell(f"{x['m']['trigem']} <span style='color:#6a6a6a'>({100*x['m']['trigem']/_npvc(x):.0f}%)</span>", i))
     _add("AF score (0-4)",        lambda x, i: _cell((f"<b style='color:{_sem_af(x['m']['af_score'])}'>{x['m']['af_score']}/4</b>") if x['m']['af_score'] is not None else "-", i), emph=True)
     _add("RMSSD (ms)",            lambda x, i: _cell(f"{x['m']['rmssd']:.0f}", i))
     summary_head = "<th style='text-align:left'>Metric</th>" + "".join(
-        f"<th style='background:{palette[i%len(palette)]}40;color:#fff;white-space:nowrap'>"
+        f"<th style='background:{palette[i%len(palette)]}40;color:#fff;#1a1a1a-space:nowrap'>"
         f"{short_label(s['label'])}</th>" for i, s in enumerate(sessions))
     summary_body = "\n".join(_summary_rows)
 
@@ -1320,57 +1341,57 @@ def main():
             return cand[0] if cand else None
         def _draw_demo(ax, d, color, title):
             c = d["t"]; half = 2.6; m = (dt >= c-half) & (dt <= c+half)
-            ax.set_facecolor(DARK_BG); ax.plot(dt[m]-c, dvf[m], lw=0.9, color="#9fb0bd")
+            ax.set_facecolor(DARK_BG); ax.plot(dt[m]-c, dvf[m], lw=0.9, color="#5a6b78")
             wm = (dt >= c-0.12) & (dt <= c+0.12)
             ax.plot(dt[wm]-c, dvf[wm], lw=1.8, color=color)
             ax.scatter(0, d["amp"], s=130, marker="o", facecolors="none",
                        edgecolors=color, linewidths=2, zorder=6)
             npx = -d["rr_pre"]; nnx = d["rr_post"]
-            ax.axvline(npx, color="#7fd693", lw=1.0, alpha=0.7)
-            ax.axvline(nnx, color="#7fd693", lw=1.5, alpha=0.95)
-            ax.text(npx, 1.6, "N prev", color="#7fd693", fontsize=FS_TEXT, ha="center")
-            ax.text(nnx, 1.6, "N next", color="#7fd693", fontsize=FS_TEXT, ha="center")
+            ax.axvline(npx, color="#2e8b57", lw=1.0, alpha=0.7)
+            ax.axvline(nnx, color="#2e8b57", lw=1.5, alpha=0.95)
+            ax.text(npx, 1.6, "N prev", color="#2e8b57", fontsize=FS_TEXT, ha="center")
+            ax.text(nnx, 1.6, "N next", color="#2e8b57", fontsize=FS_TEXT, ha="center")
             ref1 = npx + d["rl"]; ref2 = npx + 2*d["rl"]
-            ax.axvline(ref1, color="#7ad9ff", ls="--", lw=1.1, alpha=0.9)
-            ax.axvline(ref2, color="#ff6b6b", ls="--", lw=1.1, alpha=0.9)
-            ax.text(ref1, -1.08, "1×", color="#7ad9ff", fontsize=FS_TEXT, ha="center", va="top")
-            ax.text(ref2, -1.08, "2×", color="#ff6b6b", fontsize=FS_TEXT, ha="center", va="top")
-            ax.plot([0, nnx], [-0.85, -0.85], color="#ffe169", lw=3, solid_capstyle="butt")
-            ax.text(nnx/2, -0.74, "RR_post", color="#ffe169", fontsize=FS_TEXT, ha="center")
+            ax.axvline(ref1, color="#1f7fb0", ls="--", lw=1.1, alpha=0.9)
+            ax.axvline(ref2, color="#cc3b30", ls="--", lw=1.1, alpha=0.9)
+            ax.text(ref1, -1.08, "1×", color="#1f7fb0", fontsize=FS_TEXT, ha="center", va="top")
+            ax.text(ref2, -1.08, "2×", color="#cc3b30", fontsize=FS_TEXT, ha="center", va="top")
+            ax.plot([0, nnx], [-0.85, -0.85], color="#b8860b", lw=3, solid_capstyle="butt")
+            ax.text(nnx/2, -0.74, "RR_post", color="#b8860b", fontsize=FS_TEXT, ha="center")
             ax.set_xlim(-half, half); ax.set_ylim(-1.25, 1.75)
-            ax.tick_params(colors="#bbb", labelsize=FS_TICK)
-            for sp in ax.spines.values(): sp.set_color("#333")
-            ax.grid(True, alpha=0.13, color="#444", lw=0.3)
-            ax.set_xlabel("t (s) relative to the PVC", color="#bbb", fontsize=FS_LABEL)
+            ax.tick_params(colors="#555555", labelsize=FS_TICK)
+            for sp in ax.spines.values(): sp.set_color("#c8c8c8")
+            ax.grid(True, alpha=0.13, color="#dcdcdc", lw=0.3)
+            ax.set_xlabel("t (s) relative to the PVC", color="#555555", fontsize=FS_LABEL)
             ax.set_title(title, color=color, fontsize=FS_TITLE)
         di, dc = _clean("int"), _clean("comp")
         if di and dc:
             fig, (a1, a2) = plt.subplots(1, 2, figsize=(13, 3.3), facecolor=DARK_BG)
-            _draw_demo(a1, di, "#7ad9ff", f"Interpolated — pause {di['post_ratio']:.2f}× sinus (silent)")
-            _draw_demo(a2, dc, "#ff6b6b", f"Compensated — pause {dc['post_ratio']:.2f}× sinus (felt)")
+            _draw_demo(a1, di, "#1f7fb0", f"Interpolated — pause {di['post_ratio']:.2f}× sinus (silent)")
+            _draw_demo(a2, dc, "#cc3b30", f"Compensated — pause {dc['post_ratio']:.2f}× sinus (felt)")
             fig.subplots_adjust(left=0.05, right=0.99, top=0.87, bottom=0.15, wspace=0.12)
             img_method_example = fig_to_b64(fig, dpi=200)
 
         # distribuzioni: somma S (convenzione) vs pausa RR_post (percezione)
         fig, (a1, a2) = plt.subplots(1, 2, figsize=(13, 3.6), facecolor=DARK_BG)
         a1.set_facecolor(DARK_BG)
-        a1.hist(all_sratio, bins=np.arange(0.6, 3.0, 0.04), color="#9a9a9a",
-                alpha=0.55, edgecolor="#0d0f12", linewidth=0.3)
-        a1.axvline(1.0, color="#7ad9ff", lw=1.4); a1.axvline(2.0, color="#ff6b6b", lw=1.4)
-        a1.text(1.0, a1.get_ylim()[1]*0.94, "1×", color="#7ad9ff", fontsize=FS_TICK, ha="center")
-        a1.text(2.0, a1.get_ylim()[1]*0.94, "2×", color="#ff6b6b", fontsize=FS_TICK, ha="center")
-        a1.set_title("Conventional sum  S = (RR_pre+RR_post)/sinus", color="#ccc", fontsize=FS_TITLE)
-        a1.set_xlabel("S  (× sinus cycle)", color="#bbb", fontsize=FS_LABEL)
+        a1.hist(all_sratio, bins=np.arange(0.6, 3.0, 0.04), color="#6a6a6a",
+                alpha=0.55, edgecolor="#ffffff", linewidth=0.3)
+        a1.axvline(1.0, color="#1f7fb0", lw=1.4); a1.axvline(2.0, color="#cc3b30", lw=1.4)
+        a1.text(1.0, a1.get_ylim()[1]*0.94, "1×", color="#1f7fb0", fontsize=FS_TICK, ha="center")
+        a1.text(2.0, a1.get_ylim()[1]*0.94, "2×", color="#cc3b30", fontsize=FS_TICK, ha="center")
+        a1.set_title("Conventional sum  S = (RR_pre+RR_post)/sinus", color="#3a3a3a", fontsize=FS_TITLE)
+        a1.set_xlabel("S  (× sinus cycle)", color="#555555", fontsize=FS_LABEL)
         a2.set_facecolor(DARK_BG)
-        a2.hist(all_post, bins=np.arange(0.3, 2.2, 0.035), color="#7ad9ff",
-                alpha=0.5, edgecolor="#0d0f12", linewidth=0.3)
-        a2.axvline(PAUSE_VALLEY, color="#ffe169", lw=2, label=f"valley {PAUSE_VALLEY:.2f}")
-        a2.legend(facecolor="#1a1d22", labelcolor="white", edgecolor="#333", fontsize=FS_LEGEND)
-        a2.set_title("Pause  RR_post / sinus  (what is perceived)", color="#ccc", fontsize=FS_TITLE)
-        a2.set_xlabel("RR_post  (× sinus cycle)", color="#bbb", fontsize=FS_LABEL)
+        a2.hist(all_post, bins=np.arange(0.3, 2.2, 0.035), color="#1f7fb0",
+                alpha=0.5, edgecolor="#ffffff", linewidth=0.3)
+        a2.axvline(PAUSE_VALLEY, color="#b8860b", lw=2, label=f"valley {PAUSE_VALLEY:.2f}")
+        a2.legend(facecolor="#f2efe9", labelcolor="#1a1a1a", edgecolor="#c8c8c8", fontsize=FS_LEGEND)
+        a2.set_title("Pause  RR_post / sinus  (what is perceived)", color="#3a3a3a", fontsize=FS_TITLE)
+        a2.set_xlabel("RR_post  (× sinus cycle)", color="#555555", fontsize=FS_LABEL)
         for ax in (a1, a2):
-            ax.tick_params(colors="#bbb", labelsize=FS_TICK); ax.grid(alpha=0.15, color="#444")
-            for sp in ax.spines.values(): sp.set_color("#333")
+            ax.tick_params(colors="#555555", labelsize=FS_TICK); ax.grid(alpha=0.15, color="#dcdcdc")
+            for sp in ax.spines.values(): sp.set_color("#c8c8c8")
         fig.subplots_adjust(left=0.05, right=0.99, top=0.9, bottom=0.14, wspace=0.13)
         img_method_dist = fig_to_b64(fig, dpi=200)
 
@@ -1385,31 +1406,31 @@ def main():
             sc = min(a, b)*2 + a + b
             if sc > bsc: bsc, bt = sc, t0
             t0 += 40
-        COLc = {"int": "#7ad9ff", "comp": "#ff6b6b"}
+        COLc = {"int": "#1f7fb0", "comp": "#cc3b30"}
         nrow = 8
         fig, axes = plt.subplots(nrow, 1, figsize=(13, 1.1*nrow), facecolor=DARK_BG)
         for r, ax in enumerate(axes):
             rs = bt + r*10; re = rs+10; m = (dt >= rs) & (dt < re)
             ax.set_facecolor(DARK_BG)
-            if m.any(): ax.plot(dt[m]-rs, dvf[m], lw=0.6, color="#7fd693", alpha=0.85)
+            if m.any(): ax.plot(dt[m]-rs, dvf[m], lw=0.6, color="#2e8b57", alpha=0.85)
             for d in dpause:
                 if not (rs <= d["t"] < re) or d["i"] not in cmapd: continue
                 c = cmapd[d["i"]]
                 wm = (dt >= d["t"]-0.12) & (dt <= d["t"]+0.12)
                 if wm.any(): ax.plot(dt[wm]-rs, dvf[wm], lw=1.7, color=COLc[c])
                 ax.scatter(d["t"]-rs, min(1.5, d["amp"]+0.26), s=30, marker="v",
-                           color=COLc[c], edgecolors="white", linewidths=0.3, zorder=6)
-            ax.set_xlim(0, 10); ax.set_ylim(-1.2, 1.7); ax.tick_params(colors="#888", labelsize=FS_TEXT)
-            ax.grid(True, alpha=0.12, color="#444", lw=0.3)
-            for sp in ax.spines.values(): sp.set_color("#333")
-            ax.set_ylabel(f"{int(rs//60):02d}:{int(rs%60):02d}", color="#999", fontsize=FS_TEXT,
+                           color=COLc[c], edgecolors="#1a1a1a", linewidths=0.3, zorder=6)
+            ax.set_xlim(0, 10); ax.set_ylim(-1.2, 1.7); ax.tick_params(colors="#6a6a6a", labelsize=FS_TEXT)
+            ax.grid(True, alpha=0.12, color="#dcdcdc", lw=0.3)
+            for sp in ax.spines.values(): sp.set_color("#c8c8c8")
+            ax.set_ylabel(f"{int(rs//60):02d}:{int(rs%60):02d}", color="#666666", fontsize=FS_TEXT,
                           rotation=0, ha="right", va="center", labelpad=12)
         from matplotlib.lines import Line2D
-        axes[0].legend(handles=[Line2D([0],[0], color="#7ad9ff", lw=3, label="Interpolated (silent)"),
-                                Line2D([0],[0], color="#ff6b6b", lw=3, label="Compensated (felt)")],
-                       loc="upper right", facecolor="#1a1d22", labelcolor="white",
-                       edgecolor="#333", fontsize=FS_LEGEND, ncol=2)
-        axes[-1].set_xlabel("seconds within the row", color="#bbb", fontsize=FS_LABEL)
+        axes[0].legend(handles=[Line2D([0],[0], color="#1f7fb0", lw=3, label="Interpolated (silent)"),
+                                Line2D([0],[0], color="#cc3b30", lw=3, label="Compensated (felt)")],
+                       loc="upper right", facecolor="#f2efe9", labelcolor="#1a1a1a",
+                       edgecolor="#c8c8c8", fontsize=FS_LEGEND, ncol=2)
+        axes[-1].set_xlabel("seconds within the row", color="#555555", fontsize=FS_LABEL)
         fig.subplots_adjust(left=0.05, right=0.99, top=0.97, bottom=0.05, hspace=0.4)
         img_method_strip = fig_to_b64(fig, dpi=200)
 
@@ -1434,30 +1455,30 @@ def main():
         n_g = sum(1 for d in s["pause_data"] if d["guard"])
         pr_i = pr[pr < PAUSE_VALLEY]
         pr_c = pr[pr >= PAUSE_VALLEY]
-        ax.hist(pr_i, bins=bins_pr, color="#7ad9ff", edgecolor="#0d0f12", linewidth=0.3)
-        ax.hist(pr_c, bins=bins_pr, color="#ff8a8a", edgecolor="#0d0f12", linewidth=0.3)
-        ax.axvline(PAUSE_VALLEY, color="#ffe169", ls="-", lw=1.5)
-        ax.axvline(1.0, color="#888", ls=":", lw=0.8, alpha=0.6)
+        ax.hist(pr_i, bins=bins_pr, color="#1f7fb0", edgecolor="#ffffff", linewidth=0.3)
+        ax.hist(pr_c, bins=bins_pr, color="#d2685f", edgecolor="#ffffff", linewidth=0.3)
+        ax.axvline(PAUSE_VALLEY, color="#b8860b", ls="-", lw=1.5)
+        ax.axvline(1.0, color="#6a6a6a", ls=":", lw=0.8, alpha=0.6)
         if len(pr):
             med = float(np.median(pr))
-            ax.axvline(med, color="white", ls="--", lw=1.0, alpha=0.7)
+            ax.axvline(med, color="#1a1a1a", ls="--", lw=1.0, alpha=0.7)
         pct_c = 100 * len(pr_c) / max(1, len(pr))
         ax.text(0.012, 0.84, "interpolated", transform=ax.transAxes,
-                color="#7ad9ff", fontsize=FS_TEXT)
+                color="#1f7fb0", fontsize=FS_TEXT)
         ax.text(0.988, 0.84, "compensated", transform=ax.transAxes,
-                color="#ff8a8a", fontsize=FS_TEXT, ha="right")
+                color="#d2685f", fontsize=FS_TEXT, ha="right")
         ax.set_title(f"{short_label(s['label'])}   "
                      f"(SA {s['metrics']['sa_hr']:.0f} BPM, n={len(pr)}, "
                      f"{pct_c:.0f}% compensated"
                      + (f", {n_g} guarded" if n_g else "") + ")",
-                     color="#cccccc", fontsize=FS_TICK + 0.5, pad=2)
-        ax.set_ylabel("count", color="#999", fontsize=FS_TEXT)
-        ax.tick_params(colors="#bbb", labelsize=FS_TICK)
-        ax.grid(axis="y", alpha=0.15, color="#444", lw=0.3)
-        for sp in ax.spines.values(): sp.set_color("#333")
+                     color="#1f1f1f", fontsize=FS_TICK + 0.5, pad=2)
+        ax.set_ylabel("count", color="#666666", fontsize=FS_TEXT)
+        ax.tick_params(colors="#555555", labelsize=FS_TICK)
+        ax.grid(axis="y", alpha=0.15, color="#dcdcdc", lw=0.3)
+        for sp in ax.spines.values(): sp.set_color("#c8c8c8")
     axes_pp[-1].set_xlabel(f"pause RR$_{{post}}$ / local sinus cycle   "
                            f"(yellow = global valley {PAUSE_VALLEY:.2f}×, interp/comp split)",
-                           color="#bbb", fontsize=FS_LABEL)
+                           color="#555555", fontsize=FS_LABEL)
     fig.subplots_adjust(left=0.06, right=0.99, top=0.965, bottom=0.05, hspace=0.45)
     img_persession_pause = fig_to_b64(fig, dpi=200)
 
@@ -1466,7 +1487,7 @@ def main():
     img_persession_coupling = None
     bins_c = np.arange(280, 720, 14)
     cen_c = (bins_c[:-1] + bins_c[1:]) / 2
-    clu_col = ["#7ad9ff" if x < 500 else ("#ff8a8a" if x < 600 else "#7fd693")
+    clu_col = ["#1f7fb0" if x < 500 else ("#d2685f" if x < 600 else "#2e8b57")
                for x in cen_c]
     # check doppio-focolaio per sessione (modalità del coupling + morfologia)
     focus_findings = []   # per il testo HTML
@@ -1481,37 +1502,37 @@ def main():
         focus_txt = "unimodal"
         if len(c):
             h, _ = np.histogram(c, bins=bins_c)
-            ax.bar(cen_c, h, width=12, color=clu_col, edgecolor="#0d0f12", linewidth=0.3)
+            ax.bar(cen_c, h, width=12, color=clu_col, edgecolor="#ffffff", linewidth=0.3)
             med = float(np.median(c))
-            ax.axvline(med, color="#ffe169", ls="-", lw=1.4)
+            ax.axvline(med, color="#b8860b", ls="-", lw=1.4)
             ax.text(med + 4, ax.get_ylim()[1] * 0.8, f"med {med:.0f} ms",
-                    color="#ffe169", fontsize=FS_TEXT, fontweight="bold")
+                    color="#b8860b", fontsize=FS_TEXT, fontweight="bold")
             if mod["bimodal"]:
                 # secondo modo reale → verifica morfologia (stesso focolaio?)
                 morph = coupling_focus_morph(s["ecg_path"], mod["valley"])
-                ax.axvline(mod["valley"], color="#b59bff", ls="--", lw=1.2)
+                ax.axvline(mod["valley"], color="#6f42c1", ls="--", lw=1.2)
                 if morph and morph["corr"] > 0.97:
                     focus_txt = (f"bimodal: same focus (QRS r={morph['corr']:.3f})")
-                    tag_col = "#b59bff"
+                    tag_col = "#6f42c1"
                 elif morph:
                     focus_txt = (f"bimodal: CHECK morphology (QRS r={morph['corr']:.3f})")
-                    tag_col = "#ff6b6b"
+                    tag_col = "#cc3b30"
                 else:
                     focus_txt = "bimodal (morphology n/a)"
-                    tag_col = "#b59bff"
+                    tag_col = "#6f42c1"
                 ax.text(0.985, 0.84, focus_txt, transform=ax.transAxes, ha="right",
                         color=tag_col, fontsize=FS_TEXT - 0.5, fontweight="bold")
                 focus_findings.append((short_label(s["label"]), focus_txt, morph))
-        ax.axvline(500, color="#888", ls="--", lw=0.7, alpha=0.5)
-        ax.axvline(600, color="#888", ls="--", lw=0.7, alpha=0.5)
+        ax.axvline(500, color="#6a6a6a", ls="--", lw=0.7, alpha=0.5)
+        ax.axvline(600, color="#6a6a6a", ls="--", lw=0.7, alpha=0.5)
         ax.set_title(f"{short_label(s['label'])}   pre-PVC coupling (n={len(c)})",
-                     color="#cccccc", fontsize=FS_TICK + 0.5, pad=2)
-        ax.set_ylabel("count", color="#999", fontsize=FS_TEXT)
-        ax.tick_params(colors="#bbb", labelsize=FS_TICK)
-        ax.grid(axis="y", alpha=0.15, color="#444", lw=0.3)
-        for sp in ax.spines.values(): sp.set_color("#333")
+                     color="#1f1f1f", fontsize=FS_TICK + 0.5, pad=2)
+        ax.set_ylabel("count", color="#666666", fontsize=FS_TEXT)
+        ax.tick_params(colors="#555555", labelsize=FS_TICK)
+        ax.grid(axis="y", alpha=0.15, color="#dcdcdc", lw=0.3)
+        for sp in ax.spines.values(): sp.set_color("#c8c8c8")
     axes_pc[-1].set_xlabel("pre-PVC coupling interval (ms)",
-                           color="#bbb", fontsize=FS_LABEL)
+                           color="#555555", fontsize=FS_LABEL)
     fig.subplots_adjust(left=0.06, right=0.99, top=0.965, bottom=0.05, hspace=0.5)
     img_persession_coupling = fig_to_b64(fig, dpi=200)
 
@@ -1552,16 +1573,16 @@ def main():
         ax0 = fig.add_subplot(gs[0]); ax0.set_facecolor(DARK_BG)
         cols0 = [palette[i % len(palette)] for i in range(n_sessions)]
         ax0.bar(np.arange(n_sessions), coup_per_sess, color=cols0,
-                edgecolor="#0d0f12", linewidth=0.4)
+                edgecolor="#ffffff", linewidth=0.4)
         ax0.set_xticks(np.arange(n_sessions))
         ax0.set_xticklabels([short_label(s["label"]) for s in sessions],
-                            rotation=45, ha="right", fontsize=FS_TEXT, color="#bbb")
-        ax0.set_ylabel("couplets (n)", color="#bbb", fontsize=FS_LABEL)
+                            rotation=45, ha="right", fontsize=FS_TEXT, color="#555555")
+        ax0.set_ylabel("couplets (n)", color="#555555", fontsize=FS_LABEL)
         ax0.set_title(f"Couplets per session  (total {n_coup_tot})",
-                      color="#cccccc", fontsize=FS_TITLE)
-        ax0.tick_params(colors="#bbb", labelsize=FS_TICK)
-        ax0.grid(axis="y", alpha=0.18, color="#444")
-        for sp in ax0.spines.values(): sp.set_color("#333")
+                      color="#1f1f1f", fontsize=FS_TITLE)
+        ax0.tick_params(colors="#555555", labelsize=FS_TICK)
+        ax0.grid(axis="y", alpha=0.18, color="#dcdcdc")
+        for sp in ax0.spines.values(): sp.set_color("#c8c8c8")
 
         # (2) overlay di tutte le coppie, allineate sul picco della 1a PVC
         ax1 = fig.add_subplot(gs[1]); ax1.set_facecolor(DARK_BG)
@@ -1569,45 +1590,45 @@ def main():
         for (c, i) in all_coup:
             ax1.plot(CPL_GRID, c["pair"], color=palette[i % len(palette)],
                      lw=0.5, alpha=0.35)
-        ax1.plot(CPL_GRID, np.median(pairs, axis=0), color="white", lw=1.8,
+        ax1.plot(CPL_GRID, np.median(pairs, axis=0), color="#1a1a1a", lw=1.8,
                  label="median")
         rr_med = float(np.median(coup_rr_all))
-        ax1.axvline(0, color="#888", ls=":", lw=0.8, alpha=0.7)
-        ax1.axvline(rr_med/1000.0, color="#ffe169", ls="--", lw=1.2,
+        ax1.axvline(0, color="#6a6a6a", ls=":", lw=0.8, alpha=0.7)
+        ax1.axvline(rr_med/1000.0, color="#b8860b", ls="--", lw=1.2,
                     label=f"median RR {rr_med:.0f} ms")
         ax1.set_xlim(-CPL_PRE, CPL_POST); ax1.set_ylim(-1.15, 1.25)
-        ax1.set_xlabel("time from 1st PVC peak (s)", color="#bbb", fontsize=FS_LABEL)
-        ax1.set_ylabel("amplitude (norm.)", color="#bbb", fontsize=FS_LABEL)
+        ax1.set_xlabel("time from 1st PVC peak (s)", color="#555555", fontsize=FS_LABEL)
+        ax1.set_ylabel("amplitude (norm.)", color="#555555", fontsize=FS_LABEL)
         ax1.set_title(f"All {n_coup_tot} couplets overlaid (by session colour)",
-                      color="#cccccc", fontsize=FS_TITLE)
-        ax1.legend(facecolor="#1a1d22", labelcolor="white", edgecolor="#333",
+                      color="#1f1f1f", fontsize=FS_TITLE)
+        ax1.legend(facecolor="#f2efe9", labelcolor="#1a1a1a", edgecolor="#c8c8c8",
                    fontsize=FS_LEGEND, loc="upper right")
-        ax1.tick_params(colors="#bbb", labelsize=FS_TICK)
-        ax1.grid(alpha=0.16, color="#444")
-        for sp in ax1.spines.values(): sp.set_color("#333")
+        ax1.tick_params(colors="#555555", labelsize=FS_TICK)
+        ax1.grid(alpha=0.16, color="#dcdcdc")
+        for sp in ax1.spines.values(): sp.set_color("#c8c8c8")
 
         # (3) overlay singoli QRS: 1a PVC vs 2a PVC (stessa morfologia?)
         ax2 = fig.add_subplot(gs[2]); ax2.set_facecolor(DARK_BG)
         q1s = np.array([c["q1"] for c, _ in all_coup])
         q2s = np.array([c["q2"] for c, _ in all_coup])
         for q in q1s:
-            ax2.plot(QRS_GRID, q, color="#7ad9ff", lw=0.4, alpha=0.22)
+            ax2.plot(QRS_GRID, q, color="#1f7fb0", lw=0.4, alpha=0.22)
         for q in q2s:
-            ax2.plot(QRS_GRID, q, color="#ffa64d", lw=0.4, alpha=0.22)
+            ax2.plot(QRS_GRID, q, color="#cc7a1f", lw=0.4, alpha=0.22)
         m1, m2 = np.median(q1s, axis=0), np.median(q2s, axis=0)
-        ax2.plot(QRS_GRID, m1, color="#7ad9ff", lw=2.2, label="1st PVC")
-        ax2.plot(QRS_GRID, m2, color="#ffa64d", lw=2.2, label="2nd PVC")
+        ax2.plot(QRS_GRID, m1, color="#1f7fb0", lw=2.2, label="1st PVC")
+        ax2.plot(QRS_GRID, m2, color="#cc7a1f", lw=2.2, label="2nd PVC")
         r12 = float(np.corrcoef(m1, m2)[0, 1])
         ax2.set_xlim(-QRS_HALF, QRS_HALF); ax2.set_ylim(-1.15, 1.15)
-        ax2.set_xlabel("time from QRS peak (s)", color="#bbb", fontsize=FS_LABEL)
-        ax2.set_ylabel("amplitude (norm.)", color="#bbb", fontsize=FS_LABEL)
+        ax2.set_xlabel("time from QRS peak (s)", color="#555555", fontsize=FS_LABEL)
+        ax2.set_ylabel("amplitude (norm.)", color="#555555", fontsize=FS_LABEL)
         ax2.set_title(f"1st vs 2nd beat morphology  (median r={r12:.3f})",
-                      color="#cccccc", fontsize=FS_TITLE)
-        ax2.legend(facecolor="#1a1d22", labelcolor="white", edgecolor="#333",
+                      color="#1f1f1f", fontsize=FS_TITLE)
+        ax2.legend(facecolor="#f2efe9", labelcolor="#1a1a1a", edgecolor="#c8c8c8",
                    fontsize=FS_LEGEND, loc="upper right")
-        ax2.tick_params(colors="#bbb", labelsize=FS_TICK)
-        ax2.grid(alpha=0.16, color="#444")
-        for sp in ax2.spines.values(): sp.set_color("#333")
+        ax2.tick_params(colors="#555555", labelsize=FS_TICK)
+        ax2.grid(alpha=0.16, color="#dcdcdc")
+        for sp in ax2.spines.values(): sp.set_color("#c8c8c8")
 
         img_couplets = fig_to_b64(fig, dpi=220)
 
@@ -1643,10 +1664,10 @@ def main():
         for ax in flat[len(picks):]:
             ax.set_visible(False)
         fig.suptitle("Couplet example strips (±5 s) — two consecutive PVCs in context",
-                     color="#cccccc", fontsize=FS_TITLE, y=0.997)
+                     color="#1f1f1f", fontsize=FS_TITLE, y=0.997)
         for ax in flat[max(0, len(picks) - ncol):len(picks)]:
             ax.set_xlabel("Time relative to couplet centre (s)",
-                          color="#bbb", fontsize=FS_LABEL)
+                          color="#555555", fontsize=FS_LABEL)
         fig.subplots_adjust(left=0.05, right=0.99, top=0.93, bottom=0.07,
                             hspace=0.55, wspace=0.12)
         img_couplet_strips = fig_to_b64(fig, dpi=220)
@@ -1665,22 +1686,22 @@ def main():
                                facecolor=DARK_BG)
         ax.set_facecolor(DARK_BG)
         ym = np.arange(len(labels_m))
-        cols_m = ["#ff8a4d" if n == dom_n else "#5fb1ff" for n in counts_m]
-        ax.barh(ym, counts_m, color=cols_m, edgecolor="#0d0f12", linewidth=0.4)
+        cols_m = ["#cc7a1f" if n == dom_n else "#2f6fb0" for n in counts_m]
+        ax.barh(ym, counts_m, color=cols_m, edgecolor="#ffffff", linewidth=0.4)
         for y, n in zip(ym, counts_m):
             ax.text(n + 0.15, y, f"{n} ({100*n/n_coup_tot:.0f}%)", va="center",
-                    color="#ddd", fontsize=FS_TEXT)
+                    color="#333333", fontsize=FS_TEXT)
         ax.set_yticks(ym)
-        ax.set_yticklabels(labels_m, color="#cfd2d6", fontsize=FS_TEXT,
+        ax.set_yticklabels(labels_m, color="#1f1f1f", fontsize=FS_TEXT,
                            fontfamily="monospace")
-        ax.set_xlabel("number of couplets", color="#bbb", fontsize=FS_LABEL)
+        ax.set_xlabel("number of couplets", color="#555555", fontsize=FS_LABEL)
         ax.set_xlim(0, max(counts_m) * 1.18)
         ax.set_title("Local rhythm motif around each couplet "
                      "(4 beats before … couplet … 4 after)",
-                     color="#cccccc", fontsize=FS_TITLE)
-        ax.tick_params(colors="#bbb", labelsize=FS_TICK)
-        ax.grid(axis="x", alpha=0.16, color="#444")
-        for sp in ax.spines.values(): sp.set_color("#333")
+                     color="#1f1f1f", fontsize=FS_TITLE)
+        ax.tick_params(colors="#555555", labelsize=FS_TICK)
+        ax.grid(axis="x", alpha=0.16, color="#dcdcdc")
+        for sp in ax.spines.values(): sp.set_color("#c8c8c8")
         fig.subplots_adjust(left=0.27, right=0.97, top=0.84, bottom=0.18)
         img_couplet_motifs = fig_to_b64(fig, dpi=220)
 
@@ -1738,25 +1759,25 @@ def main():
             # ampiezza R normalizzata (punti) + EDR (linea)
             a = an[mn]; a_z = (a - a.mean()) / (a.std() or 1)
             r = rs[mu]; r_z = (r - r.mean()) / (r.std() or 1)
-            ax.scatter(tn[mn] - w0, a_z, s=14, color="#5fcc9e", alpha=0.7,
+            ax.scatter(tn[mn] - w0, a_z, s=14, color="#2f8a63", alpha=0.7,
                        label="R-amplitude of N beats (z)")
-            ax.plot(tu[mu] - w0, r_z, color="#7ad9ff", lw=1.8,
+            ax.plot(tu[mu] - w0, r_z, color="#1f7fb0", lw=1.8,
                     label="EDR respiration (0.1–0.5 Hz)")
             pv = e["pvc_t"]; pvw = pv[(pv >= w0) & (pv <= w1)]
             for x in pvw:
-                ax.axvline(x - w0, color="#ff6b6b", lw=1.0, alpha=0.55)
+                ax.axvline(x - w0, color="#cc3b30", lw=1.0, alpha=0.55)
             if len(pvw):
-                ax.plot([], [], color="#ff6b6b", lw=1.0, label="PVC")
-            ax.set_xlim(0, 80); ax.set_xlabel("time (s)", color="#bbb", fontsize=FS_LABEL)
-            ax.set_ylabel("normalized", color="#bbb", fontsize=FS_LABEL)
+                ax.plot([], [], color="#cc3b30", lw=1.0, label="PVC")
+            ax.set_xlim(0, 80); ax.set_xlabel("time (s)", color="#555555", fontsize=FS_LABEL)
+            ax.set_ylabel("normalized", color="#555555", fontsize=FS_LABEL)
             ax.set_title(f"Respiration recovered from R-amplitude — {short_label(best['label'])} "
                          f"({e['rate_resp']:.1f} breaths/min, SNR {e['snr']:.1f})",
-                         color="#cccccc", fontsize=FS_TITLE)
-            ax.legend(facecolor="#1a1d22", labelcolor="white", edgecolor="#333",
+                         color="#1f1f1f", fontsize=FS_TITLE)
+            ax.legend(facecolor="#f2efe9", labelcolor="#1a1a1a", edgecolor="#c8c8c8",
                       fontsize=FS_LEGEND, loc="upper right", ncol=3)
-            ax.tick_params(colors="#bbb", labelsize=FS_TICK)
-            ax.grid(alpha=0.16, color="#444")
-            for sp in ax.spines.values(): sp.set_color("#333")
+            ax.tick_params(colors="#555555", labelsize=FS_TICK)
+            ax.grid(alpha=0.16, color="#dcdcdc")
+            for sp in ax.spines.values(): sp.set_color("#c8c8c8")
             fig.subplots_adjust(left=0.06, right=0.98, top=0.88, bottom=0.16)
             img_edr_demo = fig_to_b64(fig, dpi=220)
 
@@ -1772,16 +1793,16 @@ def main():
         dp = np.sum([s["edr"]["dens_p"] for s in edr_sessions], axis=0)
         dn = dn / dn.sum() * 100; dp = dp / dp.sum() * 100
         wbar = (2 * np.pi / NBINS_RESP) * 0.95
-        axp.bar(cen, dn, width=wbar, color="#5fcc9e", alpha=0.45, label="N beats")
-        axp.bar(cen, dp, width=wbar, color="#ff6b6b", alpha=0.55, label="PVC")
+        axp.bar(cen, dn, width=wbar, color="#2f8a63", alpha=0.45, label="N beats")
+        axp.bar(cen, dp, width=wbar, color="#cc3b30", alpha=0.55, label="PVC")
         axp.set_theta_zero_location("N"); axp.set_theta_direction(-1)
         axp.set_xticks([0, np.pi/2, np.pi, 3*np.pi/2])
         axp.set_xticklabels(["lungs full\n(end-insp.)", "25%", "lungs empty\n(end-exp.)", "75%"],
-                            color="#bbb", fontsize=FS_TICK)
+                            color="#555555", fontsize=FS_TICK)
         axp.tick_params(colors="#777", labelsize=FS_TICK-1)
-        axp.set_title("Phase distribution (all sessions)", color="#cccccc",
+        axp.set_title("Phase distribution (all sessions)", color="#1f1f1f",
                       fontsize=FS_TITLE, pad=14)
-        axp.legend(facecolor="#1a1d22", labelcolor="white", edgecolor="#333",
+        axp.legend(facecolor="#f2efe9", labelcolor="#1a1a1a", edgecolor="#c8c8c8",
                    fontsize=FS_LEGEND, loc="lower right", bbox_to_anchor=(1.15, -0.05))
         # enrichment per sessione + media
         axe = fig.add_subplot(gs[1]); axe.set_facecolor(DARK_BG)
@@ -1791,24 +1812,24 @@ def main():
             axe.plot(xx, en, color="#5a8fb0", lw=0.8, alpha=0.5)
         mean_en = np.mean([s["edr"]["enrich"] for s in edr_sessions], axis=0)
         mean_en = np.concatenate([mean_en, [mean_en[0]]])
-        axe.plot(xx, mean_en, color="#ffe169", lw=2.6, label="mean across sessions")
-        axe.axhline(1.0, color="#888", ls="--", lw=0.9)
-        axe.axvspan(0, 14, color="#ff6b6b", alpha=0.10)
-        axe.axvspan(86, 100, color="#ff6b6b", alpha=0.10)
-        axe.text(2, axe.get_ylim()[1], "lungs full (end-inspiration)", color="#ff9a9a",
+        axe.plot(xx, mean_en, color="#b8860b", lw=2.6, label="mean across sessions")
+        axe.axhline(1.0, color="#6a6a6a", ls="--", lw=0.9)
+        axe.axvspan(0, 14, color="#cc3b30", alpha=0.10)
+        axe.axvspan(86, 100, color="#cc3b30", alpha=0.10)
+        axe.text(2, axe.get_ylim()[1], "lungs full (end-inspiration)", color="#cc5a52",
                  fontsize=FS_TEXT, ha="left", va="top")
         axe.set_xlim(0, 100)
         axe.set_xlabel("% of respiratory cycle  (0 / 100 = lungs full / end-inspiration, "
                        "50 = lungs empty / end-expiration)",
-                       color="#bbb", fontsize=FS_LABEL)
-        axe.set_ylabel("PVC enrichment (PVC density / N density)", color="#bbb", fontsize=FS_LABEL)
+                       color="#555555", fontsize=FS_LABEL)
+        axe.set_ylabel("PVC enrichment (PVC density / N density)", color="#555555", fontsize=FS_LABEL)
         axe.set_title("Where in the breath do PVCs fire? (×1 = no preference)",
-                      color="#cccccc", fontsize=FS_TITLE)
-        axe.legend(facecolor="#1a1d22", labelcolor="white", edgecolor="#333",
+                      color="#1f1f1f", fontsize=FS_TITLE)
+        axe.legend(facecolor="#f2efe9", labelcolor="#1a1a1a", edgecolor="#c8c8c8",
                    fontsize=FS_LEGEND, loc="upper right")
-        axe.tick_params(colors="#bbb", labelsize=FS_TICK)
-        axe.grid(alpha=0.16, color="#444")
-        for sp in axe.spines.values(): sp.set_color("#333")
+        axe.tick_params(colors="#555555", labelsize=FS_TICK)
+        axe.grid(alpha=0.16, color="#dcdcdc")
+        for sp in axe.spines.values(): sp.set_color("#c8c8c8")
         img_resp_phase = fig_to_b64(fig, dpi=220)
 
         # ---- (B2) rosetta per TIPO di PVC: interpolate / compensate / coupled ----
@@ -1825,14 +1846,17 @@ def main():
             if tc: ph["comp"].append(pa(np.array(tc)))
             if tk: ph["coupled"].append(pa(np.array(tk)))
         ph = {k: (np.concatenate(v) if v else np.array([])) for k, v in ph.items()}
-        TYPE_COL = {"interp": "#7ad9ff", "comp": "#ff8a8a", "coupled": "#ffd633"}
+        TYPE_COL = {"interp": "#1f7fb0", "comp": "#d2685f", "coupled": "#b8860b"}
         TYPE_LAB = {"interp": "Interpolated", "comp": "Compensated", "coupled": "Coupled"}
         bins_r = np.linspace(0, 2 * np.pi, NBINS_RESP + 1)
         cen_r = (bins_r[:-1] + bins_r[1:]) / 2
         cc = np.append(cen_r, cen_r[0])           # chiudi il loop
         type_peaks = {}
-        fig = plt.figure(figsize=(7.2, 6.4), facecolor=DARK_BG)
-        axt = fig.add_subplot(111, projection="polar"); axt.set_facecolor(DARK_BG)
+        # figura QUADRATA (come l'outlier): legenda INTERNA in un angolo, niente
+        # legenda esterna sotto (che renderebbe il PNG rettangolare col crop tight).
+        fig = plt.figure(figsize=(5.6, 5.6), facecolor=DARK_BG)
+        axt = fig.add_axes([0.10, 0.08, 0.80, 0.80], projection="polar")
+        axt.set_facecolor(DARK_BG)
         for k in ("interp", "comp", "coupled"):
             if len(ph[k]) < 8:
                 continue
@@ -1846,19 +1870,20 @@ def main():
         axt.set_theta_zero_location("N"); axt.set_theta_direction(-1)
         axt.set_xticks([0, np.pi/2, np.pi, 3*np.pi/2])
         axt.set_xticklabels(["lungs full\n(end-insp.)", "25%", "lungs empty\n(end-exp.)", "75%"],
-                            color="#bbb", fontsize=FS_TICK)
+                            color="#555555", fontsize=FS_TICK)
         axt.tick_params(colors="#777", labelsize=FS_TICK-1)
-        axt.set_title("Respiratory phase by PVC type\n(density per type)",
-                      color="#cccccc", fontsize=FS_TITLE, pad=16)
-        axt.legend(facecolor="#1a1d22", labelcolor="white", edgecolor="#333",
-                   fontsize=FS_LEGEND, loc="lower center", bbox_to_anchor=(0.5, -0.18), ncol=3)
-        fig.subplots_adjust(left=0.06, right=0.94, top=0.84, bottom=0.13)
+        axt.set_title("Respiratory phase by PVC type (density per type)",
+                      color="#1f1f1f", fontsize=FS_TITLE, pad=18)
+        axt.legend(facecolor="#f2efe9", labelcolor="#1a1a1a", edgecolor="#c8c8c8",
+                   fontsize=FS_LEGEND-0.5, loc="upper left", bbox_to_anchor=(-0.16, 1.10),
+                   ncol=1, handlelength=1.3, handletextpad=0.5, borderpad=0.5,
+                   labelspacing=0.4, framealpha=0.9)
         img_resp_phase_types = fig_to_b64(fig, dpi=220)
 
         # ---- (C) tabella + sintesi ----
         n_sig = sum(1 for s in edr_sessions if s["edr"]["pval"] < 0.05)
         def _pv(p):
-            col = "#33ff66" if p < 0.05 else "#ff7a4d"
+            col = "#1b8a3a" if p < 0.05 else "#cc5a2a"
             txt = f"{p:.0e}" if p < 0.01 else f"{p:.3f}"
             return f"<b style='color:{col}'>{txt}</b>"
         rrows = []
@@ -1949,10 +1974,10 @@ def main():
         for ax in flat[len(strips):]:      # nasconde celle vuote
             ax.set_visible(False)
         fig.suptitle("Example strips (±10 s) — recording quality & automatic PVC detection",
-                     color="#cccccc", fontsize=FS_TITLE, y=0.997)
+                     color="#1f1f1f", fontsize=FS_TITLE, y=0.997)
         for ax in flat[max(0, len(strips) - ncol):len(strips)]:
             ax.set_xlabel("Time relative to window centre (s)",
-                          color="#bbb", fontsize=FS_LABEL)
+                          color="#555555", fontsize=FS_LABEL)
         fig.subplots_adjust(left=0.05, right=0.99, top=0.95, bottom=0.05,
                             hspace=0.55, wspace=0.12)
         img_examples = fig_to_b64(fig, dpi=220)
@@ -1988,76 +2013,107 @@ def main():
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Holter ECG DIY — Personal Cardiac Monitoring Dashboard</title>
+<title>DIY Holter ECG — build &amp; signal-analysis notebook</title>
 <style>
-  body {{ background:#0d0f12; color:#cfd2d6; font-family:-apple-system,BlinkMacSystemFont,sans-serif;
-         margin: 24px auto; max-width: 1400px; line-height: 1.5; padding: 0 18px;
-         font-size: 15.5px; }}
-  h1 {{ color:#e6e8ea; font-size: 1.6em; margin-bottom: 4px; font-weight: 600; }}
-  .subtitle {{ color:#888; font-size:0.92em; margin-bottom: 4px; }}
-  .updated  {{ color:#666; font-size:0.82em; }}
-  h2 {{ color:#c8ccd0; border-bottom:1px solid #2a2d33; padding-bottom:5px;
-        margin-top:30px; font-size: 1.22em; font-weight: 600; }}
-  h3 {{ color:#a8acb2; font-size:1em; margin-top: 14px; margin-bottom: 6px;
-        font-weight: 600; }}
-  details {{ background:#15171b; border:1px solid #25282d; border-radius: 6px;
-             margin: 10px 0; }}
-  details > summary {{ cursor: pointer; padding: 10px 16px; color:#a8acb2;
-                       font-weight: 600; font-size: 0.95em; list-style: none;
-                       user-select: none; }}
-  details > summary::-webkit-details-marker {{ display: none; }}
-  details > summary::before {{ content: "▸  "; color:#666; }}
-  details[open] > summary::before {{ content: "▾  "; color:#666; }}
-  details[open] > summary {{ border-bottom: 1px solid #25282d; }}
-  details > .content {{ padding: 12px 18px; }}
-  .stat-grid {{ display:grid; grid-template-columns: repeat(auto-fit, minmax(150px,1fr));
-                gap: 10px; margin: 14px 0; }}
-  .stat {{ background:#15171b; padding: 10px 14px; border-radius: 6px;
-           border-left: 3px solid #4a90a4; }}
-  .stat .v {{ display:block; font-size:1.15em; color:#e6e8ea; font-weight:600; }}
-  .stat .l {{ display:block; color:#888; font-size:0.78em; margin-top:2px; }}
-  .stat.pvc {{ border-left-color: #ff6b6b; }}
-  .stat.pvc .v {{ color: #ff8a8a; }}
-  .stat.burden {{ border-left-color: #ff9c45; }}
-  .stat.burden .v {{ color: #ffb070; }}
-  .stat.heartbeats {{ border-left-color: #5fb1ff; }}
-  .stat.heartbeats .v {{ color: #7ac8ff; }}
-  table {{ border-collapse:collapse; width:100%; margin: 10px 0; font-size:0.85em; }}
-  th, td {{ padding:5px 10px; border-bottom:1px solid #2a2d33; text-align:left; }}
-  th {{ background:#23272d; color:#cfd2d6; font-weight: 600; }}
-  tr:nth-child(even) td {{ background:#15171b; }}
-  td.num {{ text-align:right; font-variant-numeric: tabular-nums; }}
-  img {{ display:block; max-width:100%; margin: 0;
-         border:1px solid #2a2d33; border-radius:4px; background:#0d0f12; }}
-  .commentary {{ background:#15171b; padding:8px 14px;
-                 border-left:3px solid #4a90a4; margin:8px 0;
-                 border-radius:0 5px 5px 0; font-size: 0.85em; }}
-  .commentary b {{ color:#e6e8ea; }}
-  .device-grid {{ display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px 26px;
-                  padding: 0; font-size: 0.88em; }}
-  .device-grid dt {{ color:#a8acb2; font-weight: 600; }}
-  .device-grid dd {{ color:#cfd2d6; margin: 0 0 3px 0; }}
-  @media (max-width: 900px) {{
-    .device-grid {{ grid-template-columns: 1fr; }}
+  :root {{ --paper:#fcfbf8; --ink:#1f1e1c; --muted:#6b6862; --faint:#e7e3da;
+           --rule:#d6d1c6; --accent:#7a3b2e; }}
+  * {{ box-sizing:border-box; }}
+  body {{ background:var(--paper); color:var(--ink); counter-reset:sec;
+          font-family:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;
+          margin:0 auto; max-width:880px; line-height:1.62; padding:52px 30px 80px;
+          font-size:17px; -webkit-font-smoothing:antialiased; }}
+  h1 {{ font-size:1.85em; line-height:1.16; font-weight:600; letter-spacing:-0.01em;
+        margin:0 0 3px; }}
+  .subtitle {{ color:var(--muted); font-size:1.03em; font-style:italic; margin:0 0 16px; }}
+  .updated {{ color:var(--muted); font-size:0.78em; letter-spacing:0.01em;
+              font-family:ui-sans-serif,-apple-system,sans-serif;
+              border-top:1px solid var(--rule); border-bottom:1px solid var(--rule);
+              padding:7px 0; margin-bottom:30px; }}
+  h2 {{ counter-increment:sec; font-size:1.3em; font-weight:600; margin:44px 0 6px;
+        padding-bottom:5px; border-bottom:2px solid var(--ink); letter-spacing:-0.005em; }}
+  h2::before {{ content:counter(sec) ".\\00a0\\00a0"; color:var(--accent); font-weight:700; }}
+  h3 {{ font-size:1.07em; font-weight:600; margin:26px 0 4px; color:#33312d; }}
+  p, .commentary {{ margin:11px 0; }}
+  .commentary {{ font-size:0.97em; color:#34322e; }}
+  .commentary b {{ color:var(--ink); font-weight:600; }}
+  .commentary ul {{ margin:8px 0; padding-left:22px; }}
+  .commentary li {{ margin:4px 0; }}
+  a {{ color:var(--accent); }}
+  code {{ font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:0.82em;
+          background:#f1ede4; border:1px solid var(--faint); border-radius:3px; padding:0 4px; }}
+  details {{ border:1px solid var(--rule); border-radius:3px; margin:14px 0; background:#faf7f1; }}
+  details > summary {{ cursor:pointer; padding:9px 14px; font-weight:600;
+                       font-family:ui-sans-serif,-apple-system,sans-serif; font-size:0.82em;
+                       letter-spacing:0.04em; text-transform:uppercase; color:var(--muted);
+                       list-style:none; user-select:none; }}
+  details > summary::-webkit-details-marker {{ display:none; }}
+  details > summary::before {{ content:"+\\00a0\\00a0"; }}
+  details[open] > summary::before {{ content:"\\2013\\00a0\\00a0"; }}
+  details[open] > summary {{ border-bottom:1px solid var(--rule); }}
+  details > .content {{ padding:12px 16px; }}
+  .stat-grid {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr));
+                gap:0; margin:16px 0 6px; border-top:2px solid var(--ink); }}
+  .stat {{ padding:9px 16px 9px 0; border-bottom:1px solid var(--faint); }}
+  .stat .v {{ display:block; font-size:1.42em; font-weight:600; font-variant-numeric:tabular-nums; }}
+  .stat .l {{ display:block; color:var(--muted); font-size:0.7em; margin-top:1px;
+              font-family:ui-sans-serif,-apple-system,sans-serif;
+              text-transform:uppercase; letter-spacing:0.05em; }}
+  .stat.pvc .v {{ color:#b03a2e; }} .stat.burden .v {{ color:#b9770b; }}
+  .stat.heartbeats .v {{ color:#2f6fb0; }}
+  table {{ border-collapse:collapse; width:100%; margin:14px 0; font-size:0.8em;
+           font-family:ui-sans-serif,-apple-system,sans-serif; }}
+  th, td {{ padding:5px 9px; text-align:left; border-bottom:1px solid var(--faint); }}
+  tr:first-child th {{ border-bottom:1.5px solid var(--ink); text-transform:uppercase;
+                       letter-spacing:0.03em; font-size:0.92em; color:#3a382f; }}
+  td.num {{ text-align:right; font-variant-numeric:tabular-nums; }}
+  table.summary td:first-child {{ font-weight:600; color:#33312d; }}
+  img {{ display:block; width:100%; max-width:100%; height:auto; margin:14px auto;
+         border:1px solid var(--rule) !important; border-radius:2px !important;
+         background:#fff !important; }}
+  .device-grid {{ display:grid; grid-template-columns:repeat(2,1fr); gap:5px 28px;
+                  font-size:0.9em; font-family:ui-sans-serif,-apple-system,sans-serif; }}
+  .device-grid dt {{ font-weight:600; color:#33312d; }}
+  .device-grid dd {{ color:#4a4842; margin:0 0 2px; }}
+  footer {{ margin-top:46px; padding-top:12px; border-top:1px solid var(--rule);
+            color:var(--muted); font-size:0.78em; line-height:1.55;
+            font-family:ui-sans-serif,-apple-system,sans-serif; }}
+  /* accenti inline (span statici nel testo) scuriti per la carta */
+  [style*="#7ad9ff"]{{color:#1f7fb0 !important}} [style*="#5fb1ff"]{{color:#2f6fb0 !important}}
+  [style*="#ff8a8a"]{{color:#c0392b !important}} [style*="#ff6b6b"]{{color:#c0392b !important}}
+  [style*="#ff9a9a"]{{color:#c0392b !important}} [style*="#ffe169"]{{color:#9a7d0a !important}}
+  [style*="#ffd633"]{{color:#9a7d0a !important}} [style*="#33ff66"]{{color:#1b7a3a !important}}
+  [style*="#7fd693"]{{color:#2e8b57 !important}} [style*="#5fcc9e"]{{color:#2e8b57 !important}}
+  [style*="#ffa64d"]{{color:#c0560a !important}} [style*="#ff7a4d"]{{color:#c0451a !important}}
+  [style*="#b59bff"]{{color:#6f42c1 !important}}
+  @media (max-width:760px) {{ .device-grid {{ grid-template-columns:1fr; }}
+                              body {{ padding:30px 18px; }} }}
+  @media print {{
+    html, body {{ -webkit-print-color-adjust:exact; print-color-adjust:exact;
+                  background:#fff; max-width:none; padding:0; font-size:11px; }}
+    details {{ content-visibility:visible !important; border:none; background:none; }}
+    details > *:not(summary), details > .content {{ display:block !important;
+                  content-visibility:visible !important; }}
+    details > summary {{ display:none; }}
+    div[style*="overflow"] {{ overflow:visible !important; }}
+    h1, h2, h3 {{ page-break-after:avoid; }}
+    img, table {{ page-break-inside:avoid; }}
   }}
-  code {{ background:#23272d; color:#cfd2d6; padding:1px 5px; border-radius:3px;
-          font-size:0.82em; }}
-  footer {{ margin-top:32px; padding-top:10px; border-top:1px solid #25282d;
-            color:#666; font-size:0.78em; line-height:1.55; }}
+  @page {{ size:A4 portrait; margin:16mm 15mm; }}
 </style>
 </head>
 <body>
 
-<h1>Holter ECG DIY — Personal Cardiac Monitoring Dashboard</h1>
+<h1>DIY Holter ECG — a build &amp; signal-analysis notebook</h1>
 <div class="subtitle">
-  Longitudinal aggregation of all self-recorded ECG sessions
+  A home-built single-lead recorder, and what its own recordings say about one
+  person's ectopic beats — an engineering and learning exercise, not a medical record.
 </div>
 <div class="updated">
-  Last update <code>{now}</code> · refresh by running
+  Compiled {now} · {len(sessions)} sessions · regenerate with
   <code>python3 host/dashboard.py</code>
 </div>
 
-<details>
+<details open>
   <summary>Acquisition setup &amp; processing pipeline</summary>
   <div class="content">
     <dl class="device-grid">
@@ -2100,7 +2156,7 @@ def main():
   </div>
 </details>
 
-<details>
+<details open>
   <summary>Sessions table ({len(sessions)} sessions)</summary>
   <div class="content">
     <table>
@@ -2186,6 +2242,15 @@ def main():
 <img src="data:image/png;base64,{img_pvc_continuum}" alt="PVC continuum check"
      style="border:1px solid #25282d; border-radius:6px;
             max-width: {disp_width(img_pvc_continuum)}px; display:block; margin: 0 auto;"/>
+<div class="commentary">
+  <b>Note on the sparse points around the cloud (lower-right).</b> The thin scatter
+  that fans out below and to the right of the dense ball is <em>not</em> a second PVC
+  type or focus: it is a low-density skirt of more variable beats (about 3% of the total),
+  concentrated in the two shortest/noisiest recordings, and its median QRS is essentially
+  identical to the core's — same width and amplitude, trough only marginally deeper. It
+  reflects beat-to-beat / baseline variability captured by PC2, consistent with the
+  single-population picture from the elbow plot and the unimodal trough-depth histogram.
+</div>
 
 <h2>Normal beats morphology</h2>
 <div class="commentary">
@@ -2511,7 +2576,8 @@ def main():
 </div>
 <img src="data:image/png;base64,{img_resp_phase_types}" alt="Respiratory phase by PVC type"
      style="border:1px solid #25282d; border-radius:6px;
-            max-width: 620px; width: 100%; display:block; margin: 0 auto;"/>
+            max-width: {disp_width(img_resp_phase_types)}px; width: 100%;
+            display:block; margin: 0 auto;"/>
 <div style="overflow-x:auto; margin: 12px auto; max-width: 820px;">
 <table>
   <tr><th>Session</th><th>Resp rate (/min)</th><th>PVCs</th><th>Peak phase</th>
@@ -2533,7 +2599,11 @@ def main():
   This dashboard is intended for personal use and as a discussion document with
   the supervising cardiologist. It does <b>not</b> constitute a diagnostic
   report. To export a printable copy, open in a browser and use
-  <em>Print → Save as PDF</em>.
+  <em>Print → Save as PDF</em>.<br/>
+  This report was built with heavy AI assistance; some of its analyses were
+  initially wrong and were caught only by ground-truth checks. That story — what
+  it teaches about trusting AI with biomedical data — is written up in
+  <code>docs/caso-studio-ai-sicurezza.md</code>.
 </footer>
 
 </body>

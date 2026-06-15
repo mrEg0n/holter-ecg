@@ -1,0 +1,494 @@
+% !TEX program = pdflatex
+% !TEX encoding = UTF-8 Unicode
+% =====================================================================
+%  DIY Holter ECG — documento conclusivo (sorgente LaTeX, da lavorare a mano)
+% ---------------------------------------------------------------------
+%  COME E' FATTO:
+%   - Il TESTO sta qui sotto: modificalo liberamente, e' tuo.
+%   - Le FIGURE sono in  figs/*.png  e le TABELLE + i numeri aggregati
+%     stanno in  tables.tex : entrambi si RIGENERANO dai dati con
+%         python3 host/dashboard.py        (ricalcola -> HTML + figure)
+%         python3 host/export_latex.py     (HTML -> figs/ + tables.tex)
+%     quindi non toccarli a mano: aggiungi una registrazione, rilanci i
+%     due comandi, e qui cambiano numeri/figure senza perdere il testo.
+%   - COMPILA con:  latexmk -pdf holter_report.tex   (o  pdflatex x2)
+% =====================================================================
+\documentclass[11pt,a4paper]{article}
+
+% ---- font & codifica (newpx = Palatino, taglio editoriale) ----
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{newtxtext,newtxmath}   % Times (stile paper accademico)
+\usepackage{microtype}
+
+% ---- impaginazione ----
+\usepackage[a4paper,margin=2.5cm]{geometry}
+\usepackage{graphicx}
+\graphicspath{{figs/}{figs_manual/}}   % figs/=auto (export_latex.py)  ·  figs_manual/=figure curate a mano
+\usepackage{float}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{changepage}   % adjustwidth: blocchi rientrati (abstract/disclaimer)
+\usepackage{comment}      % \begin{comment}...\end{comment} per escludere blocchi
+\usepackage[table,dvipsnames]{xcolor}
+\usepackage{enumitem}
+\usepackage{caption}
+\usepackage{titlesec}
+\usepackage{fancyhdr}
+\usepackage[hidelinks]{hyperref}
+
+\setlist{nosep,leftmargin=1.6em}
+% stile accademico: rientro di prima riga, nessuno spazio tra paragrafi
+\setlength{\parindent}{1.4em}
+\setlength{\parskip}{0pt}
+\linespread{1.05}
+
+% ---- colori ----
+\definecolor{accent}{HTML}{7A3B2E}
+\definecolor{muted}{HTML}{6B6862}
+\definecolor{cInterp}{HTML}{1F7FB0}   % interpolate (silenziose)
+\definecolor{cComp}{HTML}{C0392B}     % compensate (sentite)
+\definecolor{cCoupled}{HTML}{9A7D0A}  % coupled
+\newcommand{\interp}[1]{\textcolor{cInterp}{#1}}
+\newcommand{\comp}[1]{\textcolor{cComp}{#1}}
+\newcommand{\coupled}[1]{\textcolor{cCoupled}{#1}}
+\newcommand{\rrpre}{RR\textsubscript{pre}}
+\newcommand{\rrpost}{RR\textsubscript{post}}
+
+% ---- titoli di sezione (numero in accento + filetto) ----
+\titleformat{\section}{\normalfont\large\bfseries}{\thesection.}{0.6em}{}
+\titleformat{\subsection}{\normalfont\normalsize\bfseries}{\thesubsection}{0.6em}{}
+\titlespacing*{\section}{0pt}{2.2ex plus .3ex}{1.0ex}
+\titlespacing*{\subsection}{0pt}{1.4ex plus .2ex}{0.6ex}
+
+% ---- didascalie ----
+\captionsetup{font=small,labelfont=bf,labelsep=period,skip=4pt,justification=justified,singlelinecheck=false}
+
+% ---- testatina ----
+\pagestyle{plain}   % numero pagina centrato in basso, stile paper
+
+% ---- scorciatoia figura: \reportfig[width]{file}{didascalia} ----
+\newcommand{\reportfig}[3][\linewidth]{%
+  \begin{figure}[H]\centering
+    \includegraphics[width=#1]{#2}\caption{#3}
+  \end{figure}}
+% variante per figure grandi: pagina dedicata (float [p]), evita pagine mezze vuote
+\newcommand{\reportfigP}[3][\linewidth]{%
+  \begin{figure}[p]\centering
+    \includegraphics[width=#1]{#2}\caption{#3}
+  \end{figure}}
+
+% numeri aggregati + tabelle (AUTO-generati: non modificare a mano)
+\input{tables.tex}
+
+\begin{document}
+
+% ===================== TESTATA =====================
+\thispagestyle{empty}
+
+\begin{center}
+{\LARGE\bfseries DIY Single-Lead Holter ECG:\\[3pt]
+A Longitudinal Single-Subject Analysis of Premature Ventricular Complexes}\\[14pt]
+{\large Andrea Pedroni}\\[5pt]
+{\itshape Independent project $\cdot$ apedroni85@gmail.com}\\[2pt]
+{\itshape Personal report --- June 2026}
+\end{center}
+
+\vspace{4pt}\hrule\vspace{6pt}
+
+\begin{center}\small\itshape
+\begin{minipage}{0.86\linewidth}\centering
+\textbf{\upshape Disclaimer.} This report describes an engineering and signal-analysis exercise based on a hobbyist, budget friendly, home-built project. Neither the hardware nor the software pipeline has been clinically calibrated, validated, certified, or designed for medical use. The data presented here do not constitute a medical record; the analyses and conclusions do not constitute a clinical Holter report and are not diagnostic. This document exists solely as an exploratory personal project related to a personal cardiac condition, which is independently and regularly monitored by qualified cardiologists and medical specialists.
+\end{minipage}
+\end{center}
+
+\vspace{6pt}\hrule
+
+% ===================== 1. INTRODUCTION =====================
+\section{Introduction}
+Premature ventricular complexes (PVCs) are early ventricular depolarizations that
+occur before the next expected sinus beat. They originate below the atrioventricular
+node, from the ventricular myocardium or His--Purkinje system, and typically appear
+on the ECG as premature, morphologically distinct QRS complexes. PVCs are common and may occur in individuals with or without structural heart disease. In many cases they
+are benign, especially when infrequent and occurring in a structurally normal heart;
+however, their clinical relevance depends on symptoms, burden, morphology, coupling
+pattern, presence of repetitive forms, and the underlying cardiac substrate.
+
+Frequent PVCs can cause palpitations, skipped-beat sensations, or a forceful post-extrasystolic beat, but they may also be asymptomatic. From a clinical perspective, the main
+objectives are to quantify PVC burden, assess whether the ectopy is monomorphic or
+polymorphic, identify couplets or non-sustained ventricular tachycardia, and exclude
+structural or functional heart disease. High PVC burden has been associated with
+PVC-induced or PVC-aggravated cardiomyopathy, particularly when ectopy is persistent
+over time. For this reason, formal evaluation requires validated ECG monitoring,
+cardiac imaging when indicated, and interpretation by qualified clinicians.
+
+This report makes no such clinical evaluation. 
+
+% ===================== 2. HARDWARE =====================
+\section{Hardware}
+The recorder is built around an AD8232 single-lead biopotential front-end, with three
+snap electrodes arranged in a single precordial derivation. Its output is digitised by
+the internal 12-bit ADC of a Raspberry Pi Pico 2 W (channel \texttt{ADC0\,/\,GP26})
+running MicroPython, and sampled at 250\,Hz. The samples are streamed wirelessly over
+Wi-Fi, or over USB serial when the device is tethered. The recorder can operate as an untethered, battery-powered wireless unit, using a single-cell LiPo battery with a TP4056 charging module and an SPDT power switch, providing approximately 24\,h of continuous recording per charge.
+
+\medskip
+\noindent\textbf{Current implementation and near-term upgrades.} The recorder is an evolving prototype, and the
+present streaming-only architecture is a deliberate first stage. At present, the Pico does not store recordings locally. It streams samples in real time to a receiving host, which writes them to disk. The host can be a laptop connected over USB serial or a server on the same Wi-Fi network. As a result, a host must currently be available and within range during acquisition. 
+
+The components were nevertheless selected with a self-contained, body-worn recorder as the goal. The Raspberry Pi Pico 2 W was chosen for its integrated Wi-Fi and low power consumption, which already allow operation as a battery-powered wireless acquisition node and provide a clear path toward onboard logging. The AD8232 front-end and the single-cell LiPo battery keep the unit compact, rechargeable, and suitable for portable untethered acquisition (device size: $\sim$ 8 $\times$ 6 $\times$ 3\,cm). At this stage, streaming to a laptop is the simplest way to validate the full acquisition, storage, visualization, and analysis chain.
+
+This is being implemented by adding a 3\,V microSD breakout module, the Adafruit 4682, to the Pico over SPI and having the firmware log each session locally. A standard 32\,GB microSD card would provide storage for months of ECG recordings, while the Wi-Fi stream could remain available for live monitoring whenever a host is nearby. With onboard storage, sessions can be recorded independently of any external computer during acquisition.
+
+A dual-accelerometer extension, based on two ADXL345 modules, is also planned. One sensor would be positioned on the sternum and one on the abdomen, allowing posture to be estimated from the gravity vector and respiration to be measured directly from thoraco-abdominal movement. This would complement the present report, where respiration is estimated indirectly from R-wave amplitude (see Section~\ref{sec:edr}) and posture is tracked manually during recording.
+
+% ===================== 3. SOFTWARE =====================
+\section{Software}
+On the host side --- currently a MacBook --- a Python application receives the stream from the recorder and acquires, stores, and displays the ECG signal. The live trace is served through a Flask dashboard using Server-Sent Events. The dashboard can be opened either on the MacBook itself or on a smartphone connected to the same network, allowing the trace to be followed in real time during acquisition. 
+
+The same dashboard is used to add time-stamped manual annotations during recording,
+marking events such as meals, caffeine intake, physical exertion, posture changes, or
+perceived symptoms. These annotations are stored within the session and remain aligned with the ECG trace during later analysis. A set of batch tools then regenerates a full HTML report in the browser, with every figure and table computed from the stored recordings. The present document is generated downstream from that HTML report.
+
+The incoming ECG signal is band-pass filtered online using a first-order IIR filter, combining a 0.3\,Hz high-pass and a 25\,Hz low-pass filter. Beats are detected by a custom four-state finite-state-machine QRS detector (\texttt{IDLE $\rightarrow$ WIDTH $\rightarrow$ DETECT $\rightarrow$ POST}) with a 300\,ms refractory period. Premature ventricular complexes are then flagged by a rule-based classifier based on rebound, QRS width, and amplitude thresholds.
+Intervals corrupted by motion artifacts or poor electrode contact are excluded manually using a paginated matplotlib editor, which stores per-session exclusion files. These exclusion files are applied before analysis, preventing noisy segments from affecting the technical reliability of the analyses and of the figures, tables, and quantitative summaries derived from them (figXXX).
+
+\medskip
+\noindent\textbf{Code, analysis \& hardware documentation.} The recorder firmware, the full signal-processing and analysis pipeline used to generate every figure and table in this report, and the complete hardware build documentation, including wiring diagrams and bill of materials, are available at \href{https://github.com/mrEg0n/holter-ecg}{\texttt{github.com/mrEg0n/holter-ecg}}.
+
+% ===================== RECORDING QUALITY (prima) =====================
+\section{Recording quality \& PVC auto-detection}\label{sec:quality}
+Beat detection and classification are fully automatic. The ECG signal is first band-pass filtered online between 0.3 and 25\,Hz and sampled at 250\,Hz. QRS complexes are then detected by a finite-state-machine detector with a 300\,ms refractory period. Each detected beat is subsequently labelled as sinus or ectopic by a fixed rule-based classifier.
+A beat is flagged as a premature ventricular complex (PVC) when it satisfies predefined criteria based on QRS width, post-QRS rebound, signal amplitude, and physiologically plausible duration. Specifically, PVC candidates must show sufficient width and/or a marked post-QRS rebound, adequate amplitude, and a measured width within the 40--220\,ms range. No template matching or model training is used. The same thresholds are applied unchanged across all sessions, ensuring that every recording is processed with the same classification rule.
+These thresholds were tuned and empirically validated on this single subject. They therefore reflect this individual's ECG morphology, signal amplitude, electrode placement, and acquisition geometry. The same parametrization should not be assumed to transfer unchanged to other subjects. In practice, the most subject-dependent parameter is the absolute amplitude threshold. This could be made self-calibrating by estimating it once from a clean baseline window at the beginning of a recording and then holding it fixed throughout the session. Such a baseline-then-fixed approach would avoid continuous adaptation, which could otherwise be transiently biased by motion artefacts or poor electrode contact. With this modification, the same pipeline could in principle be extended to other subjects recorded with comparable electrode placement.
+The only operation left to manual curation is the exclusion of intervals corrupted by motion artefacts or poor electrode contact. These intervals are marked by hand in a paginated editor, which stores per-session exclusion files. Beats falling within excluded intervals are removed before any downstream analysis.
+Figure~\ref{fig:quality} illustrates the detection and curation procedure on a continuous segment from one recording, displayed as consecutive 12\,s rows. The trace is stable over most of the segment, and each detected beat carries its automatic label, with PVCs shown in \comp{red} and sinus beats in \textcolor{ForestGreen}{green}. A single shaded interval corresponds to a burst of motion noise and is visually distinct from the surrounding ECG. This is the type of segment removed during manual noise curation.
+
+\reportfigP{quality_strip.png}{A continuous 72-second stretch of one session, in consecutive 12-second rows. The ECG is clean and every beat is detected automatically (PVCs in red, sinus beats in green); the shaded 10-second stretch is motion / contact noise, marked by hand and excluded before analysis --- no detection markers fall inside it.\label{fig:quality}}
+
+A complementary view: a set of $\pm$10-second example windows (20\,s each), selected
+automatically across sessions and kept away from intervals marked as noise. The
+continuous trace shows the raw signal quality; the detector output is overlaid on top,
+exactly as used in every analysis below: the QRS of each PVC is highlighted in
+\comp{red} ($\pm$120\,ms) with a marker, while \textcolor{ForestGreen}{green}
+markers tag the sinus beats. The mix includes ordinary isolated PVCs plus a
+couplet, a burst and interpolated beats (tagged in each title).
+
+\reportfigP{01_example_strips_with_pvc_detection.png}{Twenty-second windows selected automatically across sessions, detector output overlaid: PVC QRS in red, sinus beats tagged green.}
+
+\clearpage   % forza le figure [p] di Recording quality PRIMA di Dataset overview
+% ===================== DATASET OVERVIEW (dopo) =====================
+\section{Dataset overview}
+Across \nSessions{} sessions ($\approx$\totMinutes{} minutes, about 15 h of
+single-lead ECG) the detector classified \totBeats{} heartbeats, of which
+\totPVC{} were PVCs --- a cumulative burden of \cumBurden{}. A further
+\exclMinutes{} of trace were marked by hand as noise and excluded from every
+analysis. The burden figure is not a clinical index here; it only frames how
+much ectopy this particular recorder saw over these particular recordings.
+
+\subsection*{Sessions}
+\tableSessions
+
+% ===================== 3. PVC MORPHOLOGY =====================
+\section{PVC morphology}
+Each PVC is centred on its ectopic peak, normalised to its own amplitude
+(peak $=1.0$), and overlaid in a common time window. Conservation of this
+shape across sessions suggests a single stable ectopic focus; visible
+divergences could indicate multifocality or substrate changes. The first two
+panels share the same Y-axis scale for direct visual comparison.
+
+\reportfig{02_pvc_morphology_summary.png}{PVC morphology summary: all PVCs overlaid, median by session, dispersion, and the median PVC.}
+
+\subsection{One continuous population, or discrete subtypes?}
+Visual inspection of the per-session median suggests one session shows a
+slightly different hyperpolarisation profile. Is that a single focus with
+continuous variability, or two morphological subtypes (mild bifocality)? Four
+data-driven checks:
+\begin{itemize}
+  \item \textbf{PCA + K-means (k=2)} forces a bipartition. Two well-separated
+        clouds would mean two real subtypes; one connected cloud cut down the
+        middle means the split is an artefact.
+  \item \textbf{PVCs sorted by hyperpolarisation depth} --- two sharp bands
+        indicate subtypes, a smooth gradient a continuum.
+  \item \textbf{Elbow plot} --- a sharp knee would suggest a natural number of
+        clusters; a smooth decay, none.
+  \item \textbf{Trough-depth histogram} --- one unimodal peak is consistent
+        with a single focus; two separated peaks would not be.
+\end{itemize}
+
+\reportfig{03_pvc_continuum_check.png}{Single-population checks: PCA + K-means, PVCs sorted by hyperpolarisation depth, the K-means elbow, and the trough-depth histogram.}
+
+\textbf{Note on the sparse points (lower-right of the PCA panel).} The thin
+scatter fanning out below the dense ball is \emph{not} a second type or focus:
+it is a low-density skirt of more variable beats (about 3\% of the total),
+concentrated in the two shortest / noisiest recordings, with a median QRS
+essentially identical to the core's. It reflects beat-to-beat / baseline
+variability captured by PC2 --- consistent with the single-population picture
+from the elbow and the unimodal trough histogram.
+
+% ===================== 4. NORMAL BEATS =====================
+\section{Normal-beat morphology}
+The same superimposition applied to normal sinus beats (N), up to 500 evenly
+spaced per session. It is a baseline reference and a way to surface
+electrode / posture effects --- the R-amplitude visibly varies sinusoidally
+with breathing (used later for respiration). The last panel overlays the
+median N and the median PVC.
+
+\reportfig{04_normal_beat_morphology_4_panel_summary.png}{Normal-beat morphology, same superimposition, with the median N vs median PVC overlaid in the last panel.}
+
+\subsection{Cross-session N correlation --- outlier inspection}
+All inter-session N correlations stay $\geq 0.93$ (high concordance); the scale
+is set with vmin $=0.95$ to surface any drift. One session (09 13:23) is the
+only one recorded seated at a desk with anterior trunk flexion --- all others
+were lying / extended. A trunk-position change rotates the heart axis relative
+to the single precordial electrode, which plausibly explains the morphology
+drift. It surfaces in N and not in PVC because the PVC's large dominant
+deflection ($\approx$1.5 V) is robust to small projection changes once
+amplitude-normalised, whereas the smaller, roughly symmetric N
+($\approx$0.5 V) amplifies the relative weight of the P- and T-wave regions.
+This is an interpretation of the data, not a confirmed mechanism.
+
+\begin{figure}[H]\centering
+  \includegraphics[width=0.58\linewidth]{05_n_outlier_comparison.png}
+  \caption{Outlier session (seated, trunk-flexed) median N vs the median and IQR of the other nine sessions.}
+\end{figure}
+\tableOutlier
+
+% ===================== 5. INTERP vs COMP =====================
+\section{Interpolated vs compensated PVCs --- method \& validation}
+Every PVC sits between a preceding and a following sinus beat (N--PVC--N).
+\textbf{Conventionally} the two kinds are told apart by what happens to the
+sinus node, measured R-to-R from QRS peak to QRS peak: an \interp{interpolated}
+PVC slips in without resetting the SA node, so the next sinus beat stays on
+schedule and N--PVC--N $\approx 1\times$ the sinus cycle; a \comp{compensated}
+PVC resets the SA node, the next sinus beat is delayed by a full pause, and
+N--PVC--N $\approx 2\times$.
+
+\reportfig{06_interpolated_vs_compensated_example.png}{One PVC shown both ways: the conventional sum and the actual post-extrasystolic pause, against the locally-estimated sinus cycle.}
+
+The reference sinus cycle is not a single session-wide number: this subject has
+marked respiratory sinus arrhythmia, so it is estimated \textbf{locally} as the
+median of the nearest N--N intervals around each PVC. A \textbf{prematurity
+guard} discards beats whose coupling (\rrpre) is not shorter than that local
+sinus cycle --- physically impossible for a true (premature) PVC, and a sign
+that a small sub-threshold sinus beat was missed in the gap; 118 beats
+($\approx$1\%) are set aside this way.
+
+\subsection{Why the conventional sum leaves a grey zone --- and how the data resolves it}
+Applying the strict sum rule ($1.85$--$2.15\times$ for a ``full'' pause) leaves
+a wide band of beats in between. The data are cleaner than the rule suggests.
+Two distributions: on the left the conventional \textbf{sum S}; on the right the
+\textbf{actual pause \rrpost} after the PVC. Both are clearly \textbf{bimodal}
+--- almost every beat falls into one lump or the other, with a near-empty valley
+between them.
+
+\reportfig{07_distributions_of_s_and_rr_post.png}{Distributions of the conventional sum S (left) and the actual pause RR\textsubscript{post} (right) --- both clearly bimodal.}
+
+S and the pause agree on $\sim$99\% of beats but disagree on a few: the same S
+can hide a short or a long pause depending on the coupling. When they disagree,
+the variable that matches what is \textbf{seen on the trace and felt} is the
+\textbf{pause} --- a long pause loads the ventricle and the next beat lands as a
+forceful ``thump''. So the operative split is made on \rrpost{}, at the empirical
+valley $\pauseValley\times$ the sinus cycle: shorter $\rightarrow$
+\interp{interpolated} (silent), longer $\rightarrow$ \comp{compensated} (felt).
+Across the dataset that gives \textbf{\pctInterp\% interpolated} and
+\textbf{\pctComp\% compensated} on \methodBeats{} classified beats; only
+$\sim$1\% sit within $\pm0.10$ of the valley (genuinely borderline), and those
+that stay truly undecided are noise --- removed by exclusion / the guard rather
+than forced into a class.
+
+\subsection{How it looks on the trace}
+The same classification on a continuous strip (session 2026-06-08 22:01): the
+QRS of each PVC is \interp{blue} when interpolated (the sinus rhythm carries on
+with no gap) and \comp{red} when compensated (a clear pause follows). This
+two-way split is what the subject actually perceives: the interpolated beats
+carry no pause and go unnoticed, the compensated ones are followed by the pause
+and the potentiated beat felt as a \textbf{skipped / missed beat}.
+
+\reportfig{08_final_2_class_strip.png}{The two-class split on a continuous strip: interpolated (blue) carry no pause, compensated (red) are followed by one.}
+
+% ===================== 6. CROSS-SESSION =====================
+\section{Cross-session rhythm \& burden dynamics}
+Longitudinal comparison across all sessions, recomputed at every run.
+\textbf{Burden} $=$ PVCs / all beats; \textbf{effective SA rate} $=$ 60000 /
+median N--N interval (the rate a wrist pulse would read, since most PVCs are
+non-perfusing).
+\begin{itemize}
+  \item \textbf{Burden by session} --- how the PVC load varies recording to recording.
+  \item \textbf{Effective rate vs pause type} --- at lower SA rates interpolated
+        (silent) beats tend to prevail; as the rate rises they shift toward
+        compensated (felt) ones.
+  \item \textbf{Composition} --- interpolated / compensated / incomplete share per session.
+  \item \textbf{Coupling stability} --- a tight, session-stable pre-PVC coupling
+        is consistent with a single monomorphic focus.
+\end{itemize}
+
+\reportfig{09_cross_session_rhythm_and_burden.png}{Cross-session burden, effective rate vs pause type, composition, and coupling stability.}
+\tableCross
+
+\textbf{Key pattern.} The single relationship that ties the dataset together:
+the share of \comp{compensated} (felt) PVCs rises with the resting sinus rate
+while \interp{interpolated} (silent) ones fall --- so the number of thumps the
+subject notices tracks heart rate, not raw PVC count. Each point is one session;
+curves are a weighted logistic fit, the trend quantified by Spearman's r in the
+title.
+
+\reportfig{10_resting_rate_vs_felt_pvcs.png}{Felt (compensated) PVC share rises with resting sinus rate while interpolated falls; each point is one session.}
+
+% ===================== 7. SUMMARY TABLE =====================
+\section{Per-session summary}
+Every session as a column, every metric as a row, computed on the validated
+definitions used throughout (local-sinus pause split, the couplet detector
+below, real pre-PVC coupling median). ``Guarded'' $=$ PVCs whose pause was
+unmeasurable (a sinus beat hidden in the gap), excluded from the interp/comp
+split. ``AF score'' is the 0--4 atrial-fibrillation \emph{signal} screen
+(RMSSD$>$100, pNN50$>$40, high RR entropy, unimodal $+$ high CV) --- a
+signal-level check, not a diagnosis.
+
+\tableSummary
+
+% ===================== 8. PAUSE DISTRIBUTION =====================
+\section{Per-session pause distribution}
+One row per recording, using the validated criterion: each beat's pause \rrpost{}
+measured against its \emph{local} sinus cycle, split at the global valley
+($\pauseValley\times$). The left hump (\interp{blue, $\approx$0.7$\times$}) are
+interpolated (silent) beats; the right hump (\comp{pink, $\approx$1.45$\times$})
+compensated (felt) ones. A session whose mass sits almost entirely on one side
+has a correspondingly lopsided \emph{perceived} burden --- the driver behind the
+key pattern above.
+
+\reportfig{11_per_session_pause_distribution.png}{Per-session pause distribution against the local sinus cycle, split at the global valley.}
+
+% ===================== 9. COUPLING / SINGLE FOCUS =====================
+\section{Per-session coupling distribution \& single-focus check}
+\textbf{What the coupling interval is.} The coupling (\rrpre) is the time from
+the preceding normal beat to the PVC --- how long after each sinus beat the
+ectopic fires. A single focus re-entering on the same circuit fires at a
+near-constant coupling, so a \textbf{tight, recording-to-recording-stable peak}
+is the signature of one monomorphic focus; a \textbf{second focus} would add a
+separate coupling peak \emph{with a different QRS shape}.
+
+\textbf{Single-focus check (statistical).} For every session a 1- vs 2-component
+Gaussian mixture is fit to the coupling; a session is flagged \emph{bimodal}
+only when the two-component fit is genuinely two-peaked (a real trough, not mere
+skew) and improves the BIC --- confirmed offline by a parametric-bootstrap
+likelihood-ratio test ($p\approx0.002$). Result: \textbf{2 sessions} show a
+genuinely bimodal coupling (06-05 18:29, 06-06 15:08); in each the two coupling
+clusters have \emph{identical} QRS morphology, so this is the same monomorphic
+focus discharging at two coupling intervals (coupling modulation), \emph{not} a
+second focus. Sessions that show only a right-skewed shoulder rather than two separated
+modes (for example 06-05 14:59) are deliberately left unflagged; forcing a split on them
+anyway still yields two clusters with essentially identical QRS (template
+$r\approx0.998$), so those tails belong to the same focus too. No session shows a
+morphologically distinct second focus.
+
+\reportfig{12_per_session_coupling_distribution.png}{Per-session coupling distribution with the statistical single-focus check.}
+
+% ===================== 10. COUPLETS =====================
+\section{Couplets --- detection, count \& overlay}
+A \textbf{couplet} is two PVCs in a row (RR 200--700\,ms) that is \emph{not}
+part of a longer run --- the simplest repetitive ectopy, worth counting because
+frequency and uniformity speak to risk. \textbf{46 couplets across 7/10 sessions}
+(none in 3). The inter-PVC interval is strikingly tight --- median 416\,ms
+(range 384--464\,ms) --- and the two beats share the same morphology: the
+couplets are uniform and consistent with the same single focus firing twice, not
+a second focus or a malignant polymorphic pair.
+\begin{itemize}
+  \item \textbf{Count per session} (same session colours as above).
+  \item \textbf{All couplets overlaid}, each aligned on the first PVC's peak and
+        amplitude-normalised --- if they stack, they are uniform.
+  \item \textbf{First vs second beat}: median QRS of the first PVC (\interp{blue})
+        against the second (\textcolor{Orange}{orange}). High correlation means
+        both beats come from the same focus.
+\end{itemize}
+
+\reportfig{13_couplets_count_and_overlay.png}{Couplet count per session, all couplets overlaid, and first-vs-second-beat median QRS.}
+
+A few couplets in their raw recording context ($\pm$5\,s), same format as the
+example strips earlier --- green trace, the two ectopic QRS in \comp{red}. One
+clean representative is shown per \textbf{distinct local rhythm} (the N/V motif
+printed in each title) so the gallery spans the variations.
+
+\reportfig{14_couplet_example_strips.png}{A few couplets in raw context ($\pm$5\,s), one per distinct local rhythm motif.}
+
+\subsection{Local rhythm motif --- does the couplet sit in a repeating pattern?}
+Coding each beat as N (sinus) or V (PVC) for the four beats before and after
+every couplet reveals whether it recurs inside a fixed rhythm. The couplet is
+usually embedded in one recurring rhythm: the motif
+\texttt{N V N N [V V] N V N N} occurs in \textbf{30/46 (65\%)} of couplets --- an
+organised, trigeminy-like cadence (an isolated PVC, two sinus beats, the
+couplet, then the same again). These 30 occurrences are spread across six of the
+recordings, with no single session contributing more than a third, so the cadence is a
+stable trait of the focus rather than a quirk of one day. It is not universal: the remaining 16 show
+variants (the couplet out of a longer sinus run, after a bigeminal stretch, or
+followed by quiet), which is why the example strips span different motifs rather
+than repeating the dominant one.
+
+\reportfig[0.82\linewidth]{15_couplet_local_rhythm_motifs.png}{Local rhythm motifs around the couplet.}
+
+% ===================== 11. RESPIRATION =====================
+\section{Respiration (EDR) \& respiratory-phase trigger}\label{sec:edr}
+The final question: are the PVCs tied to \textbf{breathing}? There is no
+respiration belt, but the breath leaves a fingerprint on the ECG --- chest
+movement and lung-impedance change make the R-wave amplitude rise and fall with
+each breath (ECG-derived respiration, \textbf{EDR}). Recovering that signal from
+the R-amplitude of the normal beats (cubic-resampled to 4\,Hz, band-passed
+0.1--0.5\,Hz, instantaneous phase by Hilbert transform) lets us ask, for every
+beat, \emph{where in the breath} it fell.
+
+Respiration was recovered in \textbf{10/10} sessions; PVC timing is
+significantly coupled to respiratory phase in \textbf{10/10} of them ($\chi^2$
+across phase bins, $p<0.05$) --- so yes, there is a real correlation. The
+R-amplitude is largest at \textbf{full lungs} (the subject confirmed this
+directly while recording), so the phase peak sits at full inflation /
+end-inspiration: PVCs are over-represented there (mean peak $\times2.6$ vs
+chance) and sparsest near empty lungs. That points to a mechanical, lung-volume
+/ cardiac-filling trigger at peak inflation (diaphragm lowest, maximal venous
+return and chamber stretch) --- rather than the end-expiratory vagal one
+previously assumed.
+
+\reportfig{16_edr_respiration_demo.png}{ECG-derived respiration: the R-amplitude of sinus beats traces the breath; PVCs land on a recurring part of it.}
+
+Below: the phase distribution of all PVCs vs normal beats (polar) and the
+per-session enrichment around the respiratory cycle (values above $\times1$ mark
+phases where PVCs are over-represented). Phase 0/100\% is \textbf{full lungs}
+(largest R-amplitude, end-inspiration); 50\% is empty lungs (end-expiration).
+The enrichment peaks at full lungs.
+
+\reportfig{17_respiratory_phase_vs_pvc_enrichment.png}{Phase distribution of all PVCs vs normal beats (polar) and per-session enrichment around the respiratory cycle.}
+
+\subsection{Respiratory phase by PVC type}
+Do the different PVC types fall at the same point in the breath? This rosette
+splits the PVCs by type --- \interp{interpolated}, \comp{compensated} and
+\coupled{coupled} (both beats of each couplet) --- with each type's phase
+density normalised so the \emph{shape} is comparable despite very different
+counts. The phase peaks are interpolated 79\%, compensated 12\%, coupled 87\%
+(\% of cycle, $0=$ full lungs): all three favour roughly the same phase near
+full lungs, so they share one respiratory trigger and do not pick out separate
+phases.
+
+\reportfig[0.6\linewidth]{18_respiratory_phase_by_pvc_type.png}{Respiratory phase by PVC type --- interpolated, compensated and coupled all peak near full lungs.}
+
+\tableResp
+
+A significant $p$ means the PVCs are \textbf{not} uniformly spread across the
+breath --- they cluster at a phase, i.e.\ respiration modulates the focus. This
+is a signal-level observation, not a clinical finding.
+
+% ===================== COLOPHON =====================
+\vfill
+{\footnotesize\color{muted}
+\textbf{About this document.} Sample rate 250 Hz, single precordial lead
+(AD8232), 1st-order IIR bandpass 0.3--25 Hz, QRS detector and PVC classifier as
+in the setup box. Sessions filtered: size $\geq$ 5 MB and $\geq$ 50 PVCs. It is
+a personal-use, educational notebook and a discussion document for the
+supervising cardiologist --- it does \textbf{not} constitute a diagnostic
+report.\par
+\vspace{0.4em}
+This report was built with heavy AI assistance; some of its analyses were
+initially wrong and were caught only by ground-truth checks (notably the
+respiratory phase, which was first concluded backwards). That story --- what it
+teaches about trusting AI with biomedical data --- is written up in
+\texttt{docs/caso-studio-ai-sicurezza.md}.\par}
+
+\end{document}
