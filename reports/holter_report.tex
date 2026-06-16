@@ -211,9 +211,14 @@ independently.
 \reportfig{02_pvc_morphology_summary.png}{Morphology of all detected PVCs. (a) every PVC overlaid (amplitude-normalised) with the median and IQR; (b) one median waveform per session; (c) pairwise correlation matrix of the session medians (all $r\geq0.99$); (d) coupling-interval distribution (median 480\,ms).\label{fig:morph}}
 
 \subsection{One continuous population, or discrete subtypes?}
-The high correlation excludes a \emph{second} focus with a distinct QRS, but not two
-morphological subtypes hidden inside one continuous-looking cloud (mild bifocality).
-Four data-driven checks address that (\textbf{Figure~\ref{fig:continuum}}):
+The overlay and pairwise correlation rule out a \emph{second} focus with a grossly distinct
+QRS, but they are insensitive to a subtler scenario: two morphological subtypes so alike that
+their medians still correlate highly --- a mild bifocality concealed within one
+continuous-looking cloud. A high mean correlation is necessary but not sufficient to claim a
+single focus, since it can equally arise from two tightly overlapping sub-populations. To test
+for discreteness \emph{directly}, rather than infer it from similarity, the full set of
+\totPVC{} amplitude-normalised complexes was examined with four complementary checks, each
+probing for a clustered structure from a different angle (\textbf{Figure~\ref{fig:continuum}}):
 \begin{itemize}
   \item \textbf{PCA + K-means (k=2)} forces a bipartition. Two well-separated
         clouds would mean two real subtypes; one connected cloud cut down the
@@ -225,6 +230,14 @@ Four data-driven checks address that (\textbf{Figure~\ref{fig:continuum}}):
   \item \textbf{Trough-depth histogram} --- one unimodal peak is consistent
         with a single focus; two separated peaks would not be.
 \end{itemize}
+
+All four point the same way --- a single continuous population, not discrete classes. The PCA
+projection is one connected cloud, and forcing $k=2$ merely slices it along the principal axis
+(partitions of 6,667 and 10,621 beats, with no gap between them); the depth-sorted heatmap
+grades smoothly from shallow to deep troughs with no band boundary; the elbow curve decays
+monotonically with no knee; and the trough-depth distribution is unimodal. This is the
+fingerprint of one focus with continuous beat-to-beat variation, consistent with the
+monomorphic picture established above.
 
 \reportfig{03_pvc_continuum_check.png}{Single-population checks: PCA + K-means, PVCs sorted by hyperpolarisation depth, the K-means elbow, and the trough-depth histogram.\label{fig:continuum}}
 
