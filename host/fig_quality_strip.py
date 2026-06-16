@@ -20,6 +20,10 @@ import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
 
+# font da paper: sans pulito (Helvetica/Arial), convenzione delle figure pubblicate
+plt.rcParams["font.family"] = "sans-serif"
+plt.rcParams["font.sans-serif"] = ["Helvetica", "Arial", "DejaVu Sans"]
+
 import dashboard as D
 
 TRACE   = "#2f8a63"   # traccia pulita (verde, come le strip del report)
@@ -28,6 +32,9 @@ SINUS   = "#2f8a63"   # marker sinusali
 EXCL_TR = "#9aa0a6"   # traccia dentro l'esclusione (grigia)
 EXCL_BG = "#fbe2b0"   # sfondo esclusione (giallo-arancio: distinto dal rosso PVC)
 EXCL_EDGE = "#e3b25e"
+# rallentamento sinusale transitorio dopo la 2a PVC (tempi assoluti; validi per la
+# finestra auto-selezionata di 06-08 22:01 = 3679-3751 s). Se la finestra cambia non si disegna.
+SLOW_MARK = (3734.8, 3741.0, "transient sinus slowing")
 
 ROW_DUR = 12.0        # secondi per riga
 N_ROWS  = 6           # righe -> 72 s; righe alte -> riempie comunque la pagina
@@ -132,7 +139,7 @@ def render(label, t, v, peaks, excl, w0, w1, ex):
     ylo = min(-1.0, float(np.percentile(vv, 0.3)) - 0.25)
     yhi = max(1.6, float(np.percentile(vv, 99.7)) + 0.55)
 
-    fig, axes = plt.subplots(N_ROWS, 1, figsize=(8.1, 1.5 * N_ROWS + 0.9),
+    fig, axes = plt.subplots(N_ROWS, 1, figsize=(8.1, 0.8 * N_ROWS + 1.0),
                              facecolor="#ffffff")
     for r, ax in enumerate(axes):
         rs = w0 + r * ROW_DUR
@@ -146,9 +153,9 @@ def render(label, t, v, peaks, excl, w0, w1, ex):
         # traccia pulita (verde) e dentro-esclusione (grigia)
         yc = np.where(mex_row, np.nan, y)
         yg = np.where(mex_row, y, np.nan)
-        ax.plot(x, yc, lw=1.0, color=TRACE)
+        ax.plot(x, yc, lw=0.45, color=TRACE)
         if np.isfinite(yg).any():
-            ax.plot(x, yg, lw=0.9, color=EXCL_TR)
+            ax.plot(x, yg, lw=0.4, color=EXCL_TR)
             # sfondo + etichetta sul tratto escluso
             a = max(es, rs) - rs
             b = min(ee, re) - rs
@@ -160,12 +167,27 @@ def render(label, t, v, peaks, excl, w0, w1, ex):
             xp = p["t"] - rs
             if p["cls"] == "pvc":
                 wm = (t >= p["t"] - 0.12) & (t <= p["t"] + 0.12)
-                ax.plot(t[wm] - rs, v[wm], lw=1.8, color=PVC, zorder=4)
+                ax.plot(t[wm] - rs, v[wm], lw=0.9, color=PVC, zorder=4)
                 ax.scatter(xp, min(yhi - 0.18, p["amp"] + 0.30), s=46, marker="v",
                            color=PVC, edgecolors="#1a1a1a", linewidths=0.45, zorder=6)
             else:
                 ax.scatter(xp, min(yhi - 0.3, p["amp"] + 0.16), s=15, marker="v",
                            color=SINUS, edgecolors="#1a1a1a", linewidths=0.3, zorder=5)
+        # parentesi discreta sul rallentamento sinusale (se cade in questa riga)
+        s0, s1, slab = SLOW_MARK
+        if w0 <= s0 and s1 <= w1 and s0 < re and s1 > rs:
+            a = max(s0, rs) - rs
+            b = min(s1, re) - rs
+            rng = yhi - ylo
+            ybr = ylo + 0.17 * rng          # staccata sotto la traccia
+            tick = 0.05 * rng
+            ax.plot([a, b], [ybr, ybr], color="#9a9a9a", lw=0.8, zorder=7)
+            if s0 >= rs:                      # tick + etichetta solo dove INIZIA
+                ax.plot([a, a], [ybr, ybr + tick], color="#9a9a9a", lw=0.8, zorder=7)
+                ax.text((a + b) / 2, ybr - 0.03 * rng, slab, ha="center", va="top",
+                        color="#777777", fontsize=7, fontstyle="italic")
+            if s1 <= re:                      # tick destro solo dove FINISCE
+                ax.plot([b, b], [ybr, ybr + tick], color="#9a9a9a", lw=0.8, zorder=7)
         ax.set_xlim(0, ROW_DUR)
         ax.set_ylim(ylo, yhi)
         ax.grid(True, which="both", alpha=0.14, color="#dcdcdc", lw=0.4)
@@ -189,14 +211,11 @@ def render(label, t, v, peaks, excl, w0, w1, ex):
                   label="PVC (auto)"),
            Patch(facecolor=EXCL_BG, edgecolor=EXCL_EDGE,
                  label="manually excluded (noise)")]
-    fig.suptitle(f"Continuous {int(w1-w0)} s of session {label} — automatic "
-                 "detection, with one noise-excluded stretch", color="#1f1f1f",
-                 fontsize=11.5, y=0.997)
     fig.legend(handles=leg, loc="upper center", ncol=3, fontsize=9.5,
-               frameon=False, bbox_to_anchor=(0.5, 0.978), columnspacing=2.4)
-    fig.subplots_adjust(left=0.055, right=0.992, top=0.90, bottom=0.045, hspace=0.32)
+               frameon=False, bbox_to_anchor=(0.5, 0.995), columnspacing=2.4)
+    fig.subplots_adjust(left=0.055, right=0.992, top=0.90, bottom=0.075, hspace=0.30)
     out = os.path.join(OUT_DIR, "quality_strip.png")
-    fig.savefig(out, dpi=300, facecolor="#ffffff")
+    fig.savefig(out, dpi=450, facecolor="#ffffff")
     plt.close(fig)
     print(f"\n✓ Scritto {out}")
     print(f"  Sessione {label}, finestra {w0:.0f}-{w1:.0f}s, esclusione {es:.0f}-{ee:.0f}s")

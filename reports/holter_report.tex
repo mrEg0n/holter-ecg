@@ -62,7 +62,7 @@
 \titlespacing*{\subsection}{0pt}{1.4ex plus .2ex}{0.6ex}
 
 % ---- didascalie ----
-\captionsetup{font=small,labelfont=bf,labelsep=period,skip=4pt,justification=justified,singlelinecheck=false}
+\captionsetup{font={footnotesize,it},labelfont={bf,up},labelsep=period,skip=5pt,justification=justified,singlelinecheck=false}
 
 % ---- testatina ----
 \pagestyle{plain}   % numero pagina centrato in basso, stile paper
@@ -91,7 +91,7 @@
 A Longitudinal Single-Subject Analysis of Premature Ventricular Complexes}\\[14pt]
 {\large Andrea Pedroni}\\[5pt]
 {\itshape Independent project $\cdot$ apedroni85@gmail.com}\\[2pt]
-{\itshape Personal report --- June 2026}
+{\itshape Personal report --- May/June 2026}
 \end{center}
 
 \vspace{4pt}\hrule\vspace{6pt}
@@ -164,46 +164,56 @@ These thresholds were tuned and empirically validated on this single subject. Th
 The only operation left to manual curation is the exclusion of intervals corrupted by motion artefacts or poor electrode contact. These intervals are marked by hand in a paginated editor, which stores per-session exclusion files. Beats falling within excluded intervals are removed before any downstream analysis.
 Figure~\ref{fig:quality} illustrates the detection and curation procedure on a continuous segment from one recording, displayed as consecutive 12\,s rows. The trace is stable over most of the segment, and each detected beat carries its automatic label, with PVCs shown in \comp{red} and sinus beats in \textcolor{ForestGreen}{green}. A single shaded interval corresponds to a burst of motion noise and is visually distinct from the surrounding ECG. This is the type of segment removed during manual noise curation.
 
-\reportfigP{quality_strip.png}{A continuous 72-second stretch of one session, in consecutive 12-second rows. The ECG is clean and every beat is detected automatically (PVCs in red, sinus beats in green); the shaded 10-second stretch is motion / contact noise, marked by hand and excluded before analysis --- no detection markers fall inside it.\label{fig:quality}}
+\reportfig{quality_strip.png}{Continuous 72-second segment, displayed in consecutive 12-second rows. Beats are detected automatically, with PVCs shown in red and sinus beats in green. The shaded 10 s interval corresponds to motion/contact noise and was manually excluded before analysis. The bracket in the 62:07 and 62:19 rows marks a transient slowing of the sinus rate to $\sim$60\,bpm.
+\label{fig:quality}}
 
-A complementary view: a set of $\pm$10-second example windows (20\,s each), selected
-automatically across sessions and kept away from intervals marked as noise. The
-continuous trace shows the raw signal quality; the detector output is overlaid on top,
-exactly as used in every analysis below: the QRS of each PVC is highlighted in
-\comp{red} ($\pm$120\,ms) with a marker, while \textcolor{ForestGreen}{green}
-markers tag the sinus beats. The mix includes ordinary isolated PVCs plus a
-couplet, a burst and interpolated beats (tagged in each title).
-
-\reportfigP{01_example_strips_with_pvc_detection.png}{Twenty-second windows selected automatically across sessions, detector output overlaid: PVC QRS in red, sinus beats tagged green.}
-
-\clearpage   % forza le figure [p] di Recording quality PRIMA di Dataset overview
 % ===================== DATASET OVERVIEW (dopo) =====================
 \section{Dataset overview}
-Across \nSessions{} sessions ($\approx$\totMinutes{} minutes, about 15 h of
-single-lead ECG) the detector classified \totBeats{} heartbeats, of which
-\totPVC{} were PVCs --- a cumulative burden of \cumBurden{}. A further
-\exclMinutes{} of trace were marked by hand as noise and excluded from every
-analysis. The burden figure is not a clinical index here; it only frames how
-much ectopy this particular recorder saw over these particular recordings.
+All data presented in the following sections were obtained from the 10 recording sessions listed below. The sessions span different times of day and were acquired mainly under resting conditions, either in a supine position or while seated during desk work.
+Across \nSessions{} sessions, corresponding to approximately ($\approx$\totMinutes{} minutes (about 15\,h), the detector classified \totBeats{} heartbeats. Of these
+\totPVC{} were labelled as PVCs, corrisponding to a a cumulative burden of \cumBurden{}. A further
+\exclMinutes{} of trace were marked by hand as noise and excluded from all
+analysis. 
 
 \subsection*{Sessions}
 \tableSessions
 
-% ===================== 3. PVC MORPHOLOGY =====================
-\section{PVC morphology}
-Each PVC is centred on its ectopic peak, normalised to its own amplitude
-(peak $=1.0$), and overlaid in a common time window. Conservation of this
-shape across sessions suggests a single stable ectopic focus; visible
-divergences could indicate multifocality or substrate changes. The first two
-panels share the same Y-axis scale for direct visual comparison.
+% ===================== PVC CHARACTERIZATION & MORPHOLOGY =====================
+\section{PVC characterization and morphology}
+Across the recordings, PVCs occur in several recurring patterns, including isolated
+beats, couplets, short non-sustained runs, and bigeminal stretches.
+Figure~\ref{fig:examples} shows representative $\approx$14\,s windows selected
+automatically across sessions and kept away from manually excluded noise intervals. The
+same automatic labelling used throughout the report is overlaid on the trace: PVC QRS
+complexes are highlighted in \comp{red} over a $\pm$120\,ms window and marked
+individually, while sinus beats are marked in \textcolor{ForestGreen}{green}.
 
-\reportfig{02_pvc_morphology_summary.png}{PVC morphology summary: all PVCs overlaid, median by session, dispersion, and the median PVC.}
+\reportfig{example_strips.png}{Representative clean windows ($\approx$14\,s) selected automatically across sessions, covering the main PVC presentations: isolated beats, couplets, and short non-sustained runs (including a bigeminal stretch). Detector output overlaid --- PVC QRS in \comp{red} with a marker, sinus beats tagged \textcolor{ForestGreen}{green}. The event type and session time are printed above each panel.\label{fig:examples}}
+
+A total of \totPVC{} PVCs were detected across the \nSessions{} recordings. To establish
+whether they share a single electrical signature --- i.e.\ originate from one ectopic
+focus rather than several --- the complexes were characterised morphologically: each was
+centred on its ectopic peak, normalised to its own amplitude (peak $=1.0$) and
+superimposed, with the median and inter-quartile band over the whole set and one median
+waveform per session (Fig.~\ref{fig:morph}a,b). The session medians were then compared
+quantitatively by pairwise correlation (Fig.~\ref{fig:morph}c), and the firing timing
+summarised by the coupling-interval distribution (Fig.~\ref{fig:morph}d).
+
+The superimposed complexes collapse onto a single tight shape and the per-session medians
+are almost indistinguishable: every pair of medians correlates at $r\geq0.992$ (median
+$r=0.997$). One recording (2026-06-06 13:41) shows a marginally deeper hyperpolarisation
+trough (Fig.~\ref{fig:morph}b) but still correlates at $r\geq0.99$, so the difference is
+amplitude / repolarisation variation rather than a distinct complex. The coupling interval
+is correspondingly tight (median 480\,ms, IQR 460--504\,ms). Together these indicate a
+single, stable, monomorphic focus re-entering on a fixed circuit, not several foci firing
+independently.
+
+\reportfig{02_pvc_morphology_summary.png}{Morphology of all detected PVCs. (a) every PVC overlaid (amplitude-normalised) with the median and IQR; (b) one median waveform per session; (c) pairwise correlation matrix of the session medians (all $r\geq0.99$); (d) coupling-interval distribution (median 480\,ms).\label{fig:morph}}
 
 \subsection{One continuous population, or discrete subtypes?}
-Visual inspection of the per-session median suggests one session shows a
-slightly different hyperpolarisation profile. Is that a single focus with
-continuous variability, or two morphological subtypes (mild bifocality)? Four
-data-driven checks:
+The high correlation excludes a \emph{second} focus with a distinct QRS, but not two
+morphological subtypes hidden inside one continuous-looking cloud (mild bifocality).
+Four data-driven checks address that (Figure~\ref{fig:continuum}):
 \begin{itemize}
   \item \textbf{PCA + K-means (k=2)} forces a bipartition. Two well-separated
         clouds would mean two real subtypes; one connected cloud cut down the
@@ -216,7 +226,7 @@ data-driven checks:
         with a single focus; two separated peaks would not be.
 \end{itemize}
 
-\reportfig{03_pvc_continuum_check.png}{Single-population checks: PCA + K-means, PVCs sorted by hyperpolarisation depth, the K-means elbow, and the trough-depth histogram.}
+\reportfig{03_pvc_continuum_check.png}{Single-population checks: PCA + K-means, PVCs sorted by hyperpolarisation depth, the K-means elbow, and the trough-depth histogram.\label{fig:continuum}}
 
 \textbf{Note on the sparse points (lower-right of the PCA panel).} The thin
 scatter fanning out below the dense ball is \emph{not} a second type or focus:

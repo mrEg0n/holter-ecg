@@ -51,7 +51,7 @@ import matplotlib.pyplot as plt
 # Font figure = Helvetica Neue (più vicino al SF Pro del body HTML; SF Pro non
 # è caricabile da matplotlib). Fallback su Helvetica/Arial/DejaVu. Standard.
 plt.rcParams["font.family"] = "sans-serif"
-plt.rcParams["font.sans-serif"] = ["Helvetica Neue", "Helvetica", "Arial", "DejaVu Sans"]
+plt.rcParams["font.sans-serif"] = ["Helvetica", "Arial", "DejaVu Sans"]
 
 # ---------- classifier configuration ----------
 PVC_MIN_AMP = 0.70   # V
@@ -814,7 +814,9 @@ def main():
     y_max = 1.10
 
     # Figure PVC morphology: posizioni esplicite per allineamento perfetto.
-    fig = plt.figure(figsize=FIGSIZE, facecolor=DARK_BG)
+    # larghezza 8.1in = stessa di quality_strip / example_strips (Fig 1-2): cosi' in
+    # pagina (scalata a \linewidth) carattere e tratto rendono alla stessa dimensione.
+    fig = plt.figure(figsize=(8.1, 7.6), facecolor=DARK_BG)
 
     # (1) — overlay tutte PVC (palette rossa)
     ax = fig.add_axes(PANEL_POS["tl"]); ax.set_facecolor(DARK_BG)
@@ -827,8 +829,8 @@ def main():
     ax.set_xlim(-WIN/2, WIN/2); ax.set_ylim(y_min, y_max)
     ax.set_ylabel("Amplitude (peak-normalized)", color="#1a1a1a", fontsize=FS_LABEL)
     ax.set_xlabel("Time relative to ectopic peak (s)", color="#1a1a1a", fontsize=FS_LABEL)
-    ax.set_title(f"All PVCs overlaid — median ± IQR  (n={len(all_traces_norm):,})",
-                 color="#1f1f1f", fontsize=FS_TITLE)
+    ax.set_title(f"$\\bf{{(a)}}$ All PVCs overlaid — median ± IQR  (n={len(all_traces_norm):,})",
+                 color="#1f1f1f", fontsize=8.5)
     ax.legend(facecolor="#f2efe9", labelcolor="#1a1a1a", edgecolor="#c8c8c8",
               fontsize=FS_LEGEND, loc="upper right")
     ax.tick_params(colors="#555555", labelsize=FS_TICK)
@@ -848,7 +850,7 @@ def main():
                 label=f"{short_label(s['label'])} (n={len(s['traces_norm'])})")
     ax.axvline(0, color="#6a6a6a", alpha=0.4, lw=0.8, ls=":")
     ax.set_xlabel("Time relative to ectopic peak (s)", color="#1a1a1a", fontsize=FS_LABEL)
-    ax.set_title("Median morphology by session", color="#1f1f1f", fontsize=FS_TITLE)
+    ax.set_title(r"$\bf{(b)}$ Median morphology by session", color="#1f1f1f", fontsize=8.5)
     # legenda verticale FUORI dal box, sul lato destro
     leg = ax.legend(facecolor="#f2efe9", labelcolor="#1a1a1a", edgecolor="#c8c8c8",
                     fontsize=FS_TEXT-1, loc="center left",
@@ -872,7 +874,7 @@ def main():
             ax.text(j, i, f"{corr_matrix[i,j]:.3f}", ha="center", va="center",
                     color="black", fontsize=FS_TEXT-1)
     tight_cbar(fig, im, PANEL_POS["bl"], "Pearson r", fs=FS_TICK)
-    ax.set_title("Cross-session correlation matrix", color="#1f1f1f", fontsize=FS_TITLE)
+    ax.set_title(r"$\bf{(c)}$ Cross-session correlation matrix", color="#1f1f1f", fontsize=8.5)
     for sp in ax.spines.values(): sp.set_color("#c8c8c8")
 
     # (4) — coupling interval distribution (RR_pre tutti PVC)
@@ -887,13 +889,13 @@ def main():
                   fontsize=FS_LEGEND, loc="upper right")
     ax.set_xlabel("Coupling interval RR_pre (ms)", color="#555555", fontsize=FS_LABEL)
     ax.set_ylabel("Density", color="#555555", fontsize=FS_LABEL)
-    ax.set_title(f"Coupling interval distribution  (n={len(all_coupling):,})",
-                 color="#1f1f1f", fontsize=FS_TITLE)
+    ax.set_title(f"$\\bf{{(d)}}$ Coupling interval distribution  (n={len(all_coupling):,})",
+                 color="#1f1f1f", fontsize=8.5)
     ax.tick_params(colors="#555555", labelsize=FS_TICK)
     for sp in ax.spines.values(): sp.set_color("#c8c8c8")
     ax.grid(alpha=0.18, color="#dcdcdc")
 
-    img_morphology_4panel = fig_to_b64(fig, dpi=220)
+    img_morphology_4panel = fig_to_b64(fig, dpi=450)
 
     # ============ CONTINUUM CHECK (data-driven, check if bimodal subtypes exist) ============
     try:
