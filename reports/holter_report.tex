@@ -222,13 +222,13 @@ probing for a clustered structure from a different angle (\textbf{Figure~\ref{fi
 \begin{itemize}
   \item \textbf{PCA + K-means (k=2)} forces a bipartition. Two well-separated
         clouds would mean two real subtypes; one connected cloud cut down the
-        middle means the split is an artefact.
+        middle means the split is an artefact (\textbf{Fig.~\ref{fig:continuum}a}).
   \item \textbf{PVCs sorted by hyperpolarisation depth} --- two sharp bands
-        indicate subtypes, a smooth gradient a continuum.
+        indicate subtypes, a smooth gradient a continuum (\textbf{Fig.~\ref{fig:continuum}b}).
   \item \textbf{Elbow plot} --- a sharp knee would suggest a natural number of
-        clusters; a smooth decay, none.
+        clusters; a smooth decay, none (\textbf{Fig.~\ref{fig:continuum}c}).
   \item \textbf{Trough-depth histogram} --- one unimodal peak is consistent
-        with a single focus; two separated peaks would not be.
+        with a single focus; two separated peaks would not be (\textbf{Fig.~\ref{fig:continuum}d}).
 \end{itemize}
 
 All four point the same way --- a single continuous population, not discrete classes. The PCA
@@ -239,7 +239,7 @@ monotonically with no knee; and the trough-depth distribution is unimodal. This 
 fingerprint of one focus with continuous beat-to-beat variation, consistent with the
 monomorphic picture established above.
 
-\reportfig{03_pvc_continuum_check.png}{Single-population checks: PCA + K-means, PVCs sorted by hyperpolarisation depth, the K-means elbow, and the trough-depth histogram.\label{fig:continuum}}
+\reportfig{03_pvc_continuum_check.png}{Single-population checks. (a) PCA + K-means projection; (b) PVCs sorted by hyperpolarisation depth; (c) the K-means elbow; (d) the trough-depth histogram.\label{fig:continuum}}
 
 \textbf{Note on the sparse points (lower-right of the PCA panel).} The thin
 scatter fanning out below the dense ball is \emph{not} a second type or focus:

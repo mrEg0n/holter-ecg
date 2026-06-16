@@ -915,7 +915,8 @@ def main():
         step_hm = max(1, len(all_traces_norm) // 600)
         heatmap_data = all_traces_norm[order][::step_hm]
 
-        fig = plt.figure(figsize=FIGSIZE, facecolor=DARK_BG)
+        # stessa larghezza di Fig 1-3 (8.1in) per resa uniforme in pagina
+        fig = plt.figure(figsize=(8.1, 7.6), facecolor=DARK_BG)
 
         # (1) PCA scatter + KMeans k=2
         ax = fig.add_axes(PANEL_POS["tl"]); ax.set_facecolor(DARK_BG)
@@ -925,8 +926,8 @@ def main():
                        label=f"Cluster {name} (n={mask.sum():,})")
         ax.set_xlabel("PC1", color="#1a1a1a", fontsize=FS_LABEL)
         ax.set_ylabel("PC2", color="#1a1a1a", fontsize=FS_LABEL)
-        ax.set_title("PCA + K-means k=2 — artificial bipartition?",
-                     color="#1f1f1f", fontsize=FS_TITLE)
+        ax.set_title(r"$\bf{(a)}$ PCA + K-means k=2 — artificial bipartition?",
+                     color="#1f1f1f", fontsize=8.5)
         ax.legend(facecolor="#f2efe9", labelcolor="#1a1a1a", edgecolor="#c8c8c8",
                   fontsize=FS_LEGEND, loc="upper right")
         ax.tick_params(colors="#555555", labelsize=FS_TICK)
@@ -941,8 +942,8 @@ def main():
         ax.set_xlabel("Time relative to ectopic peak (s)",
                       color="#1a1a1a", fontsize=FS_LABEL)
         ax.set_ylabel("PVCs sorted by trough depth", color="#1a1a1a", fontsize=FS_LABEL)
-        ax.set_title("PVCs sorted by hyperpolarization depth",
-                     color="#1f1f1f", fontsize=FS_TITLE)
+        ax.set_title(r"$\bf{(b)}$ PVCs sorted by hyperpolarization depth",
+                     color="#1f1f1f", fontsize=8.5)
         ax.tick_params(colors="#555555", labelsize=FS_TICK)
         tight_cbar(fig, im, PANEL_POS["tr"], "Amplitude (norm.)", fs=FS_TICK)
         for sp in ax.spines.values(): sp.set_color("#c8c8c8")
@@ -952,8 +953,8 @@ def main():
         ax.plot(range(1, 7), inertias, marker="o", color="#b8860b", lw=2, ms=8)
         ax.set_xlabel("k (number of clusters)", color="#1a1a1a", fontsize=FS_LABEL)
         ax.set_ylabel("Within-cluster sum of squares", color="#1a1a1a", fontsize=FS_LABEL)
-        ax.set_title("Elbow plot — discrete clusters?",
-                     color="#1f1f1f", fontsize=FS_TITLE)
+        ax.set_title(r"$\bf{(c)}$ Elbow plot — discrete clusters?",
+                     color="#1f1f1f", fontsize=8.5)
         ax.tick_params(colors="#555555", labelsize=FS_TICK)
         for sp in ax.spines.values(): sp.set_color("#c8c8c8")
         ax.grid(alpha=0.18, color="#dcdcdc")
@@ -965,13 +966,13 @@ def main():
         ax.set_xlabel("Post-QRS trough depth (peak-normalized)",
                       color="#555555", fontsize=FS_LABEL)
         ax.set_ylabel("Density", color="#555555", fontsize=FS_LABEL)
-        ax.set_title(f"Hyperpolarization depth distribution  (n={len(trough_depth):,})",
-                     color="#1f1f1f", fontsize=FS_TITLE)
+        ax.set_title(f"$\\bf{{(d)}}$ Hyperpolarization depth distribution  (n={len(trough_depth):,})",
+                     color="#1f1f1f", fontsize=8.5)
         ax.tick_params(colors="#555555", labelsize=FS_TICK)
         for sp in ax.spines.values(): sp.set_color("#c8c8c8")
         ax.grid(alpha=0.18, color="#dcdcdc")
 
-        img_pvc_continuum = fig_to_b64(fig, dpi=220)
+        img_pvc_continuum = fig_to_b64(fig, dpi=450)
     except Exception as e:
         print(f"  warning: continuum check failed: {e}")
         img_pvc_continuum = None
