@@ -210,33 +210,42 @@ compatible with a single monomorphic focus rather than several foci firing indep
 \reportfig{02_pvc_morphology_summary.png}{Morphology of all detected PVCs. (a) every PVC overlaid (amplitude-normalised) with the median and IQR; (b) one median waveform per session; (c) pairwise correlation matrix of the session medians (all $r\geq0.99$); (d) coupling-interval distribution (median 480\,ms).\label{fig:morph}}
 
 \subsection{One continuous population, or discrete subtypes?}
-The overlay and pairwise correlation rule out a \emph{second} focus with a grossly distinct
-QRS, but they are insensitive to a subtler scenario: two morphological subtypes so alike that
-their medians still correlate highly --- a mild bifocality concealed within one
-continuous-looking cloud. A high mean correlation is necessary but not sufficient to claim a
-single focus, since it can equally arise from two tightly overlapping sub-populations. To test
-for discreteness \emph{directly}, rather than infer it from similarity, the full set of
-\totPVC{} amplitude-normalised complexes was examined with four complementary checks, each
-probing for a clustered structure from a different angle (\textbf{Figure~\ref{fig:continuum}}):
+The overlay and pairwise correlation analyses provide no evidence for a second PVC morphology
+with a grossly distinct QRS profile. However, these measures are less sensitive to a subtler
+possibility: two highly similar morphological subtypes whose session medians remain strongly
+correlated and therefore appear as a single continuous population. High mean correlation is
+therefore necessary but not sufficient to support a single-source interpretation, since it
+could also arise from two tightly overlapping subpopulations.
+
+To test for discrete structure directly, rather than infer it only from morphological
+similarity, the full set of \totPVC{} amplitude-normalised PVC complexes was examined using
+four complementary checks, each probing clustering from a different angle
+(\textbf{Figure~\ref{fig:continuum}}):
 \begin{itemize}
-  \item \textbf{PCA + K-means (k=2)} forces a bipartition. Two well-separated
-        clouds would mean two real subtypes; one connected cloud cut down the
-        middle means the split is an artefact (\textbf{Fig.~\ref{fig:continuum}a}).
-  \item \textbf{PVCs sorted by hyperpolarisation depth} --- two sharp bands
-        indicate subtypes, a smooth gradient a continuum (\textbf{Fig.~\ref{fig:continuum}b}).
-  \item \textbf{Elbow plot} --- a sharp knee would suggest a natural number of
-        clusters; a smooth decay, none (\textbf{Fig.~\ref{fig:continuum}c}).
-  \item \textbf{Trough-depth histogram} --- one unimodal peak is consistent
-        with a single focus; two separated peaks would not be (\textbf{Fig.~\ref{fig:continuum}d}).
+  \item \textbf{PCA + K-means (k = 2).} A true two-subtype structure would be expected to
+        produce two separated clouds, whereas a connected cloud split through its centre
+        would suggest an artificial partition imposed by the algorithm
+        (\textbf{Fig.~\ref{fig:continuum}a}).
+  \item \textbf{Sorting by hyperpolarisation depth.} Two sharp bands would support discrete
+        subtypes, whereas a smooth progression would support continuous variability
+        (\textbf{Fig.~\ref{fig:continuum}b}).
+  \item \textbf{K-means elbow plot.} A sharp knee would suggest a natural number of clusters,
+        whereas a smooth decay would argue against discrete clustering
+        (\textbf{Fig.~\ref{fig:continuum}c}).
+  \item \textbf{Trough-depth histogram.} A unimodal distribution would be consistent with a
+        single continuous population, whereas two separated peaks would support discrete
+        morphological subtypes (\textbf{Fig.~\ref{fig:continuum}d}).
 \end{itemize}
 
-All four point the same way --- a single continuous population, not discrete classes. The PCA
-projection is one connected cloud, and forcing $k=2$ merely slices it along the principal axis
-(partitions of 6,667 and 10,621 beats, with no gap between them); the depth-sorted heatmap
-grades smoothly from shallow to deep troughs with no band boundary; the elbow curve decays
-monotonically with no knee; and the trough-depth distribution is unimodal. This pattern is
-consistent with a single focus showing continuous beat-to-beat variation, in line with the
-monomorphic picture established above.
+All four analyses point in the same direction: the PVCs form a single continuous population
+rather than separable morphological classes. The PCA projection shows one connected cloud, and
+forcing $k=2$ only divides it along the main axis of variation, producing two partitions of
+6,667 and 10,621 beats without a visible gap between them. The depth-sorted heatmap changes
+gradually from shallower to deeper troughs, with no clear band boundary. The elbow curve decays
+smoothly, without a distinct knee, and the trough-depth distribution is unimodal. Within the
+limits of a single-lead recording setup, this pattern is consistent with a single dominant
+monomorphic ectopic source showing continuous beat-to-beat variability, rather than multiple
+clearly distinguishable PVC morphologies.
 
 \reportfig{03_pvc_continuum_check.png}{Single-population checks. (a) PCA + K-means projection; (b) PVCs sorted by hyperpolarisation depth; (c) the K-means elbow; (d) the trough-depth histogram.\label{fig:continuum}}
 
