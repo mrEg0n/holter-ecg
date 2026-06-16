@@ -162,7 +162,7 @@ Beat detection and classification are fully automatic. The ECG signal is first b
 A beat is flagged as a premature ventricular complex (PVC) when it satisfies predefined criteria based on QRS width, post-QRS rebound, signal amplitude, and physiologically plausible duration. Specifically, PVC candidates must show sufficient width and/or a marked post-QRS rebound, adequate amplitude, and a measured width within the 40--220\,ms range. No template matching or model training is used. The same thresholds are applied unchanged across all sessions, ensuring that every recording is processed with the same classification rule.
 These thresholds were tuned and empirically validated on this single subject. They therefore reflect this individual's ECG morphology, signal amplitude, electrode placement, and acquisition geometry. The same parametrization should not be assumed to transfer unchanged to other subjects. In practice, the most subject-dependent parameter is the absolute amplitude threshold. This could be made self-calibrating by estimating it once from a clean baseline window at the beginning of a recording and then holding it fixed throughout the session. Such a baseline-then-fixed approach would avoid continuous adaptation, which could otherwise be transiently biased by motion artefacts or poor electrode contact. With this modification, the same pipeline could in principle be extended to other subjects recorded with comparable electrode placement.
 The only operation left to manual curation is the exclusion of intervals corrupted by motion artefacts or poor electrode contact. These intervals are marked by hand in a paginated editor, which stores per-session exclusion files. Beats falling within excluded intervals are removed before any downstream analysis.
-Figure~\ref{fig:quality} illustrates the detection and curation procedure on a continuous segment from one recording, displayed as consecutive 12\,s rows. The trace is stable over most of the segment, and each detected beat carries its automatic label, with PVCs shown in \comp{red} and sinus beats in \textcolor{ForestGreen}{green}. A single shaded interval corresponds to a burst of motion noise and is visually distinct from the surrounding ECG. This is the type of segment removed during manual noise curation.
+\textbf{Figure~\ref{fig:quality}} illustrates the detection and curation procedure on a continuous segment from one recording, displayed as consecutive 12\,s rows. The trace is stable over most of the segment, and each detected beat carries its automatic label, with PVCs shown in \comp{red} and sinus beats in \textcolor{ForestGreen}{green}. A single shaded interval corresponds to a burst of motion noise and is visually distinct from the surrounding ECG. This is the type of segment removed during manual noise curation.
 
 \reportfig{quality_strip.png}{Continuous 72-second segment, displayed in consecutive 12-second rows. Beats are detected automatically, with PVCs shown in red and sinus beats in green. The shaded 10 s interval corresponds to motion/contact noise and was manually excluded before analysis. The bracket in the 62:07 and 62:19 rows marks a transient slowing of the sinus rate to $\sim$60\,bpm.
 \label{fig:quality}}
@@ -182,7 +182,7 @@ analysis.
 \section{PVC characterization and morphology}
 Across the recordings, PVCs occur in several recurring patterns, including isolated
 beats, couplets, short non-sustained runs, and bigeminal stretches.
-Figure~\ref{fig:examples} shows representative $\approx$14\,s windows selected
+\textbf{Figure~\ref{fig:examples}} shows representative $\approx$14\,s windows selected
 automatically across sessions and kept away from manually excluded noise intervals. The
 same automatic labelling used throughout the report is overlaid on the trace: PVC QRS
 complexes are highlighted in \comp{red} over a $\pm$120\,ms window and marked
@@ -195,14 +195,14 @@ whether they share a single electrical signature --- i.e.\ originate from one ec
 focus rather than several --- the complexes were characterised morphologically: each was
 centred on its ectopic peak, normalised to its own amplitude (peak $=1.0$) and
 superimposed, with the median and inter-quartile band over the whole set and one median
-waveform per session (Fig.~\ref{fig:morph}a,b). The session medians were then compared
-quantitatively by pairwise correlation (Fig.~\ref{fig:morph}c), and the firing timing
-summarised by the coupling-interval distribution (Fig.~\ref{fig:morph}d).
+waveform per session (\textbf{Fig.~\ref{fig:morph}a,b}). The session medians were then compared
+quantitatively by pairwise correlation (\textbf{Fig.~\ref{fig:morph}c}), and the firing timing
+summarised by the coupling-interval distribution (\textbf{Fig.~\ref{fig:morph}d}).
 
 The superimposed complexes collapse onto a single tight shape and the per-session medians
 are almost indistinguishable: every pair of medians correlates at $r\geq0.992$ (median
 $r=0.997$). One recording (2026-06-06 13:41) shows a marginally deeper hyperpolarisation
-trough (Fig.~\ref{fig:morph}b) but still correlates at $r\geq0.99$, so the difference is
+trough (\textbf{Fig.~\ref{fig:morph}b}) but still correlates at $r\geq0.99$, so the difference is
 amplitude / repolarisation variation rather than a distinct complex. The coupling interval
 is correspondingly tight (median 480\,ms, IQR 460--504\,ms). Together these indicate a
 single, stable, monomorphic focus re-entering on a fixed circuit, not several foci firing
@@ -213,7 +213,7 @@ independently.
 \subsection{One continuous population, or discrete subtypes?}
 The high correlation excludes a \emph{second} focus with a distinct QRS, but not two
 morphological subtypes hidden inside one continuous-looking cloud (mild bifocality).
-Four data-driven checks address that (Figure~\ref{fig:continuum}):
+Four data-driven checks address that (\textbf{Figure~\ref{fig:continuum}}):
 \begin{itemize}
   \item \textbf{PCA + K-means (k=2)} forces a bipartition. Two well-separated
         clouds would mean two real subtypes; one connected cloud cut down the
