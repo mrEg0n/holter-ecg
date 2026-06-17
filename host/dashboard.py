@@ -847,16 +847,16 @@ def main():
         col = palette[i % len(palette)]
         m = np.median(s["traces_norm"], axis=0)
         ax.plot(TG, m, color=col, lw=1.1,
-                label=f"{short_label(s['label'])} (n={len(s['traces_norm'])})")
+                label=short_label(s['label']))
     ax.axvline(0, color="#6a6a6a", alpha=0.4, lw=0.8, ls=":")
     ax.set_xlabel("Time relative to ectopic peak (s)", color="#1a1a1a", fontsize=FS_LABEL)
     ax.set_title(r"$\bf{(b)}$ Median morphology by session", color="#1f1f1f", fontsize=8.5)
     # legenda verticale FUORI dal box, sul lato destro
     leg = ax.legend(facecolor="#f2efe9", labelcolor="#1a1a1a", edgecolor="#c8c8c8",
-                    fontsize=FS_TEXT-1, loc="center left",
-                    bbox_to_anchor=(1.02, 0.5), ncol=1,
-                    handlelength=1.4, handletextpad=0.5, borderpad=0.6,
-                    labelspacing=0.5)
+                    fontsize=FS_TEXT-2, loc="center left",
+                    bbox_to_anchor=(1.0, 0.5), ncol=1,
+                    handlelength=1.0, handletextpad=0.4, borderpad=0.5,
+                    labelspacing=0.45)
     leg.get_frame().set_linewidth(0.5)
     ax.tick_params(colors="#555555", labelsize=FS_TICK)
     for sp in ax.spines.values(): sp.set_color("#c8c8c8")
@@ -1035,15 +1035,15 @@ def main():
         col = palette[i % len(palette)]
         m = np.median(s["traces_n_norm"], axis=0)
         ax.plot(TG, m, color=col, lw=1.1,
-                label=f"{short_label(s['label'])} (n={len(s['traces_n_norm'])})")
+                label=short_label(s['label']))
     ax.axvline(0, color="#6a6a6a", alpha=0.4, lw=0.8, ls=":")
     ax.set_xlabel("Time relative to sinus peak (s)", color="#1a1a1a", fontsize=FS_LABEL)
     ax.set_title(r"$\bf{(b)}$ Median N morphology by session", color="#1f1f1f", fontsize=8.5)
     leg = ax.legend(facecolor="#f2efe9", labelcolor="#1a1a1a", edgecolor="#c8c8c8",
-                    fontsize=FS_TEXT-1, loc="center left",
-                    bbox_to_anchor=(1.02, 0.5), ncol=1,
-                    handlelength=1.4, handletextpad=0.5, borderpad=0.6,
-                    labelspacing=0.5)
+                    fontsize=FS_TEXT-2, loc="center left",
+                    bbox_to_anchor=(1.0, 0.5), ncol=1,
+                    handlelength=1.0, handletextpad=0.4, borderpad=0.5,
+                    labelspacing=0.45)
     leg.get_frame().set_linewidth(0.5)
     ax.tick_params(colors="#555555", labelsize=FS_TICK)
     for sp in ax.spines.values(): sp.set_color("#c8c8c8")
@@ -1067,11 +1067,9 @@ def main():
     # (2,2) — outlier session vs other sessions (median N) [ex Fig. 6 standalone]
     ax = fig.add_axes(PANEL_POS["br"]); ax.set_facecolor(DARK_BG)
     ax.fill_between(TG, p25_others, p75_others, color="#2e8b57", alpha=0.20,
-                    label=f"Other {n_sessions-1} (IQR)")
-    ax.plot(TG, median_others, color="#2e8b57", lw=2,
-            label=f"Median other {n_sessions-1}")
-    ax.plot(TG, median_outlier, color="#1f7fb0", lw=2.5,
-            label=f"Outlier {short_label(outlier_label)} (r={outlier_r:.3f})")
+                    label="others (IQR)")
+    ax.plot(TG, median_others, color="#2e8b57", lw=2, label="others (median)")
+    ax.plot(TG, median_outlier, color="#1f7fb0", lw=2.5, label="outlier")
     ax.axvline(0, color="#6a6a6a", alpha=0.4, lw=0.8, ls=":")
     ax.set_xlim(-WIN/2, WIN/2)
     ax.set_xlabel("Time relative to sinus peak (s)", color="#1a1a1a", fontsize=FS_LABEL)
