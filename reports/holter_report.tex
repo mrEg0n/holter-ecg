@@ -257,33 +257,32 @@ essentially identical to the core's. It reflects beat-to-beat / baseline
 variability captured by PC2 --- consistent with the single-population picture
 from the elbow and the unimodal trough histogram.
 
-% ===================== 4. NORMAL BEATS =====================
+% ===================== NORMAL BEATS =====================
 \section{Normal-beat morphology}
-The same superimposition applied to normal sinus beats (N), up to 500 evenly
-spaced per session. It is a baseline reference and a way to surface
-electrode / posture effects --- the R-amplitude visibly varies sinusoidally
-with breathing (used later for respiration). The last panel overlays the
-median N and the median PVC.
+As a non-ectopic baseline, the same amplitude-normalised superimposition was applied to the
+normal sinus beats (N), sampling up to 500 evenly spaced beats per session. Beyond serving as a
+reference morphology, the N population is a sensitive probe for electrode-placement and posture
+effects: its R-amplitude visibly varies sinusoidally with breathing, which is exploited later
+for respiration (Section~\ref{sec:edr}). The beats were overlaid with their median and IQR
+(\textbf{Fig.~\ref{fig:nmorph}a}), reduced to one median per session
+(\textbf{Fig.~\ref{fig:nmorph}b}), and compared across sessions by pairwise correlation
+(\textbf{Fig.~\ref{fig:nmorph}c}).
 
-\reportfig{04_normal_beat_morphology_4_panel_summary.png}{Normal-beat morphology, same superimposition, with the median N vs median PVC overlaid in the last panel.}
+The cross-session N medians are highly concordant --- all pairwise correlations stay
+$r\geq0.93$ (the correlation colour scale starts at $0.95$ to surface any residual drift). One
+session is consistently the least similar to the rest: 06-09 13:23, with the lowest mean
+correlation to the others ($r=0.962$; \textbf{Fig.~\ref{fig:nmorph}d}). It is also the only
+recording made seated at a desk with anterior trunk flexion, while all others were lying /
+extended.
 
-\subsection{Cross-session N correlation --- outlier inspection}
-All inter-session N correlations stay $\geq 0.93$ (high concordance); the scale
-is set with vmin $=0.95$ to surface any drift. One session (09 13:23) is the
-only one recorded seated at a desk with anterior trunk flexion --- all others
-were lying / extended. A trunk-position change rotates the heart axis relative
-to the single precordial electrode, which plausibly explains the morphology
-drift. It surfaces in N and not in PVC because the PVC's large dominant
-deflection ($\approx$1.5 V) is robust to small projection changes once
-amplitude-normalised, whereas the smaller, roughly symmetric N
-($\approx$0.5 V) amplifies the relative weight of the P- and T-wave regions.
-This is an interpretation of the data, not a confirmed mechanism.
+A trunk-position change rotates the heart axis relative to the single precordial electrode,
+which plausibly explains this morphology drift. The effect surfaces in N but not in PVC because
+the PVC's large dominant deflection ($\approx$1.5\,V) stays robust to small projection changes
+once amplitude-normalised, whereas the smaller, roughly symmetric N ($\approx$0.5\,V) amplifies
+the relative weight of the P- and T-wave regions. This is an interpretation of the data, not a
+confirmed mechanism.
 
-\begin{figure}[H]\centering
-  \includegraphics[width=0.58\linewidth]{05_n_outlier_comparison.png}
-  \caption{Outlier session (seated, trunk-flexed) median N vs the median and IQR of the other nine sessions.}
-\end{figure}
-\tableOutlier
+\reportfig{04_normal_beat_morphology_4_panel_summary.png}{Normal-beat morphology. (a) all N beats overlaid (amplitude-normalised) with the median and IQR; (b) one median waveform per session; (c) pairwise cross-session correlation matrix (all $r\geq0.93$); (d) the most divergent session (06-09 13:23, seated / trunk-flexed) median N against the median and IQR of the other nine.\label{fig:nmorph}}
 
 % ===================== 5. INTERP vs COMP =====================
 \section{Interpolated vs compensated PVCs --- method \& validation}

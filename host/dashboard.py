@@ -990,7 +990,23 @@ def main():
     y_min_n = min(p25_n.min(), min(m.min() for m in med_per_sess_n)) - 0.05
     y_max_n = 1.10
 
-    fig = plt.figure(figsize=FIGSIZE, facecolor=DARK_BG)
+    # outlier N (sessione meno correlata alle altre): serve per il pannello (d)
+    # e per la figura standalone piu' sotto (stessi dati)
+    n_sessions = len(sessions)
+    mean_corr_per_session = []
+    for i in range(n_sessions):
+        rs = [corr_matrix_n[i, j] for j in range(n_sessions) if j != i]
+        mean_corr_per_session.append((sessions[i]["label"], float(np.mean(rs)), i))
+    mean_corr_per_session.sort(key=lambda x: x[1])
+    outlier_label, outlier_r, outlier_idx = mean_corr_per_session[0]
+    median_outlier = med_per_sess_n[outlier_idx]
+    _others = [m for i, m in enumerate(med_per_sess_n) if i != outlier_idx]
+    median_others = np.median(np.array(_others), axis=0)
+    p25_others = np.percentile(np.array(_others), 25, axis=0)
+    p75_others = np.percentile(np.array(_others), 75, axis=0)
+
+    # larghezza 8.1in = come Fig 1-4, per resa uniforme in pagina
+    fig = plt.figure(figsize=(8.1, 7.6), facecolor=DARK_BG)
 
     # (1,1) — overlay tutti N
     ax = fig.add_axes(PANEL_POS["tl"]); ax.set_facecolor(DARK_BG)
@@ -1003,8 +1019,8 @@ def main():
     ax.set_xlim(-WIN/2, WIN/2); ax.set_ylim(y_min_n, y_max_n)
     ax.set_ylabel("Amplitude (peak-normalized)", color="#1a1a1a", fontsize=FS_LABEL)
     ax.set_xlabel("Time relative to sinus peak (s)", color="#1a1a1a", fontsize=FS_LABEL)
-    ax.set_title(f"All N beats overlaid (sampled, n={len(all_n_norm):,}) — median ± IQR",
-                 color="#1f1f1f", fontsize=FS_TITLE)
+    ax.set_title(f"$\\bf{{(a)}}$ All N beats overlaid (sampled, n={len(all_n_norm):,}) — median ± IQR",
+                 color="#1f1f1f", fontsize=8.5)
     ax.legend(facecolor="#f2efe9", labelcolor="#1a1a1a", edgecolor="#c8c8c8",
               fontsize=FS_LEGEND, loc="upper right")
     ax.tick_params(colors="#555555", labelsize=FS_TICK)
@@ -1022,7 +1038,7 @@ def main():
                 label=f"{short_label(s['label'])} (n={len(s['traces_n_norm'])})")
     ax.axvline(0, color="#6a6a6a", alpha=0.4, lw=0.8, ls=":")
     ax.set_xlabel("Time relative to sinus peak (s)", color="#1a1a1a", fontsize=FS_LABEL)
-    ax.set_title("Median N morphology by session", color="#1f1f1f", fontsize=FS_TITLE)
+    ax.set_title(r"$\bf{(b)}$ Median N morphology by session", color="#1f1f1f", fontsize=8.5)
     leg = ax.legend(facecolor="#f2efe9", labelcolor="#1a1a1a", edgecolor="#c8c8c8",
                     fontsize=FS_TEXT-1, loc="center left",
                     bbox_to_anchor=(1.02, 0.5), ncol=1,
@@ -1044,47 +1060,35 @@ def main():
             ax.text(j, i, f"{corr_matrix_n[i,j]:.3f}", ha="center", va="center",
                     color="black", fontsize=FS_TEXT-1)
     tight_cbar(fig, im, PANEL_POS["bl"], "Pearson r", fs=FS_TICK)
-    ax.set_title("Cross-session correlation matrix (N beats)",
-                 color="#1f1f1f", fontsize=FS_TITLE)
+    ax.set_title(r"$\bf{(c)}$ Cross-session correlation matrix (N beats)",
+                 color="#1f1f1f", fontsize=8.5)
     for sp in ax.spines.values(): sp.set_color("#c8c8c8")
 
-    # (2,2) — direct comparison: median PVC vs median N (overlap)
+    # (2,2) — outlier session vs other sessions (median N) [ex Fig. 6 standalone]
     ax = fig.add_axes(PANEL_POS["br"]); ax.set_facecolor(DARK_BG)
-    ax.plot(TG, med_all_n,  color="#2e8b57", lw=2.5, label=f"N (median, n={len(all_n_norm):,})")
-    ax.plot(TG, med_all,    color="#cc3b30", lw=2.5, label=f"PVC (median, n={len(all_traces_norm):,})")
+    ax.fill_between(TG, p25_others, p75_others, color="#2e8b57", alpha=0.20,
+                    label=f"Other {n_sessions-1} (IQR)")
+    ax.plot(TG, median_others, color="#2e8b57", lw=2,
+            label=f"Median other {n_sessions-1}")
+    ax.plot(TG, median_outlier, color="#1f7fb0", lw=2.5,
+            label=f"Outlier {short_label(outlier_label)} (r={outlier_r:.3f})")
     ax.axvline(0, color="#6a6a6a", alpha=0.4, lw=0.8, ls=":")
     ax.set_xlim(-WIN/2, WIN/2)
-    ax.set_xlabel("Time relative to peak (s)", color="#1a1a1a", fontsize=FS_LABEL)
+    ax.set_xlabel("Time relative to sinus peak (s)", color="#1a1a1a", fontsize=FS_LABEL)
     ax.set_ylabel("Amplitude (peak-normalized)", color="#1a1a1a", fontsize=FS_LABEL)
-    ax.set_title("N vs PVC — median morphology comparison",
-                 color="#1f1f1f", fontsize=FS_TITLE)
+    ax.set_title("$\\bf{(d)}$ Outlier session vs others (median N)",
+                 color="#1f1f1f", fontsize=8.5)
     ax.legend(facecolor="#f2efe9", labelcolor="#1a1a1a", edgecolor="#c8c8c8",
               fontsize=FS_LEGEND, loc="upper right")
     ax.tick_params(colors="#555555", labelsize=FS_TICK)
     for sp in ax.spines.values(): sp.set_color("#c8c8c8")
     ax.grid(alpha=0.18, color="#dcdcdc")
 
-    img_n_morphology_4panel = fig_to_b64(fig, dpi=220)
+    img_n_morphology_4panel = fig_to_b64(fig, dpi=450)
 
-    # ============ OUTLIER ANALYSIS — N beats ============
-    # Calcola mean correlation di ogni sessione vs tutte le altre
-    n_sessions = len(sessions)
-    mean_corr_per_session = []
-    for i in range(n_sessions):
-        rs = [corr_matrix_n[i, j] for j in range(n_sessions) if j != i]
-        mean_corr_per_session.append((sessions[i]["label"], float(np.mean(rs)), i))
-    mean_corr_per_session.sort(key=lambda x: x[1])
-    outlier_label, outlier_r, outlier_idx = mean_corr_per_session[0]
-
-    # plot: mediana sessione outlier vs mediana di tutte le ALTRE
-    median_outlier = med_per_sess_n[outlier_idx]
-    others = [m for i, m in enumerate(med_per_sess_n) if i != outlier_idx]
-    median_others = np.median(np.array(others), axis=0)
-    p25_others = np.percentile(np.array(others), 25, axis=0)
-    p75_others = np.percentile(np.array(others), 75, axis=0)
-
-    # Figura QUADRATA con legenda INTERNA → si mostra alla dimensione di UN
-    # pannello delle figure 2x2 (~340px), non come figura intera.
+    # ============ OUTLIER ANALYSIS — N beats (figura standalone) ============
+    # Stessi dati del pannello (d) sopra (outlier_*, median_others, ...).
+    # Figura QUADRATA con legenda INTERNA → dimensione di UN pannello 2x2.
     fig, ax = plt.subplots(figsize=(5, 5), facecolor=DARK_BG)
     ax.set_facecolor(DARK_BG); ax.set_box_aspect(1)
     ax.fill_between(TG, p25_others, p75_others, color="#2e8b57", alpha=0.20,
@@ -2262,8 +2266,9 @@ def main():
   the PVC analysis above it serves as a baseline reference. Inspection of N
   beats may help identify electrode-placement or posture effects (in the
   observed amplitude modulation pattern, R-amplitude appears to vary
-  sinusoidally with breathing). The fourth panel directly overlays the median
-  N and the median PVC for visual comparison.
+  sinusoidally with breathing). The fourth panel compares the most divergent
+  (outlier) session's median N with the median and IQR of the other sessions
+  (detailed below).
 </div>
 <img src="data:image/png;base64,{img_n_morphology_4panel}" alt="Normal beat morphology — 4-panel summary"
      style="border:1px solid #25282d; border-radius:6px;
