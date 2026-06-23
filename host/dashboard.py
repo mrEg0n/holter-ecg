@@ -873,7 +873,7 @@ def main():
         for j in range(len(sessions)):
             ax.text(j, i, f"{corr_matrix[i,j]:.3f}", ha="center", va="center",
                     color="black", fontsize=FS_TEXT-1)
-    tight_cbar(fig, im, PANEL_POS["bl"], "Pearson r", fs=FS_TICK)
+    tight_cbar(fig, im, PANEL_POS["bl"], "", fs=FS_TICK)   # label nella didascalia (evita overlap con y-label pannello d)
     ax.set_title(r"$\bf{(c)}$ Cross-session correlation matrix", color="#1f1f1f", fontsize=8.5)
     for sp in ax.spines.values(): sp.set_color("#c8c8c8")
 
@@ -1059,7 +1059,7 @@ def main():
         for j in range(len(sessions)):
             ax.text(j, i, f"{corr_matrix_n[i,j]:.3f}", ha="center", va="center",
                     color="black", fontsize=FS_TEXT-1)
-    tight_cbar(fig, im, PANEL_POS["bl"], "Pearson r", fs=FS_TICK)
+    tight_cbar(fig, im, PANEL_POS["bl"], "", fs=FS_TICK)   # label nella didascalia (evita overlap con y-label pannello d)
     ax.set_title(r"$\bf{(c)}$ Cross-session correlation matrix (N beats)",
                  color="#1f1f1f", fontsize=8.5)
     for sp in ax.spines.values(): sp.set_color("#c8c8c8")
