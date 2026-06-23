@@ -1372,9 +1372,9 @@ def main():
             npx = -d["rr_pre"]; nnx = d["rr_post"]
             ax.axvline(npx, color="#2e8b57", lw=1.0, alpha=0.7)
             ax.axvline(nnx, color="#2e8b57", lw=1.5, alpha=0.95)
-            ax.text(npx, 1.6, "N prev", color="#2e8b57", fontsize=FS_TEXT, ha="center",
+            ax.text(npx, 1.45, "N prev", color="#2e8b57", fontsize=FS_TEXT, ha="center",
                     bbox=_lblbox, zorder=7)
-            ax.text(nnx, 1.6, "N next", color="#2e8b57", fontsize=FS_TEXT, ha="center",
+            ax.text(nnx, 1.45, "N next", color="#2e8b57", fontsize=FS_TEXT, ha="center",
                     bbox=_lblbox, zorder=7)
             ref1 = npx + d["rl"]; ref2 = npx + 2*d["rl"]
             ax.axvline(ref1, color="#1f7fb0", ls="--", lw=1.1, alpha=0.9)
@@ -1401,9 +1401,9 @@ def main():
             # impilati verticalmente: 8.1in di larghezza come le altre figure
             # (la strip ECG resta larga), font/dpi uniformi, lettere (a)/(b) in grassetto
             fig, (a1, a2) = plt.subplots(2, 1, figsize=(8.1, 5.0), facecolor=DARK_BG)
-            _draw_demo(a1, di, "#1f7fb0", "(a)  ", "Interpolated",
+            _draw_demo(a1, di, "#1f7fb0", "$\\bf{(a)}$  ", "Interpolated",
                        f" — pause {di['post_ratio']:.2f}× sinus (silent)", show_xlabel=False)
-            _draw_demo(a2, dc, "#cc3b30", "(b)  ", "Compensated",
+            _draw_demo(a2, dc, "#cc3b30", "$\\bf{(b)}$  ", "Compensated",
                        f" — pause {dc['post_ratio']:.2f}× sinus (felt)")
             a1.tick_params(labelbottom=False)   # numeri x solo sul pannello in basso
             fig.subplots_adjust(left=0.06, right=0.99, top=0.91, bottom=0.10, hspace=0.30)
