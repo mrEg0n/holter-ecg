@@ -491,53 +491,64 @@ technical signal check and is not a diagnostic assessment.
 \end{table}
 
 % ===================== 11. RESPIRATION =====================
-\section{Respiration (EDR) \& respiratory-phase trigger}\label{sec:edr}
-The final question: are the PVCs tied to breathing? There is no
-respiration belt, but the breath leaves a fingerprint on the ECG --- chest
-movement and lung-impedance change make the R-wave amplitude rise and fall with
-each breath (ECG-derived respiration, EDR). Recovering that signal from
-the R-amplitude of the normal beats (cubic-resampled to 4\,Hz, band-passed
-0.1--0.5\,Hz, instantaneous phase by Hilbert transform) lets us ask, for every
-beat, \emph{where in the breath} it fell.
+\section{Respiration, ECG-derived respiration, and respiratory-phase association}\label{sec:edr}
+The final analysis asks whether PVC timing is coupled to respiration. No external respiration belt
+was used; instead, respiration was estimated from the ECG itself. Chest movement and respiratory
+changes in thoracic impedance modulate the amplitude of the R wave, allowing an ECG-derived
+respiration signal to be reconstructed from normal beats. For each session, the R-wave amplitude of
+sinus beats was cubic-resampled to 4\,Hz, band-pass filtered between 0.1 and 0.5\,Hz, and converted
+into instantaneous respiratory phase using the Hilbert transform. This made it possible to assign
+each beat, including each PVC, to a position within the respiratory cycle
+(\textbf{Figure~\ref{fig:edrdemo}}).
 
-Respiration was recovered in 10/10 sessions; PVC timing is
-significantly coupled to respiratory phase in 10/10 of them ($\chi^2$
-across phase bins, $p<0.05$) --- so yes, there is a real correlation. The
-R-amplitude is largest at full lungs (the subject confirmed this
-directly while recording), so the phase peak sits at full inflation /
-end-inspiration: PVCs are over-represented there (mean peak $\times2.6$ vs
-chance) and sparsest near empty lungs. That points to a mechanical, lung-volume
-/ cardiac-filling trigger at peak inflation (diaphragm lowest, maximal venous
-return and chamber stretch) --- rather than the end-expiratory vagal one
-previously assumed.
+An ECG-derived respiration signal was recovered in all \nSessions{} sessions. PVC timing was
+significantly non-uniform across respiratory-phase bins in all sessions, based on a $\chi^2$ test
+across phase bins ($p<0.05$). This indicates that PVCs were not randomly distributed across the
+respiratory cycle, but were preferentially concentrated at specific respiratory phases. The R-wave
+amplitude was largest at full-lung inflation, as confirmed directly during recording, so phase
+0/100\% was assigned to end-inspiration and phase 50\% to end-expiration.
 
-\reportfig{16_edr_respiration_demo.png}{ECG-derived respiration: the R-amplitude of sinus beats traces the breath; PVCs land on a recurring part of it.}
+Across sessions, PVCs were over-represented near full-lung inflation and sparsest near the
+empty-lung phase. The mean peak enrichment was approximately 2.6-fold above chance. This pattern is
+consistent with a respiratory mechanical contribution related to lung volume, venous return,
+cardiac filling, and filling-related stretch. It does not prove a specific causal mechanism, but it
+argues against the earlier assumption that the dominant association occurred at end-expiration.
 
-Below: the phase distribution of all PVCs vs normal beats (polar) and the
-per-session enrichment around the respiratory cycle (values above $\times1$ mark
-phases where PVCs are over-represented). Phase 0/100\% is full lungs
-(largest R-amplitude, end-inspiration); 50\% is empty lungs (end-expiration).
-The enrichment peaks at full lungs.
+\reportfig{16_edr_respiration_demo.png}{ECG-derived respiration from sinus-beat R-wave amplitude. The R-wave amplitude traces the respiratory cycle, and PVCs recur preferentially at a specific respiratory phase.\label{fig:edrdemo}}
 
-\reportfig{17_respiratory_phase_vs_pvc_enrichment.png}{(a) phase distribution of all PVCs vs normal beats (polar); (b) per-session PVC enrichment around the respiratory cycle.}
+\textbf{Figure~\ref{fig:edrphase}} summarizes the phase distribution of all PVCs relative to normal
+beats and the per-session enrichment around the respiratory cycle. Values above 1 indicate phases
+in which PVCs are over-represented relative to chance. Phase 0/100\% corresponds to full-lung
+inflation, or end-inspiration, and phase 50\% corresponds to empty lungs, or end-expiration. The
+enrichment peak occurs near full-lung inflation.
+
+\reportfig{17_respiratory_phase_vs_pvc_enrichment.png}{(a) phase distribution of all PVCs versus normal beats; (b) per-session PVC enrichment around the respiratory cycle. Values above 1 mark phases where PVCs are over-represented.\label{fig:edrphase}}
 
 \subsection{Respiratory phase by PVC type}
-Do the different PVC types fall at the same point in the breath? This rosette
-splits the PVCs by type --- \interp{interpolated}, \comp{compensated} and
-\coupled{coupled} (both beats of each couplet) --- with each type's phase
-density normalised so the \emph{shape} is comparable despite very different
-counts. The phase peaks are interpolated 79\%, compensated 12\%, coupled 87\%
-(\% of cycle, $0=$ full lungs): all three favour roughly the same phase near
-full lungs, so they share one respiratory trigger and do not pick out separate
-phases.
+The respiratory-phase distribution was also examined separately for interpolated PVCs, compensated
+PVCs, and couplet PVCs, including both beats of each couplet. Each distribution was normalised
+independently, so that phase preference could be compared despite different event counts across
+classes.
 
-\reportfig[0.6\linewidth]{18_respiratory_phase_by_pvc_type.png}{Respiratory phase by PVC type --- interpolated, compensated and coupled all peak near full lungs.}
+The phase peaks were 79\% of the cycle for interpolated PVCs, 12\% for compensated PVCs, and 87\%
+for couplet PVCs, with phase 0 corresponding to full-lung inflation. Despite these numerical
+differences, all three classes cluster near the same full-lung / end-inspiratory sector of the
+respiratory cycle. This suggests that interpolated, compensated, and coupled PVCs share a common
+respiratory-phase association, rather than occupying clearly separate respiratory phases.
 
+\reportfig[0.6\linewidth]{18_respiratory_phase_by_pvc_type.png}{Respiratory-phase distribution by PVC type. Interpolated, compensated and couplet PVCs all show enrichment near the full-lung phase.\label{fig:edrtype}}
+
+\textbf{Table~\ref{tab:resp}} reports the per-session respiratory estimates, including respiration
+rate, number of PVCs, peak respiratory phase, peak enrichment, $\chi^2$ $p$ value, and ECG-derived
+respiration signal-to-noise ratio. A significant $p$ value indicates that PVCs are not uniformly
+distributed across the respiratory cycle. This is a signal-level observation only and should not be
+interpreted as a clinical finding.
+
+\begin{table}[H]
+\centering
+\caption{Per-session respiratory estimates: respiration rate, PVC count, peak respiratory phase, peak enrichment, $\chi^2$ $p$ value, and ECG-derived respiration signal-to-noise ratio.\label{tab:resp}}
 \tableResp
-
-A significant $p$ means the PVCs are not uniformly spread across the
-breath --- they cluster at a phase, i.e.\ respiration modulates the focus. This
-is a signal-level observation, not a clinical finding.
+\end{table}
 
 % ===================== APPENDIX =====================
 \appendix
