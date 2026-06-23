@@ -1654,12 +1654,12 @@ def main():
     n_coup_tot = len(all_coup)
     coup_rr_all = np.array([c["rr"] for c, _ in all_coup]) if all_coup else np.array([])
     if all_coup:
-        fig = plt.figure(figsize=(8.1, 2.9), facecolor=DARK_BG)
-        gs = fig.add_gridspec(1, 3, width_ratios=[1.0, 1.25, 1.0],
-                              left=0.07, right=0.985, top=0.85, bottom=0.26, wspace=0.36)
+        # pannelli QUADRATI come le altre figure (stesse coordinate PANEL_POS):
+        # overlay (a) in alto al centro, conteggio (b) in basso a sx, 1a-vs-2a (c) in basso a dx
+        fig = plt.figure(figsize=(8.1, 7.6), facecolor=DARK_BG)
 
         # (1) conteggio per sessione, color-coded come le altre figure
-        ax0 = fig.add_subplot(gs[0]); ax0.set_facecolor(DARK_BG)
+        ax0 = fig.add_axes(PANEL_POS["bl"]); ax0.set_facecolor(DARK_BG)
         cols0 = [palette[i % len(palette)] for i in range(n_sessions)]
         ax0.bar(np.arange(n_sessions), coup_per_sess, color=cols0,
                 edgecolor="#ffffff", linewidth=0.4)
@@ -1667,14 +1667,15 @@ def main():
         ax0.set_xticklabels([short_label(s["label"]) for s in sessions],
                             rotation=45, ha="right", fontsize=FS_TEXT, color="#555555")
         ax0.set_ylabel("couplets (n)", color="#555555", fontsize=FS_LABEL)
-        ax0.set_title(f"$\\bf{{(a)}}$ Couplets per session (n={n_coup_tot})",
+        ax0.set_title(f"$\\bf{{(b)}}$ Couplets per session (n={n_coup_tot})",
                       color="#1f1f1f", fontsize=8.5)
         ax0.tick_params(colors="#555555", labelsize=FS_TICK)
         ax0.grid(axis="y", alpha=0.18, color="#dcdcdc")
         for sp in ax0.spines.values(): sp.set_color("#c8c8c8")
 
         # (2) overlay di tutte le coppie, allineate sul picco della 1a PVC
-        ax1 = fig.add_subplot(gs[1]); ax1.set_facecolor(DARK_BG)
+        ax1 = fig.add_axes([(1 - PANEL_W) / 2, TOP_ROW, PANEL_W, PANEL_H])
+        ax1.set_facecolor(DARK_BG)
         pairs = np.array([c["pair"] for c, _ in all_coup])
         for (c, i) in all_coup:
             ax1.plot(CPL_GRID, c["pair"], color=palette[i % len(palette)],
@@ -1688,7 +1689,7 @@ def main():
         ax1.set_xlim(-CPL_PRE, CPL_POST); ax1.set_ylim(-1.15, 1.25)
         ax1.set_xlabel("time from 1st PVC peak (s)", color="#555555", fontsize=FS_LABEL)
         ax1.set_ylabel("amplitude (norm.)", color="#555555", fontsize=FS_LABEL)
-        ax1.set_title("$\\bf{(b)}$ All couplets overlaid",
+        ax1.set_title("$\\bf{(a)}$ All couplets overlaid",
                       color="#1f1f1f", fontsize=8.5)
         ax1.legend(facecolor="#f2efe9", labelcolor="#1a1a1a", edgecolor="#c8c8c8",
                    fontsize=FS_LEGEND, loc="upper right")
@@ -1697,7 +1698,7 @@ def main():
         for sp in ax1.spines.values(): sp.set_color("#c8c8c8")
 
         # (3) overlay singoli QRS: 1a PVC vs 2a PVC (stessa morfologia?)
-        ax2 = fig.add_subplot(gs[2]); ax2.set_facecolor(DARK_BG)
+        ax2 = fig.add_axes(PANEL_POS["br"]); ax2.set_facecolor(DARK_BG)
         q1s = np.array([c["q1"] for c, _ in all_coup])
         q2s = np.array([c["q2"] for c, _ in all_coup])
         for q in q1s:
