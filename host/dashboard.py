@@ -1136,7 +1136,7 @@ def main():
     pcomp_v  = [s["metrics"]["pct_comp"]  for s in sessions]
     pintp_v  = [s["metrics"]["pct_interp"] for s in sessions]
 
-    fig = plt.figure(figsize=FIGSIZE, facecolor=DARK_BG)
+    fig = plt.figure(figsize=(8.1, 7.6), facecolor=DARK_BG)
 
     # (tl) burden per sessione, ordine cronologico — color coding sessione coerente
     # con le figure morfologiche (stessa palette[i]) così si riconosce ogni sessione.
@@ -1146,7 +1146,7 @@ def main():
     ax.set_xticks(xs); ax.set_xticklabels(cl, rotation=45, ha="right",
                                           fontsize=FS_TEXT, color="#555555")
     ax.set_ylabel("PVC burden (%)", color="#555555", fontsize=FS_LABEL)
-    ax.set_title("PVC burden by session (chronological)", color="#1f1f1f", fontsize=FS_TITLE)
+    ax.set_title("$\\bf{(a)}$ PVC burden by session", color="#1f1f1f", fontsize=8.5)
     ax.tick_params(colors="#555555", labelsize=FS_TICK)
     ax.grid(axis="y", alpha=0.18, color="#dcdcdc")
     for sp in ax.spines.values(): sp.set_color("#c8c8c8")
@@ -1159,7 +1159,7 @@ def main():
                linewidths=0.6, label="% interpolated", zorder=4)
     ax.set_xlabel("Effective SA rate (BPM)", color="#555555", fontsize=FS_LABEL)
     ax.set_ylabel("Share of classified PVCs (%)", color="#555555", fontsize=FS_LABEL)
-    ax.set_title("Effective heart rate vs PVC pause type", color="#1f1f1f", fontsize=FS_TITLE)
+    ax.set_title("$\\bf{(b)}$ Effective rate vs pause type", color="#1f1f1f", fontsize=8.5)
     ax.legend(facecolor="#f2efe9", labelcolor="#1a1a1a", edgecolor="#c8c8c8",
               fontsize=FS_LEGEND, loc="best")
     ax.tick_params(colors="#555555", labelsize=FS_TICK)
@@ -1175,7 +1175,7 @@ def main():
             linewidth=0.4, label="Compensated (felt)")
     ax.set_yticks(yb); ax.set_yticklabels(cl, fontsize=FS_TEXT, color="#555555")
     ax.set_xlim(0, 100); ax.set_xlabel("Composition (%)", color="#555555", fontsize=FS_LABEL)
-    ax.set_title("Interpolated vs compensated composition", color="#1f1f1f", fontsize=FS_TITLE)
+    ax.set_title("$\\bf{(c)}$ Interpolated vs compensated", color="#1f1f1f", fontsize=8.5)
     ax.legend(facecolor="#f2efe9", labelcolor="#1a1a1a", edgecolor="#c8c8c8",
               fontsize=FS_LEGEND, loc="lower right")
     ax.tick_params(colors="#555555", labelsize=FS_TICK)
@@ -1204,13 +1204,13 @@ def main():
     ax.set_xticks(xs); ax.set_xticklabels(cl, rotation=45, ha="right",
                                           fontsize=FS_TEXT, color="#555555")
     ax.set_ylabel("Pre-PVC coupling (ms)", color="#555555", fontsize=FS_LABEL)
-    ax.set_title("Coupling interval stability (focus monomorphism)",
-                 color="#1f1f1f", fontsize=FS_TITLE)
+    ax.set_title("$\\bf{(d)}$ Coupling interval stability",
+                 color="#1f1f1f", fontsize=8.5)
     ax.tick_params(colors="#555555", labelsize=FS_TICK)
     ax.grid(axis="y", alpha=0.18, color="#dcdcdc")
     for sp in ax.spines.values(): sp.set_color("#c8c8c8")
 
-    img_crosssession = fig_to_b64(fig, dpi=220)
+    img_crosssession = fig_to_b64(fig, dpi=450)
 
     # ============ KEY PATTERN: resting sinus rate vs felt (compensated) PVCs =======
     # Grafico richiesto dall'utente: una riga per le compensate (tonfi percepiti) e
