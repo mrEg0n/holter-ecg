@@ -169,11 +169,23 @@ The only operation left to manual curation is the exclusion of intervals corrupt
 
 % ===================== DATASET OVERVIEW (dopo) =====================
 \section{Dataset overview}
-All data presented in the following sections were obtained from the 10 recording sessions listed below. The sessions span different times of day and were acquired mainly under resting conditions, either in a supine position or while seated during desk work.
-Across \nSessions{} sessions, corresponding to approximately ($\approx$\totMinutes{} minutes (about 15\,h), the detector classified \totBeats{} heartbeats. Of these
-\totPVC{} were labelled as PVCs, corrisponding to a a cumulative burden of \cumBurden{}. A further
-\exclMinutes{} of trace were marked by hand as noise and excluded from all
-analysis. 
+All data presented in the following sections were obtained from the \nSessions{} recording
+sessions listed below. The sessions span different times of day and were acquired mainly under
+resting conditions, either in a supine position or while seated during desk work.
+
+Across these \nSessions{} sessions, corresponding to approximately \totMinutes{} min, or about
+15\,h, of single-lead ECG, the detector classified \totBeats{} heartbeats. Of these, \totPVC{}
+were labelled as PVCs, corresponding to a cumulative PVC burden of \cumBurden{}. A further
+\exclMinutes{} of trace were manually marked as noise and excluded from all analyses.
+
+Additional recordings are currently being acquired under different conditions. In particular, the
+ongoing implementation of onboard storage will remove the need for an external host during
+acquisition and will allow future sessions to be recorded in more naturalistic settings,
+including movement and physical exertion. The present report, however, is limited to the curated
+dataset described here.
+
+This burden value is not used here as a clinical index. It only summarizes the amount of ectopy
+detected by this specific recorder in this specific curated dataset.
 
 \subsection*{Sessions}
 \begin{table}[H]
