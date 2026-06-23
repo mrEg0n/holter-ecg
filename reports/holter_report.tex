@@ -437,7 +437,8 @@ proportion of compensated PVCs increases with the effective sinus-node rate, whe
 proportion of interpolated PVCs decreases. Across sessions, this association is strong and
 positive for compensated PVCs (Spearman $r\approx0.78$, $p\approx0.008$). In practical terms,
 the number of perceptible post-extrasystolic pauses appears to track the underlying sinus rate
-more closely than the raw PVC count.
+more closely than the raw PVC count. The per-session pause distributions underlying this
+composition shift are reported in Appendix~\ref{app:psp}.
 
 % ===================== 7. SUMMARY TABLE =====================
 \section{Per-session summary}
@@ -459,27 +460,7 @@ technical signal check and is not a diagnostic assessment.
 \tableSummary
 \end{table}
 
-% ===================== 8. PAUSE DISTRIBUTION =====================
-\section{Per-session pause distribution}
-\textbf{Figure~\ref{fig:psp}} shows the pause distribution separately for each recording session.
-For each PVC, the post-extrasystolic pause, \rrpost{}, was measured relative to the locally
-estimated sinus cycle and classified using the empirical global valley at $\pauseValley\times$.
-Values below this boundary correspond to interpolated PVCs, whereas values above it correspond to
-compensated PVCs.
-
-The same two-mode structure observed in the pooled distribution is visible at session level,
-although the relative weight of the two modes varies across recordings. The left mode, centred
-around approximately 0.7$\times$ the local sinus cycle, corresponds to interpolated PVCs. The
-right mode, centred around approximately 1.45$\times$, corresponds to compensated PVCs. Sessions
-in which most PVCs fall on one side of the boundary therefore show a correspondingly shifted
-pause-type composition. This session-to-session shift explains the cross-session relationship
-described above, where recordings with a higher effective sinus-node rate tend to contain a
-larger proportion of compensated PVCs, while recordings at lower effective sinus-node rates
-contain a larger proportion of interpolated PVCs.
-
-\reportfig{11_per_session_pause_distribution.png}{Per-session distribution of post-extrasystolic pause duration, \rrpost{}, expressed relative to the locally estimated sinus cycle and split at the empirical global valley of $\pauseValley\times$.\label{fig:psp}}
-
-% ===================== 9. COUPLING / SINGLE FOCUS =====================
+% ===================== COUPLING / SINGLE-SOURCE CHECK =====================
 \section{Per-session coupling distribution and single-source consistency check}
 The coupling interval, \rrpre{}, is the time between the preceding sinus beat and the PVC. It
 measures how long after a sinus beat the ectopic complex occurs. A stable monomorphic PVC source
@@ -557,6 +538,27 @@ phases.
 A significant $p$ means the PVCs are not uniformly spread across the
 breath --- they cluster at a phase, i.e.\ respiration modulates the focus. This
 is a signal-level observation, not a clinical finding.
+
+% ===================== APPENDIX =====================
+\appendix
+\renewcommand{\thefigure}{\thesection.\arabic{figure}}
+\setcounter{figure}{0}
+
+\section{Per-session pause distribution}\label{app:psp}
+This appendix reports, as a per-session robustness check, the post-extrasystolic pause
+distribution separately for each recording (\textbf{Figure~\ref{fig:psp}}). For each PVC the
+pause \rrpost{} was measured relative to the locally estimated sinus cycle and split at the
+empirical global valley at $\pauseValley\times$: values below the boundary correspond to
+interpolated PVCs, values above it to compensated PVCs.
+
+The two-mode structure of the pooled distribution is reproduced within individual sessions,
+confirming that the interpolated-versus-compensated split is not an artefact of pooling. The left
+mode (around approximately 0.7$\times$ the local sinus cycle) corresponds to interpolated PVCs and
+the right mode (around approximately 1.45$\times$) to compensated ones; the relative weight of the
+two modes shifts from session to session, which is the per-session view of the cross-session
+pause-type composition reported in the main text.
+
+\reportfig{11_per_session_pause_distribution.png}{Per-session distribution of post-extrasystolic pause duration, \rrpost{}, expressed relative to the locally estimated sinus cycle and split at the empirical global valley of $\pauseValley\times$.\label{fig:psp}}
 
 % ===================== COLOPHON =====================
 \vfill
