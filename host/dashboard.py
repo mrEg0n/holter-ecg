@@ -1379,9 +1379,9 @@ def main():
             ref1 = npx + d["rl"]; ref2 = npx + 2*d["rl"]
             ax.axvline(ref1, color="#1f7fb0", ls="--", lw=1.1, alpha=0.9)
             ax.axvline(ref2, color="#cc3b30", ls="--", lw=1.1, alpha=0.9)
-            ax.text(ref1, -1.08, "1×", color="#1f7fb0", fontsize=FS_TEXT, ha="center",
+            ax.text(ref1, -0.98, "1×", color="#1f7fb0", fontsize=FS_TEXT, ha="center",
                     va="top", bbox=_lblbox, zorder=7)
-            ax.text(ref2, -1.08, "2×", color="#cc3b30", fontsize=FS_TEXT, ha="center",
+            ax.text(ref2, -0.98, "2×", color="#cc3b30", fontsize=FS_TEXT, ha="center",
                     va="top", bbox=_lblbox, zorder=7)
             ax.plot([0, nnx], [-0.85, -0.85], color="#b8860b", lw=3, solid_capstyle="butt")
             ax.text(nnx/2, -0.74, "RR_post", color="#b8860b", fontsize=FS_TEXT, ha="center",
