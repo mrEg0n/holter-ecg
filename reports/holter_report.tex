@@ -309,36 +309,37 @@ events are inconsistent with a truly premature ventricular beat and most likely 
 missed sub-threshold sinus beat within the interval. A total of 118 beats, approximately 1\% of
 classified PVC candidates, were set aside by this guard.
 
-\subsection{Why the conventional sum leaves a grey zone --- and how the data resolves it}
-Applying the strict sum rule ($1.85$--$2.15\times$ for a ``full'' pause) leaves
-a wide band of beats in between. The data are cleaner than the rule suggests.
-Two distributions: on the left the conventional \textbf{sum S}; on the right the
-\textbf{actual pause \rrpost} after the PVC. Both are clearly \textbf{bimodal}
---- almost every beat falls into one lump or the other, with a near-empty valley
-between them.
+Applying a strict conventional sum rule --- a ``full'' compensatory pause defined as N--PVC--N
+between $1.85$ and $2.15\times$ the local sinus cycle --- leaves a broad intermediate range of
+beats. The dataset, however, shows a clearer structure than this rule alone suggests.
+\textbf{Figure~\ref{fig:sdist}} compares two distributions: the conventional N--PVC--N sum, S,
+and the actual post-extrasystolic pause, \rrpost{}, both expressed relative to the locally
+estimated sinus cycle. Both distributions are bimodal, with most beats falling into one of two
+modes and only a sparse valley between them.
 
-\reportfig{07_distributions_of_s_and_rr_post.png}{Distributions of the conventional sum S (left) and the actual pause RR\textsubscript{post} (right) --- both clearly bimodal.}
+\reportfig{07_distributions_of_s_and_rr_post.png}{Distributions of the conventional N--PVC--N sum, S (left), and the actual post-extrasystolic pause, \rrpost{} (right), both expressed relative to the locally estimated sinus cycle. Both measures show a bimodal structure.\label{fig:sdist}}
 
-S and the pause agree on $\sim$99\% of beats but disagree on a few: the same S
-can hide a short or a long pause depending on the coupling. When they disagree,
-the variable that matches what is \textbf{seen on the trace and felt} is the
-\textbf{pause} --- a long pause loads the ventricle and the next beat lands as a
-forceful ``thump''. So the operative split is made on \rrpost{}, at the empirical
-valley $\pauseValley\times$ the sinus cycle: shorter $\rightarrow$
-\interp{interpolated} (silent), longer $\rightarrow$ \comp{compensated} (felt).
-Across the dataset that gives \textbf{\pctInterp\% interpolated} and
-\textbf{\pctComp\% compensated} on \methodBeats{} classified beats; only
-$\sim$1\% sit within $\pm0.10$ of the valley (genuinely borderline), and those
-that stay truly undecided are noise --- removed by exclusion / the guard rather
-than forced into a class.
+The conventional sum S and \rrpost{} agree for approximately 99\% of beats, but they diverge in
+a small minority of cases, because the same N--PVC--N sum can correspond to different
+post-extrasystolic pauses depending on the coupling interval. When the two measures disagree,
+\rrpost{} better captures the operational distinction of interest: a short \rrpost{} corresponds
+to an \interp{interpolated} PVC, whereas a long \rrpost{} corresponds to a \comp{compensated} PVC
+followed by a clear pause.
 
-\subsection{How it looks on the trace}
-The same classification on a continuous strip (session 2026-06-08 22:01): the
-QRS of each PVC is \interp{blue} when interpolated (the sinus rhythm carries on
-with no gap) and \comp{red} when compensated (a clear pause follows). This
-two-way split is what the subject actually perceives: the interpolated beats
-carry no pause and go unnoticed, the compensated ones are followed by the pause
-and the potentiated beat felt as a \textbf{skipped / missed beat}.
+For this reason, the final split was based on \rrpost{} rather than on the conventional sum
+alone. The empirical valley between the two modes occurred at $\pauseValley\times$ the local
+sinus cycle. Beats with \rrpost{} below this value were classified as \interp{interpolated}, and
+beats above it as \comp{compensated}. Across the dataset this criterion classified
+\textbf{\pctInterp\%} of measurable PVCs as interpolated and \textbf{\pctComp\%} as compensated,
+based on \methodBeats{} classified beats. Only approximately 1\% of beats fell within $\pm0.10$
+of the decision boundary; beats that remained genuinely ambiguous were not forced into either
+class, being removed by the noise-exclusion procedure or by the prematurity guard.
+
+The same classification is illustrated on a continuous ECG strip from session 2026-06-08 22:01.
+Each PVC is coloured according to its class: \interp{interpolated} PVCs are shown in blue and
+\comp{compensated} PVCs in red. Interpolated PVCs occur without a substantial gap in the
+surrounding sinus rhythm, whereas compensated PVCs are followed by a visibly longer pause and a
+stronger post-extrasystolic beat.
 
 \reportfig{08_final_2_class_strip.png}{The two-class split on a continuous strip: interpolated (blue) carry no pause, compensated (red) are followed by one.}
 

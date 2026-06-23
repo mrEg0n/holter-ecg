@@ -124,6 +124,20 @@ def tight_cbar(fig, im, panel, label, fs=8.5):
         sp.set_color("#c8c8c8")
     return cb
 
+
+def colored_title(ax, segments, fontsize=8.5, y=1.03):
+    """Titolo di pannello con segmenti di colore diverso (matplotlib non lo
+    consente in un singolo set_title): es. lettera+testo neri, parola colorata.
+    segments = [(testo, colore, peso), ...]."""
+    from matplotlib.offsetbox import TextArea, HPacker, AnnotationBbox
+    boxes = [TextArea(t, textprops=dict(color=c, fontsize=fontsize, fontweight=w))
+             for t, c, w in segments]
+    pack = HPacker(children=boxes, align="baseline", pad=0, sep=0)
+    ab = AnnotationBbox(pack, (0.5, y), xycoords="axes fraction",
+                        box_alignment=(0.5, 0.0), frameon=False, pad=0,
+                        annotation_clip=False)
+    ax.add_artist(ab)
+
 # ---------- I/O helpers ----------
 def label_from_path(ecg_path):
     base = os.path.basename(ecg_path).replace("ecg_","").replace(".csv","")
@@ -1344,7 +1358,11 @@ def main():
             cand = [d for d in cand if (d["post_ratio"] < PAUSE_VALLEY) == (kind == "int")]
             cand.sort(key=lambda d: abs(d["post_ratio"] - tgt))
             return cand[0] if cand else None
-        def _draw_demo(ax, d, color, title, show_xlabel=True):
+        # box bianco semi-trasparente dietro le etichette, cosi' non si confondono
+        # con le linee verticali che le attraversano
+        _lblbox = dict(boxstyle="round,pad=0.12", facecolor="#ffffff",
+                       edgecolor="none", alpha=0.72)
+        def _draw_demo(ax, d, color, letter, keyword, suffix, show_xlabel=True):
             c = d["t"]; half = 2.6; m = (dt >= c-half) & (dt <= c+half)
             ax.set_facecolor(DARK_BG); ax.plot(dt[m]-c, dvf[m], lw=0.9, color="#5a6b78")
             wm = (dt >= c-0.12) & (dt <= c+0.12)
@@ -1354,34 +1372,41 @@ def main():
             npx = -d["rr_pre"]; nnx = d["rr_post"]
             ax.axvline(npx, color="#2e8b57", lw=1.0, alpha=0.7)
             ax.axvline(nnx, color="#2e8b57", lw=1.5, alpha=0.95)
-            ax.text(npx, 1.6, "N prev", color="#2e8b57", fontsize=FS_TEXT, ha="center")
-            ax.text(nnx, 1.6, "N next", color="#2e8b57", fontsize=FS_TEXT, ha="center")
+            ax.text(npx, 1.6, "N prev", color="#2e8b57", fontsize=FS_TEXT, ha="center",
+                    bbox=_lblbox, zorder=7)
+            ax.text(nnx, 1.6, "N next", color="#2e8b57", fontsize=FS_TEXT, ha="center",
+                    bbox=_lblbox, zorder=7)
             ref1 = npx + d["rl"]; ref2 = npx + 2*d["rl"]
             ax.axvline(ref1, color="#1f7fb0", ls="--", lw=1.1, alpha=0.9)
             ax.axvline(ref2, color="#cc3b30", ls="--", lw=1.1, alpha=0.9)
-            ax.text(ref1, -1.08, "1×", color="#1f7fb0", fontsize=FS_TEXT, ha="center", va="top")
-            ax.text(ref2, -1.08, "2×", color="#cc3b30", fontsize=FS_TEXT, ha="center", va="top")
+            ax.text(ref1, -1.08, "1×", color="#1f7fb0", fontsize=FS_TEXT, ha="center",
+                    va="top", bbox=_lblbox, zorder=7)
+            ax.text(ref2, -1.08, "2×", color="#cc3b30", fontsize=FS_TEXT, ha="center",
+                    va="top", bbox=_lblbox, zorder=7)
             ax.plot([0, nnx], [-0.85, -0.85], color="#b8860b", lw=3, solid_capstyle="butt")
-            ax.text(nnx/2, -0.74, "RR_post", color="#b8860b", fontsize=FS_TEXT, ha="center")
+            ax.text(nnx/2, -0.74, "RR_post", color="#b8860b", fontsize=FS_TEXT, ha="center",
+                    bbox=_lblbox, zorder=7)
             ax.set_xlim(-half, half); ax.set_ylim(-1.25, 1.75)
             ax.tick_params(colors="#555555", labelsize=FS_TICK)
             for sp in ax.spines.values(): sp.set_color("#c8c8c8")
             ax.grid(True, alpha=0.13, color="#dcdcdc", lw=0.3)
             if show_xlabel:
                 ax.set_xlabel("t (s) relative to the PVC", color="#555555", fontsize=FS_LABEL)
-            ax.set_title(title, color=color, fontsize=8.5)
+            # titolo nero, con solo la parola di classe (keyword) nel colore
+            colored_title(ax, [(letter, "#1a1a1a", "bold"),
+                               (keyword, color, "normal"),
+                               (suffix, "#1a1a1a", "normal")])
         di, dc = _clean("int"), _clean("comp")
         if di and dc:
             # impilati verticalmente: 8.1in di larghezza come le altre figure
             # (la strip ECG resta larga), font/dpi uniformi, lettere (a)/(b) in grassetto
             fig, (a1, a2) = plt.subplots(2, 1, figsize=(8.1, 5.0), facecolor=DARK_BG)
-            _draw_demo(a1, di, "#1f7fb0",
-                       f"$\\bf{{(a)}}$ Interpolated — pause {di['post_ratio']:.2f}× sinus (silent)",
-                       show_xlabel=False)
-            _draw_demo(a2, dc, "#cc3b30",
-                       f"$\\bf{{(b)}}$ Compensated — pause {dc['post_ratio']:.2f}× sinus (felt)")
+            _draw_demo(a1, di, "#1f7fb0", "(a)  ", "Interpolated",
+                       f" — pause {di['post_ratio']:.2f}× sinus (silent)", show_xlabel=False)
+            _draw_demo(a2, dc, "#cc3b30", "(b)  ", "Compensated",
+                       f" — pause {dc['post_ratio']:.2f}× sinus (felt)")
             a1.tick_params(labelbottom=False)   # numeri x solo sul pannello in basso
-            fig.subplots_adjust(left=0.06, right=0.99, top=0.93, bottom=0.10, hspace=0.30)
+            fig.subplots_adjust(left=0.06, right=0.99, top=0.91, bottom=0.10, hspace=0.30)
             img_method_example = fig_to_b64(fig, dpi=450)
 
         # distribuzioni: somma S (convenzione) vs pausa RR_post (percezione)
