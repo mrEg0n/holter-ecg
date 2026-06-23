@@ -1629,12 +1629,12 @@ def main():
                         color=tag_col, fontsize=FS_TEXT - 0.5, fontweight="bold")
                 focus_findings.append((short_label(s["label"]), focus_txt, morph))
             elif mod["ok"] and mod["mu"]:
-                # nessun avvallamento reale (spalla destra): force-split al punto medio
+                # nessun avvallamento reale (spalla destra): split artificiale al punto medio
                 # dei due modi e verifica che la morfologia resti la stessa
                 split = 0.5 * (mod["mu"][0] + mod["mu"][1])
                 morph = coupling_focus_morph(s["ecg_path"], split)
                 if morph:
-                    ax.text(0.985, 0.84, f"force-split QRS r={morph['corr']:.3f}",
+                    ax.text(0.985, 0.84, f"artificially split QRS r={morph['corr']:.3f}",
                             transform=ax.transAxes, ha="right", color="#9a7d0a",
                             fontsize=FS_TEXT - 0.5, fontstyle="italic")
         ax.axvline(500, color="#6a6a6a", ls="--", lw=0.7, alpha=0.5)
@@ -2013,7 +2013,10 @@ def main():
         n_sig = sum(1 for s in edr_sessions if s["edr"]["pval"] < 0.05)
         def _pv(p):
             col = "#1b8a3a" if p < 0.05 else "#cc5a2a"
-            txt = f"{p:.0e}" if p < 0.01 else f"{p:.3f}"
+            if p < 1e-300:          # underflow numerico: non esiste un p-value = 0
+                txt = "&lt;1e-300"
+            else:
+                txt = f"{p:.0e}" if p < 0.01 else f"{p:.3f}"
             return f"<b style='color:{col}'>{txt}</b>"
         rrows = []
         for s in edr_sessions:
@@ -2711,7 +2714,7 @@ def main():
 <div style="overflow-x:auto; margin: 12px auto; max-width: 820px;">
 <table>
   <tr><th>Session</th><th>Resp rate (/min)</th><th>PVCs</th><th>Peak phase</th>
-      <th>Peak enrichment</th><th>p (&chi;&sup2;)</th><th>EDR SNR</th></tr>
+      <th>Peak enrichment</th><th>p (&chi;&sup2;)</th><th>EDR quality score</th></tr>
   {resp_table}
 </table>
 </div>

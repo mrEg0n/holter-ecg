@@ -101,6 +101,7 @@ UNI = {
     "→": r"$\rightarrow$", "←": r"$\leftarrow$",
     "↑": r"$\uparrow$", "↓": r"$\downarrow$",
     "χ": r"$\chi$", "μ": r"$\mu$", "²": r"\textsuperscript{2}",
+    "<": r"$<$", ">": r"$>$",
     "°": r"$^\circ$", "…": r"\ldots{}", " ": " ", " ": "~",
     "‘": "`", "’": "'", "“": "``", "”": "''",
 }
