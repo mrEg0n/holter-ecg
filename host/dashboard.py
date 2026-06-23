@@ -1654,9 +1654,9 @@ def main():
     n_coup_tot = len(all_coup)
     coup_rr_all = np.array([c["rr"] for c, _ in all_coup]) if all_coup else np.array([])
     if all_coup:
-        fig = plt.figure(figsize=(13, 4.3), facecolor=DARK_BG)
+        fig = plt.figure(figsize=(8.1, 2.9), facecolor=DARK_BG)
         gs = fig.add_gridspec(1, 3, width_ratios=[1.0, 1.25, 1.0],
-                              left=0.06, right=0.985, top=0.88, bottom=0.16, wspace=0.28)
+                              left=0.07, right=0.985, top=0.85, bottom=0.26, wspace=0.36)
 
         # (1) conteggio per sessione, color-coded come le altre figure
         ax0 = fig.add_subplot(gs[0]); ax0.set_facecolor(DARK_BG)
@@ -1667,8 +1667,8 @@ def main():
         ax0.set_xticklabels([short_label(s["label"]) for s in sessions],
                             rotation=45, ha="right", fontsize=FS_TEXT, color="#555555")
         ax0.set_ylabel("couplets (n)", color="#555555", fontsize=FS_LABEL)
-        ax0.set_title(f"Couplets per session  (total {n_coup_tot})",
-                      color="#1f1f1f", fontsize=FS_TITLE)
+        ax0.set_title(f"$\\bf{{(a)}}$ Couplets per session (n={n_coup_tot})",
+                      color="#1f1f1f", fontsize=8.5)
         ax0.tick_params(colors="#555555", labelsize=FS_TICK)
         ax0.grid(axis="y", alpha=0.18, color="#dcdcdc")
         for sp in ax0.spines.values(): sp.set_color("#c8c8c8")
@@ -1688,8 +1688,8 @@ def main():
         ax1.set_xlim(-CPL_PRE, CPL_POST); ax1.set_ylim(-1.15, 1.25)
         ax1.set_xlabel("time from 1st PVC peak (s)", color="#555555", fontsize=FS_LABEL)
         ax1.set_ylabel("amplitude (norm.)", color="#555555", fontsize=FS_LABEL)
-        ax1.set_title(f"All {n_coup_tot} couplets overlaid (by session colour)",
-                      color="#1f1f1f", fontsize=FS_TITLE)
+        ax1.set_title("$\\bf{(b)}$ All couplets overlaid",
+                      color="#1f1f1f", fontsize=8.5)
         ax1.legend(facecolor="#f2efe9", labelcolor="#1a1a1a", edgecolor="#c8c8c8",
                    fontsize=FS_LEGEND, loc="upper right")
         ax1.tick_params(colors="#555555", labelsize=FS_TICK)
@@ -1711,15 +1711,15 @@ def main():
         ax2.set_xlim(-QRS_HALF, QRS_HALF); ax2.set_ylim(-1.15, 1.15)
         ax2.set_xlabel("time from QRS peak (s)", color="#555555", fontsize=FS_LABEL)
         ax2.set_ylabel("amplitude (norm.)", color="#555555", fontsize=FS_LABEL)
-        ax2.set_title(f"1st vs 2nd beat morphology  (median r={r12:.3f})",
-                      color="#1f1f1f", fontsize=FS_TITLE)
+        ax2.set_title(f"$\\bf{{(c)}}$ 1st vs 2nd beat (r={r12:.3f})",
+                      color="#1f1f1f", fontsize=8.5)
         ax2.legend(facecolor="#f2efe9", labelcolor="#1a1a1a", edgecolor="#c8c8c8",
                    fontsize=FS_LEGEND, loc="upper right")
         ax2.tick_params(colors="#555555", labelsize=FS_TICK)
         ax2.grid(alpha=0.16, color="#dcdcdc")
         for sp in ax2.spines.values(): sp.set_color("#c8c8c8")
 
-        img_couplets = fig_to_b64(fig, dpi=220)
+        img_couplets = fig_to_b64(fig, dpi=450)
 
     # gallery di esempio: 6 strip di couplet (2 colonne × 3 righe, stesso format
     # delle 10 example strips: traccia verde, QRS PVC rosso ±120ms + marker). Finestra
@@ -1740,7 +1740,7 @@ def main():
             picks.append((c, i))
     if picks:
         ncol, nrow = 2, (len(picks) + 1) // 2
-        fig, axes = plt.subplots(nrow, ncol, figsize=(13, 1.7 * nrow),
+        fig, axes = plt.subplots(nrow, ncol, figsize=(8.1, 1.18 * nrow + 0.85),
                                  facecolor=DARK_BG, squeeze=False)
         flat = axes.ravel()
         for ax, (c, i) in zip(flat, picks):
@@ -1753,13 +1753,13 @@ def main():
         for ax in flat[len(picks):]:
             ax.set_visible(False)
         fig.suptitle("Couplet example strips (±5 s) — two consecutive PVCs in context",
-                     color="#1f1f1f", fontsize=FS_TITLE, y=0.997)
+                     color="#1f1f1f", fontsize=9.5, y=0.997)
         for ax in flat[max(0, len(picks) - ncol):len(picks)]:
             ax.set_xlabel("Time relative to couplet centre (s)",
                           color="#555555", fontsize=FS_LABEL)
         fig.subplots_adjust(left=0.05, right=0.99, top=0.93, bottom=0.07,
                             hspace=0.55, wspace=0.12)
-        img_couplet_strips = fig_to_b64(fig, dpi=220)
+        img_couplet_strips = fig_to_b64(fig, dpi=450)
 
     # ---- motivo ritmico locale: il couplet si ripete dentro lo stesso pattern? ----
     # Conta i motivi `ctx_disp` (4 battiti prima .. 4 dopo) su TUTTI i couplet.
@@ -1771,7 +1771,7 @@ def main():
         labels_m = [" ".join(m) for m, _ in top_motifs][::-1]
         counts_m = [n for _, n in top_motifs][::-1]
         dom_n = top_motifs[0][1]
-        fig, ax = plt.subplots(figsize=(11, 0.46 * len(top_motifs) + 1.2),
+        fig, ax = plt.subplots(figsize=(8.1, 0.45 * len(top_motifs) + 1.2),
                                facecolor=DARK_BG)
         ax.set_facecolor(DARK_BG)
         ym = np.arange(len(labels_m))
@@ -1787,12 +1787,12 @@ def main():
         ax.set_xlim(0, max(counts_m) * 1.18)
         ax.set_title("Local rhythm motif around each couplet "
                      "(4 beats before … couplet … 4 after)",
-                     color="#1f1f1f", fontsize=FS_TITLE)
+                     color="#1f1f1f", fontsize=9)
         ax.tick_params(colors="#555555", labelsize=FS_TICK)
         ax.grid(axis="x", alpha=0.16, color="#dcdcdc")
         for sp in ax.spines.values(): sp.set_color("#c8c8c8")
         fig.subplots_adjust(left=0.27, right=0.97, top=0.84, bottom=0.18)
-        img_couplet_motifs = fig_to_b64(fig, dpi=220)
+        img_couplet_motifs = fig_to_b64(fig, dpi=450)
 
     # testo di sintesi del pattern (HTML)
     if top_motifs and n_coup_tot:
