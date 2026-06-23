@@ -277,6 +277,36 @@ essentially identical to the core's. It reflects beat-to-beat / baseline
 variability captured by PC2 --- consistent with the single-population picture
 from the elbow and the unimodal trough histogram.
 
+% ===================== COUPLING / SINGLE-SOURCE CHECK =====================
+\section{Per-session coupling distribution and single-source consistency check}
+The coupling interval, \rrpre{}, is the time between the preceding sinus beat and the PVC. It
+measures how long after a sinus beat the ectopic complex occurs. A stable monomorphic PVC source
+is expected to show a relatively tight coupling distribution. By contrast, multiple sources or
+clearly distinct ectopic mechanisms may produce separate coupling peaks, particularly if
+associated with different QRS morphologies.
+
+For each session, the coupling distribution was tested using one- versus two-component Gaussian
+mixture models. A session was flagged as bimodal only when the two-component fit produced two
+genuinely separated peaks, with a visible trough rather than simple skew, and improved the
+Bayesian information criterion. This classification was further checked offline using a
+parametric-bootstrap likelihood-ratio test.
+
+Two sessions, 2026-06-05 18:29 and 2026-06-06 15:08, showed genuinely bimodal coupling
+distributions. In both cases, however, the two coupling clusters had essentially identical QRS
+morphology. Within the limits of a single-lead recording setup, this supports coupling modulation
+of the same dominant monomorphic PVC morphology rather than a morphologically distinct second
+source. Sessions showing only a right-skewed shoulder, rather than two separated modes, were
+deliberately left unflagged. Even when these tails were force-split, the resulting clusters
+retained nearly identical QRS morphology, supporting their inclusion within the same recurrent PVC
+population.
+
+Overall, no session showed a coupling distribution associated with a clearly distinct second QRS
+morphology. The per-session coupling analysis therefore remains consistent with the
+single-population interpretation derived from morphology, clustering, and cross-session
+correlation.
+
+\reportfig{12_per_session_coupling_distribution.png}{Per-session coupling-interval distributions with the statistical single-source consistency check based on Gaussian mixture modelling.}
+
 % ===================== NORMAL BEATS =====================
 \section{Normal-beat morphology}
 As a non-ectopic baseline, the same amplitude-normalised superimposition was applied to the
@@ -459,36 +489,6 @@ technical signal check and is not a diagnostic assessment.
 \caption{Per-session summary of recording duration, excluded intervals, beat counts, PVC burden, coupling, couplets, rhythm motifs, interpolated-versus-compensated composition, guarded beats, and signal-level AF-screen metrics.\label{tab:summary}}
 \tableSummary
 \end{table}
-
-% ===================== COUPLING / SINGLE-SOURCE CHECK =====================
-\section{Per-session coupling distribution and single-source consistency check}
-The coupling interval, \rrpre{}, is the time between the preceding sinus beat and the PVC. It
-measures how long after a sinus beat the ectopic complex occurs. A stable monomorphic PVC source
-is expected to show a relatively tight coupling distribution. By contrast, multiple sources or
-clearly distinct ectopic mechanisms may produce separate coupling peaks, particularly if
-associated with different QRS morphologies.
-
-For each session, the coupling distribution was tested using one- versus two-component Gaussian
-mixture models. A session was flagged as bimodal only when the two-component fit produced two
-genuinely separated peaks, with a visible trough rather than simple skew, and improved the
-Bayesian information criterion. This classification was further checked offline using a
-parametric-bootstrap likelihood-ratio test.
-
-Two sessions, 2026-06-05 18:29 and 2026-06-06 15:08, showed genuinely bimodal coupling
-distributions. In both cases, however, the two coupling clusters had essentially identical QRS
-morphology. Within the limits of a single-lead recording setup, this supports coupling modulation
-of the same dominant monomorphic PVC morphology rather than a morphologically distinct second
-source. Sessions showing only a right-skewed shoulder, rather than two separated modes, were
-deliberately left unflagged. Even when these tails were force-split, the resulting clusters
-retained nearly identical QRS morphology, supporting their inclusion within the same recurrent PVC
-population.
-
-Overall, no session showed a coupling distribution associated with a clearly distinct second QRS
-morphology. The per-session coupling analysis therefore remains consistent with the
-single-population interpretation derived from morphology, clustering, and cross-session
-correlation.
-
-\reportfig{12_per_session_coupling_distribution.png}{Per-session coupling-interval distributions with the statistical single-source consistency check based on Gaussian mixture modelling.}
 
 % ===================== 11. RESPIRATION =====================
 \section{Respiration (EDR) \& respiratory-phase trigger}\label{sec:edr}
