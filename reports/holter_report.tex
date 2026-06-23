@@ -289,9 +289,9 @@ remains an interpretation of the data, not a confirmed mechanism.
 Each PVC is evaluated in relation to the preceding and following sinus beats, forming an
 N--PVC--N sequence. The distinction between interpolated and compensated PVCs is based on how
 the ectopic beat fits into the surrounding sinus rhythm, measured from QRS peak to QRS peak. An
-\interp{interpolated} PVC occurs between two sinus beats without producing a substantial delay
+interpolated PVC occurs between two sinus beats without producing a substantial delay
 of the next sinus beat, so the N--PVC--N interval remains close to one local sinus cycle. A
-\comp{compensated} PVC is followed by a longer post-extrasystolic pause, so the N--PVC--N
+compensated PVC is followed by a longer post-extrasystolic pause, so the N--PVC--N
 interval approaches approximately two local sinus cycles.
 
 In this subject the two classes differ markedly in perceived impact. Interpolated PVCs are
@@ -311,11 +311,10 @@ classified PVC candidates, were set aside by this guard.
 
 Each PVC can be placed by the post-extrasystolic pause that follows it: most fall clearly into a
 short-pause (interpolated) or long-pause (compensated) group, while a minority sit close to the
-boundary. \textbf{Figure~\ref{fig:strip3}} shows this on a continuous strip, with the clearly
-\interp{interpolated} beats in blue, the clearly \comp{compensated} in red, and the borderline
-intermediate beats in yellow.
+boundary. On a continuous strip (\textbf{Figure~\ref{fig:strip3}}) these appear as interpolated
+(blue), compensated (red), and the borderline intermediate beats (yellow).
 
-\reportfig{interp_comp_3class_strip.png}{A continuous ECG strip classified by the post-extrasystolic pause \rrpost{}: \interp{interpolated} (short pause, blue), \comp{compensated} (long pause, red), and the borderline beats near the valley (yellow). Most PVCs are unambiguous; only a few sit at the boundary.\label{fig:strip3}}
+\reportfig{interp_comp_3class_strip.png}{A continuous ECG strip classified by the post-extrasystolic pause \rrpost{}: interpolated (short pause, blue), compensated (long pause, red), and the borderline beats near the valley (yellow). Most PVCs are unambiguous; only a few sit at the boundary.\label{fig:strip3}}
 
 A strict conventional sum rule (a ``full'' pause defined as N--PVC--N between $1.85$ and
 $2.15\times$ the local sinus cycle) would leave a much broader grey zone. The dataset, however,
@@ -331,25 +330,23 @@ The conventional sum S and \rrpost{} agree for approximately 99\% of beats, but 
 a small minority of cases, because the same N--PVC--N sum can correspond to different
 post-extrasystolic pauses depending on the coupling interval. When the two measures disagree,
 \rrpost{} better captures the operational distinction of interest: a short \rrpost{} corresponds
-to an \interp{interpolated} PVC, whereas a long \rrpost{} corresponds to a \comp{compensated} PVC
+to an interpolated PVC, whereas a long \rrpost{} corresponds to a compensated PVC
 followed by a clear pause.
 
 For this reason, the final split was based on \rrpost{} rather than on the conventional sum
 alone. The empirical valley between the two modes occurred at $\pauseValley\times$ the local
-sinus cycle. Beats with \rrpost{} below this value were classified as \interp{interpolated}, and
-beats above it as \comp{compensated}. Across the dataset this criterion classified
+sinus cycle. Beats with \rrpost{} below this value were classified as interpolated, and
+beats above it as compensated. Across the dataset this criterion classified
 \textbf{\pctInterp\%} of measurable PVCs as interpolated and \textbf{\pctComp\%} as compensated,
 based on \methodBeats{} classified beats. Only approximately 1\% of beats fell within $\pm0.10$
 of the decision boundary; beats that remained genuinely ambiguous were not forced into either
 class, being removed by the noise-exclusion procedure or by the prematurity guard.
 
 The same classification is illustrated on a continuous ECG strip from session 2026-06-08 22:01.
-Each PVC is coloured according to its class: \interp{interpolated} PVCs are shown in blue and
-\comp{compensated} PVCs in red. Interpolated PVCs occur without a substantial gap in the
-surrounding sinus rhythm, whereas compensated PVCs are followed by a visibly longer pause and a
-stronger post-extrasystolic beat.
+Interpolated PVCs occur without a substantial gap in the surrounding sinus rhythm, whereas
+compensated PVCs are followed by a visibly longer pause and a stronger post-extrasystolic beat.
 
-\reportfig{08_final_2_class_strip.png}{A continuous ECG strip classified by the actual pause \rrpost{} into two classes (no grey zone): \interp{interpolated} (blue) carry no pause, \comp{compensated} (red) are followed by one.\label{fig:strip2}}
+\reportfig{08_final_2_class_strip.png}{A continuous ECG strip classified by the actual pause \rrpost{} into two classes (no grey zone): interpolated (blue) carry no pause, compensated (red) are followed by one.\label{fig:strip2}}
 
 % ===================== 6. CROSS-SESSION =====================
 \section{Cross-session rhythm \& burden dynamics}
