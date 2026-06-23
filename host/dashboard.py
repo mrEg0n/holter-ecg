@@ -941,7 +941,7 @@ def main():
                        label=f"Cluster {name} (n={mask.sum():,})")
         ax.set_xlabel("PC1", color="#1a1a1a", fontsize=FS_LABEL)
         ax.set_ylabel("PC2", color="#1a1a1a", fontsize=FS_LABEL)
-        ax.set_title(r"$\bf{(a)}$ PCA + K-means k=2 — artificial bipartition?",
+        ax.set_title(r"$\bf{(a)}$ PCA + K-means k=2",
                      color="#1f1f1f", fontsize=8.5)
         ax.legend(facecolor="#f2efe9", labelcolor="#1a1a1a", edgecolor="#c8c8c8",
                   fontsize=FS_LEGEND, loc="upper right")
@@ -968,7 +968,7 @@ def main():
         ax.plot(range(1, 7), inertias, marker="o", color="#b8860b", lw=2, ms=8)
         ax.set_xlabel("k (number of clusters)", color="#1a1a1a", fontsize=FS_LABEL)
         ax.set_ylabel("Within-cluster sum of squares", color="#1a1a1a", fontsize=FS_LABEL)
-        ax.set_title(r"$\bf{(c)}$ Elbow plot — discrete clusters?",
+        ax.set_title(r"$\bf{(c)}$ Elbow plot",
                      color="#1f1f1f", fontsize=8.5)
         ax.tick_params(colors="#555555", labelsize=FS_TICK)
         for sp in ax.spines.values(): sp.set_color("#c8c8c8")
