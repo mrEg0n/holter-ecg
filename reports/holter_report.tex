@@ -302,8 +302,8 @@ the ectopy.
 \reportfig{06_interpolated_vs_compensated_example.png}{Two representative PVCs. (a) an interpolated beat (pause shorter than the sinus cycle, silent); (b) a compensated beat (full pause, felt). The gold bar marks the actual post-extrasystolic pause \rrpost{}; dashed lines mark $1\times$ (blue) and $2\times$ (red) the locally-estimated sinus cycle, and N\,prev\,/\,N\,next the flanking sinus beats.}
 
 The reference sinus cycle is not defined as a single session-wide value. Because this subject
-shows marked respiratory sinus arrhythmia, the sinus cycle is estimated \textbf{locally} for
-each PVC as the median of nearby N--N intervals. A \textbf{prematurity guard} then excludes PVC
+shows marked respiratory sinus arrhythmia, the sinus cycle is estimated locally for
+each PVC as the median of nearby N--N intervals. A prematurity guard then excludes PVC
 candidates whose coupling interval, \rrpre{}, is not shorter than the local sinus cycle. Such
 events are inconsistent with a truly premature ventricular beat and most likely reflect a
 missed sub-threshold sinus beat within the interval. A total of 118 beats, approximately 1\% of
@@ -337,7 +337,7 @@ For this reason, the final split was based on \rrpost{} rather than on the conve
 alone. The empirical valley between the two modes occurred at $\pauseValley\times$ the local
 sinus cycle. Beats with \rrpost{} below this value were classified as interpolated, and
 beats above it as compensated. Across the dataset this criterion classified
-\textbf{\pctInterp\%} of measurable PVCs as interpolated and \textbf{\pctComp\%} as compensated,
+\pctInterp\% of measurable PVCs as interpolated and \pctComp\% as compensated,
 based on \methodBeats{} classified beats. Only approximately 1\% of beats fell within $\pm0.10$
 of the decision boundary; beats that remained genuinely ambiguous were not forced into either
 class, being removed by the noise-exclusion procedure or by the prematurity guard.
@@ -398,7 +398,7 @@ strips include several motifs rather than only the dominant one.
 % ===================== 6. CROSS-SESSION =====================
 \section{Cross-session rhythm \& burden dynamics}
 Longitudinal comparison across all sessions, recomputed at every run.
-\textbf{Burden} $=$ PVCs / all beats; \textbf{effective SA rate} $=$ 60000 /
+Burden $=$ PVCs / all beats; effective SA rate $=$ 60000 /
 median N--N interval (the rate a wrist pulse would read, since most PVCs are
 non-perfusing).
 \begin{itemize}
@@ -452,15 +452,15 @@ key pattern above.
 \textbf{What the coupling interval is.} The coupling (\rrpre) is the time from
 the preceding normal beat to the PVC --- how long after each sinus beat the
 ectopic fires. A single focus re-entering on the same circuit fires at a
-near-constant coupling, so a \textbf{tight, recording-to-recording-stable peak}
-is the signature of one monomorphic focus; a \textbf{second focus} would add a
+near-constant coupling, so a tight, recording-to-recording-stable peak
+is the signature of one monomorphic focus; a second focus would add a
 separate coupling peak \emph{with a different QRS shape}.
 
 \textbf{Single-focus check (statistical).} For every session a 1- vs 2-component
 Gaussian mixture is fit to the coupling; a session is flagged \emph{bimodal}
 only when the two-component fit is genuinely two-peaked (a real trough, not mere
 skew) and improves the BIC --- confirmed offline by a parametric-bootstrap
-likelihood-ratio test ($p\approx0.002$). Result: \textbf{2 sessions} show a
+likelihood-ratio test ($p\approx0.002$). Result: 2 sessions show a
 genuinely bimodal coupling (06-05 18:29, 06-06 15:08); in each the two coupling
 clusters have \emph{identical} QRS morphology, so this is the same monomorphic
 focus discharging at two coupling intervals (coupling modulation), \emph{not} a
@@ -474,18 +474,18 @@ morphologically distinct second focus.
 
 % ===================== 11. RESPIRATION =====================
 \section{Respiration (EDR) \& respiratory-phase trigger}\label{sec:edr}
-The final question: are the PVCs tied to \textbf{breathing}? There is no
+The final question: are the PVCs tied to breathing? There is no
 respiration belt, but the breath leaves a fingerprint on the ECG --- chest
 movement and lung-impedance change make the R-wave amplitude rise and fall with
-each breath (ECG-derived respiration, \textbf{EDR}). Recovering that signal from
+each breath (ECG-derived respiration, EDR). Recovering that signal from
 the R-amplitude of the normal beats (cubic-resampled to 4\,Hz, band-passed
 0.1--0.5\,Hz, instantaneous phase by Hilbert transform) lets us ask, for every
 beat, \emph{where in the breath} it fell.
 
-Respiration was recovered in \textbf{10/10} sessions; PVC timing is
-significantly coupled to respiratory phase in \textbf{10/10} of them ($\chi^2$
+Respiration was recovered in 10/10 sessions; PVC timing is
+significantly coupled to respiratory phase in 10/10 of them ($\chi^2$
 across phase bins, $p<0.05$) --- so yes, there is a real correlation. The
-R-amplitude is largest at \textbf{full lungs} (the subject confirmed this
+R-amplitude is largest at full lungs (the subject confirmed this
 directly while recording), so the phase peak sits at full inflation /
 end-inspiration: PVCs are over-represented there (mean peak $\times2.6$ vs
 chance) and sparsest near empty lungs. That points to a mechanical, lung-volume
@@ -497,7 +497,7 @@ previously assumed.
 
 Below: the phase distribution of all PVCs vs normal beats (polar) and the
 per-session enrichment around the respiratory cycle (values above $\times1$ mark
-phases where PVCs are over-represented). Phase 0/100\% is \textbf{full lungs}
+phases where PVCs are over-represented). Phase 0/100\% is full lungs
 (largest R-amplitude, end-inspiration); 50\% is empty lungs (end-expiration).
 The enrichment peaks at full lungs.
 
@@ -517,7 +517,7 @@ phases.
 
 \tableResp
 
-A significant $p$ means the PVCs are \textbf{not} uniformly spread across the
+A significant $p$ means the PVCs are not uniformly spread across the
 breath --- they cluster at a phase, i.e.\ respiration modulates the focus. This
 is a signal-level observation, not a clinical finding.
 
@@ -528,7 +528,7 @@ is a signal-level observation, not a clinical finding.
 (AD8232), 1st-order IIR bandpass 0.3--25 Hz, QRS detector and PVC classifier as
 in the setup box. Sessions filtered: size $\geq$ 5 MB and $\geq$ 50 PVCs. It is
 a personal-use, educational notebook and a discussion document for the
-supervising cardiologist --- it does \textbf{not} constitute a diagnostic
+supervising cardiologist --- it does not constitute a diagnostic
 report.\par
 \vspace{0.4em}
 This report was built with heavy AI assistance; some of its analyses were
