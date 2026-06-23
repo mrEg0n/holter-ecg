@@ -664,23 +664,24 @@ def draw_example_strip(ax, ex, title):
     `title` = etichetta breve sopra la strip (adatta alla griglia 2 colonne)."""
     c = ex["center"]
     ax.set_facecolor(DARK_BG)
-    ax.plot(ex["t"] - c, ex["v"], lw=0.7, color="#2f8a63")
+    ax.plot(ex["t"] - c, ex["v"], lw=0.45, color="#2f8a63")
     for p in ex["peaks"]:
         if p["cls"] == "pvc":
             wm = (ex["t"] >= p["t"] - 0.12) & (ex["t"] <= p["t"] + 0.12)
             if wm.any():
-                ax.plot(ex["t"][wm] - c, ex["v"][wm], lw=1.4, color="#cc3b30")
-            ax.scatter(p["t"] - c, min(1.6, p["amp"] + 0.30), s=40, marker="v",
+                ax.plot(ex["t"][wm] - c, ex["v"][wm], lw=0.9, color="#cc3b30")
+            ax.scatter(p["t"] - c, min(1.6, p["amp"] + 0.30), s=28, marker="v",
                        color="#cc3b30", edgecolors="#1a1a1a", linewidths=0.4, zorder=5)
         else:
-            ax.scatter(p["t"] - c, min(1.4, p["amp"] + 0.18), s=10, marker="v",
+            ax.scatter(p["t"] - c, min(1.4, p["amp"] + 0.18), s=9, marker="v",
                        color="#2f8a63", edgecolors="#1a1a1a", linewidths=0.25, zorder=4)
     ax.set_xlim(-ex["pre"], ex["post"]); ax.set_ylim(-1.2, 1.8)
-    ax.tick_params(colors="#555555", labelsize=FS_TICK)
-    ax.grid(True, alpha=0.18, color="#dcdcdc", linewidth=0.4)
+    ax.set_yticks([])
+    ax.tick_params(axis="x", colors="#777777", labelsize=8)
+    ax.grid(True, alpha=0.14, color="#dcdcdc", linewidth=0.4)
     for sp in ax.spines.values():
-        sp.set_color("#c8c8c8")
-    ax.set_title(title, color="#1f1f1f", fontsize=FS_TICK, pad=3)
+        sp.set_color("#cccccc")
+    ax.set_title(title, color="#222222", fontsize=8.5, pad=3)
 
 def fig_to_b64(fig, dpi=200):
     buf = io.BytesIO()
@@ -1741,7 +1742,7 @@ def main():
             picks.append((c, i))
     if picks:
         ncol, nrow = 2, (len(picks) + 1) // 2
-        fig, axes = plt.subplots(nrow, ncol, figsize=(8.1, 1.18 * nrow + 0.85),
+        fig, axes = plt.subplots(nrow, ncol, figsize=(8.1, 1.18 * nrow + 1.05),
                                  facecolor=DARK_BG, squeeze=False)
         flat = axes.ravel()
         # motivo dominante (piu' conservato): nel titolo del suo pannello va in grassetto
@@ -1763,7 +1764,16 @@ def main():
         for ax in flat[max(0, len(picks) - ncol):len(picks)]:
             ax.set_xlabel("Time relative to couplet centre (s)",
                           color="#555555", fontsize=FS_LABEL)
-        fig.subplots_adjust(left=0.05, right=0.99, top=0.95, bottom=0.07,
+        from matplotlib.lines import Line2D
+        fig.legend(handles=[Line2D([0], [0], color="#2f8a63", lw=1.8, label="clean ECG"),
+                            Line2D([0], [0], marker="v", color="#2f8a63", lw=0,
+                                   markersize=8, label="sinus beat (auto)"),
+                            Line2D([0], [0], color="#cc3b30", lw=1.8, label="PVC"),
+                            Line2D([0], [0], marker="v", color="#cc3b30", lw=0,
+                                   markersize=10, label="PVC (auto)")],
+                   loc="upper center", ncol=4, fontsize=9.5, frameon=False,
+                   bbox_to_anchor=(0.5, 0.995), columnspacing=2.0)
+        fig.subplots_adjust(left=0.05, right=0.99, top=0.90, bottom=0.065,
                             hspace=0.55, wspace=0.12)
         img_couplet_strips = fig_to_b64(fig, dpi=450)
 
