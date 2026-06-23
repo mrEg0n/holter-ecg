@@ -1157,6 +1157,21 @@ def main():
                linewidths=0.6, label="% compensated", zorder=4)
     ax.scatter(sahr_v, pintp_v, s=70, c="#1f7fb0", edgecolors="#1a1a1a",
                linewidths=0.6, label="% interpolated", zorder=4)
+    try:   # fit logistico pesato (come la ex-figura key-pattern): comp rossa, interp blu
+        from scipy.optimize import curve_fit
+        _sa = np.array(sahr_v, dtype=float); _pc = np.array(pcomp_v, dtype=float) / 100.0
+        _nc = np.array([s["metrics"]["n_interp"] + s["metrics"]["n_comp"]
+                        for s in sessions], dtype=float)
+        def _logi(x, a, b): return 1.0 / (1.0 + np.exp(-(a + b * x)))
+        _popt, _ = curve_fit(_logi, _sa, np.clip(_pc, 1e-3, 1 - 1e-3),
+                             p0=[-5.0, 0.12], sigma=1.0 / np.sqrt(np.maximum(_nc, 1)),
+                             maxfev=20000)
+        _xf = np.linspace(_sa.min() - 1.5, _sa.max() + 1.5, 200)
+        _yc = 100 * _logi(_xf, *_popt)
+        ax.plot(_xf, _yc, color="#d2685f", lw=1.8, zorder=2)
+        ax.plot(_xf, 100 - _yc, color="#1f7fb0", lw=1.8, zorder=2)
+    except Exception:
+        pass
     ax.set_xlabel("Effective SA rate (BPM)", color="#555555", fontsize=FS_LABEL)
     ax.set_ylabel("Share of classified PVCs (%)", color="#555555", fontsize=FS_LABEL)
     ax.set_title("$\\bf{(b)}$ Effective rate vs pause type", color="#1f1f1f", fontsize=8.5)
@@ -1177,7 +1192,7 @@ def main():
     ax.set_xlim(0, 100); ax.set_xlabel("Composition (%)", color="#555555", fontsize=FS_LABEL)
     ax.set_title("$\\bf{(c)}$ Interpolated vs compensated", color="#1f1f1f", fontsize=8.5)
     ax.legend(facecolor="#f2efe9", labelcolor="#1a1a1a", edgecolor="#c8c8c8",
-              fontsize=FS_LEGEND, loc="lower right")
+              fontsize=FS_LEGEND, loc="upper right")
     ax.tick_params(colors="#555555", labelsize=FS_TICK)
     for sp in ax.spines.values(): sp.set_color("#c8c8c8")
 
