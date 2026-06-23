@@ -170,7 +170,7 @@ The only operation left to manual curation is the exclusion of intervals corrupt
 % ===================== DATASET OVERVIEW (dopo) =====================
 \section{Dataset overview}
 All data presented in the following sections were obtained from the \nSessions{} recording
-sessions listed below. The sessions span different times of day and were acquired mainly under
+sessions listed in \textbf{Table~\ref{tab:sessions}}. The sessions span different times of day and were acquired mainly under
 resting conditions, either in a supine position or while seated during desk work.
 
 Across these \nSessions{} sessions, corresponding to approximately \totMinutes{} min, or about
@@ -286,7 +286,7 @@ clearly distinct ectopic mechanisms may produce separate coupling peaks, particu
 associated with different QRS morphologies.
 
 For each session, the coupling distribution was tested using one- versus two-component Gaussian
-mixture models. A session was flagged as bimodal only when the two-component fit produced two
+mixture models (\textbf{Figure~\ref{fig:coupling}}). A session was flagged as bimodal only when the two-component fit produced two
 genuinely separated peaks, with a visible trough rather than simple skew, and improved the
 Bayesian information criterion. This classification was further checked offline using a
 parametric-bootstrap likelihood-ratio test.
@@ -305,7 +305,7 @@ morphology. The per-session coupling analysis therefore remains consistent with 
 single-population interpretation derived from morphology, clustering, and cross-session
 correlation.
 
-\reportfig{12_per_session_coupling_distribution.png}{Per-session coupling-interval distributions with the statistical single-source consistency check based on Gaussian mixture modelling.}
+\reportfig{12_per_session_coupling_distribution.png}{Per-session coupling-interval distributions with the statistical single-source consistency check based on Gaussian mixture modelling.\label{fig:coupling}}
 
 % ===================== NORMAL BEATS =====================
 \section{Normal-beat morphology}
@@ -341,14 +341,15 @@ the ectopic beat fits into the surrounding sinus rhythm, measured from QRS peak 
 interpolated PVC occurs between two sinus beats without producing a substantial delay
 of the next sinus beat, so the N--PVC--N interval remains close to one local sinus cycle. A
 compensated PVC is followed by a longer post-extrasystolic pause, so the N--PVC--N
-interval approaches approximately two local sinus cycles.
+interval approaches approximately two local sinus cycles. Representative examples of both types are
+shown in \textbf{Figure~\ref{fig:icex}}.
 
 In this subject the two classes differ markedly in perceived impact. Interpolated PVCs are
 usually not noticed, whereas compensated PVCs are followed by a pause and a stronger
 post-extrasystolic sinus beat --- personally the most perceptible and bothersome component of
 the ectopy.
 
-\reportfig{06_interpolated_vs_compensated_example.png}{Two representative PVCs. (a) an interpolated beat, with \rrpost{} shorter than the local sinus cycle; (b) a compensated beat, with a longer post-extrasystolic pause. The gold bar marks the actual post-extrasystolic pause \rrpost{}; dashed lines mark $1\times$ (blue) and $2\times$ (red) the locally-estimated sinus cycle, and N\,prev\,/\,N\,next the flanking sinus beats.}
+\reportfig{06_interpolated_vs_compensated_example.png}{Two representative PVCs. (a) an interpolated beat, with \rrpost{} shorter than the local sinus cycle; (b) a compensated beat, with a longer post-extrasystolic pause. The gold bar marks the actual post-extrasystolic pause \rrpost{}; dashed lines mark $1\times$ (blue) and $2\times$ (red) the locally-estimated sinus cycle, and N\,prev\,/\,N\,next the flanking sinus beats.\label{fig:icex}}
 
 The reference sinus cycle is not defined as a single session-wide value. Because this subject
 shows marked respiratory sinus arrhythmia, the sinus cycle is estimated locally for
@@ -391,7 +392,8 @@ based on \methodBeats{} classified beats. Only approximately 1\% of beats fell w
 of the decision boundary; beats that remained genuinely ambiguous were not forced into either
 class, being removed by the noise-exclusion procedure or by the prematurity guard.
 
-The same classification is illustrated on a continuous ECG strip from session 2026-06-08 22:01.
+The same classification is illustrated on a continuous ECG strip from session 2026-06-08 22:01
+(\textbf{Figure~\ref{fig:strip2}}).
 Interpolated PVCs occur without a substantial gap in the surrounding sinus rhythm, whereas
 compensated PVCs are followed by a visibly longer pause and a stronger post-extrasystolic beat.
 
@@ -430,7 +432,8 @@ so that the panel illustrates the range of contexts in which couplets occurred.
 
 Local rhythm structure around each couplet was examined by coding the four beats before and after
 the couplet as N, for sinus beats, or V, for PVCs. This analysis tests whether couplets occur
-randomly within the rhythm or tend to recur within a stereotyped local sequence. The most common
+randomly within the rhythm or tend to recur within a stereotyped local sequence
+(\textbf{Figure~\ref{fig:couplet_motifs}}). The most common
 motif was \texttt{N V N N [V V] N V N N}, observed in 30 of 46 couplets, corresponding to 65\% of
 cases. This pattern represents an organised trigeminy-like cadence, with an isolated PVC, two sinus
 beats, the couplet, and then recurrence of the same sequence.
@@ -535,7 +538,7 @@ for couplet PVCs, with phase 0 corresponding to full-lung inflation. Because res
 circular, these peaks at 79\%, 12\%, and 87\% all fall within the same sector around the 0/100\%
 full-lung boundary, rather than indicating genuinely different respiratory phases. This is consistent
 with interpolated, compensated, and coupled PVCs sharing a common respiratory-phase association,
-rather than occupying clearly separate respiratory phases.
+rather than occupying clearly separate respiratory phases (\textbf{Figure~\ref{fig:edrtype}}).
 
 \reportfig[0.6\linewidth]{18_respiratory_phase_by_pvc_type.png}{Respiratory-phase distribution by PVC type. Interpolated, compensated and couplet PVCs all show enrichment near the full-lung phase.\label{fig:edrtype}}
 
@@ -559,11 +562,9 @@ interpreted as a clinical finding.
 \begin{center}{\Large\bfseries Appendix}\end{center}
 \vspace{1.8em}
 
-\section{Hardware photographs}\label{app:hw}
+\section{Hardware}\label{app:hw}
 \setcounter{figure}{0}
-Photographs of the assembled prototype used to acquire the recordings analysed in this report.
-The two views show opposite sides of the same body-worn unit.
-
+Photographs of the assembled device used to acquire the recordings analysed in this report. At this stage, the device is not housed in a dedicated enclosure; the wiring and components are exposed as part of the first iteration.
 \begin{figure}[H]
 \centering
 \begin{minipage}{0.49\linewidth}\centering
