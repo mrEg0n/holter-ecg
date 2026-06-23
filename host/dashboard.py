@@ -1073,7 +1073,7 @@ def main():
     ax.axvline(0, color="#6a6a6a", alpha=0.4, lw=0.8, ls=":")
     ax.set_xlim(-WIN/2, WIN/2)
     ax.set_xlabel("Time relative to sinus peak (s)", color="#1a1a1a", fontsize=FS_LABEL)
-    ax.set_ylabel("Amplitude (peak-normalized)", color="#1a1a1a", fontsize=FS_LABEL)
+    # y-label rimossa (era a ridosso della colorbar di (c)); specificata in didascalia
     ax.set_title("$\\bf{(d)}$ Outlier session vs others (median N)",
                  color="#1f1f1f", fontsize=8.5)
     ax.legend(facecolor="#f2efe9", labelcolor="#1a1a1a", edgecolor="#c8c8c8",
