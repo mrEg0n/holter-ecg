@@ -1744,21 +1744,26 @@ def main():
         fig, axes = plt.subplots(nrow, ncol, figsize=(8.1, 1.18 * nrow + 0.85),
                                  facecolor=DARK_BG, squeeze=False)
         flat = axes.ravel()
+        # motivo dominante (piu' conservato): nel titolo del suo pannello va in grassetto
+        from collections import Counter as _Ctr
+        _domc = _Ctr(cc.get("ctx_disp", "") for cc, _ in all_coup).most_common(1)
+        dom_ctx = _domc[0][0] if _domc else None
         for ax, (c, i) in zip(flat, picks):
             ctr = c["strip"]["center"]
             mm, ss = int(ctr // 60), int(ctr % 60)
-            motif = " ".join(c.get("ctx_disp", ""))   # "N V N N [V V] N V N N"
+            ctx = c.get("ctx_disp", "")
+            motif = " ".join(ctx)                     # "N V N N [V V] N V N N"
+            if ctx == dom_ctx:                        # dominante → motif in grassetto
+                motif = "$\\bf{" + motif.replace(" ", "\\ ") + "}$"
             draw_example_strip(ax, c["strip"],
                                f"{short_label(sessions[i]['label'])} @{mm:02d}:{ss:02d}"
                                f"    {motif}")
         for ax in flat[len(picks):]:
             ax.set_visible(False)
-        fig.suptitle("Couplet example strips (±5 s) — two consecutive PVCs in context",
-                     color="#1f1f1f", fontsize=9.5, y=0.997)
         for ax in flat[max(0, len(picks) - ncol):len(picks)]:
             ax.set_xlabel("Time relative to couplet centre (s)",
                           color="#555555", fontsize=FS_LABEL)
-        fig.subplots_adjust(left=0.05, right=0.99, top=0.93, bottom=0.07,
+        fig.subplots_adjust(left=0.05, right=0.99, top=0.95, bottom=0.07,
                             hspace=0.55, wspace=0.12)
         img_couplet_strips = fig_to_b64(fig, dpi=450)
 
