@@ -1410,66 +1410,68 @@ def main():
             img_method_example = fig_to_b64(fig, dpi=450)
 
         # distribuzioni: somma S (convenzione) vs pausa RR_post (percezione)
-        fig, (a1, a2) = plt.subplots(1, 2, figsize=(13, 3.6), facecolor=DARK_BG)
+        fig, (a1, a2) = plt.subplots(1, 2, figsize=(8.1, 3.2), facecolor=DARK_BG)
         a1.set_facecolor(DARK_BG)
         a1.hist(all_sratio, bins=np.arange(0.6, 3.0, 0.04), color="#6a6a6a",
                 alpha=0.55, edgecolor="#ffffff", linewidth=0.3)
         a1.axvline(1.0, color="#1f7fb0", lw=1.4); a1.axvline(2.0, color="#cc3b30", lw=1.4)
         a1.text(1.0, a1.get_ylim()[1]*0.94, "1×", color="#1f7fb0", fontsize=FS_TICK, ha="center")
         a1.text(2.0, a1.get_ylim()[1]*0.94, "2×", color="#cc3b30", fontsize=FS_TICK, ha="center")
-        a1.set_title("Conventional sum  S = (RR_pre+RR_post)/sinus", color="#3a3a3a", fontsize=FS_TITLE)
+        a1.set_title("$\\bf{(a)}$ Conventional sum S", color="#1f1f1f", fontsize=8.5)
         a1.set_xlabel("S  (× sinus cycle)", color="#555555", fontsize=FS_LABEL)
         a2.set_facecolor(DARK_BG)
         a2.hist(all_post, bins=np.arange(0.3, 2.2, 0.035), color="#1f7fb0",
                 alpha=0.5, edgecolor="#ffffff", linewidth=0.3)
         a2.axvline(PAUSE_VALLEY, color="#b8860b", lw=2, label=f"valley {PAUSE_VALLEY:.2f}")
         a2.legend(facecolor="#f2efe9", labelcolor="#1a1a1a", edgecolor="#c8c8c8", fontsize=FS_LEGEND)
-        a2.set_title("Pause  RR_post / sinus  (what is perceived)", color="#3a3a3a", fontsize=FS_TITLE)
+        a2.set_title("$\\bf{(b)}$ Post-extrasystolic pause", color="#1f1f1f", fontsize=8.5)
         a2.set_xlabel("RR_post  (× sinus cycle)", color="#555555", fontsize=FS_LABEL)
         for ax in (a1, a2):
             ax.tick_params(colors="#555555", labelsize=FS_TICK); ax.grid(alpha=0.15, color="#dcdcdc")
             for sp in ax.spines.values(): sp.set_color("#c8c8c8")
-        fig.subplots_adjust(left=0.05, right=0.99, top=0.9, bottom=0.14, wspace=0.13)
-        img_method_dist = fig_to_b64(fig, dpi=200)
+        fig.subplots_adjust(left=0.07, right=0.98, top=0.88, bottom=0.16, wspace=0.16)
+        img_method_dist = fig_to_b64(fig, dpi=450)
 
-        # strip finale colorata per RR_post
+        # strip finale colorata per RR_post (2 classi) — stile quality_strip / Fig 1
+        from matplotlib.lines import Line2D
         cmapd = {d["i"]: ("int" if d["post_ratio"] < PAUSE_VALLEY else "comp")
                  for d in dpause if not d["guard"]}
+        nrow = 6
         ti = [d["t"] for d in dpause if cmapd.get(d["i"]) == "int" and d["t"] > 60]
         tc = [d["t"] for d in dpause if cmapd.get(d["i"]) == "comp" and d["t"] > 60]
         bt, bsc, t0 = 60.0, -1, 60.0
-        while t0 + 80 < dt[-1]:
-            a = sum(1 for x in ti if t0 <= x < t0+80); b = sum(1 for x in tc if t0 <= x < t0+80)
+        while t0 + nrow*10 < dt[-1]:
+            a = sum(1 for x in ti if t0 <= x < t0+nrow*10); b = sum(1 for x in tc if t0 <= x < t0+nrow*10)
             sc = min(a, b)*2 + a + b
             if sc > bsc: bsc, bt = sc, t0
-            t0 += 40
+            t0 += 20
         COLc = {"int": "#1f7fb0", "comp": "#cc3b30"}
-        nrow = 8
-        fig, axes = plt.subplots(nrow, 1, figsize=(13, 1.1*nrow), facecolor=DARK_BG)
+        fig, axes = plt.subplots(nrow, 1, figsize=(8.1, 0.8*nrow + 1.0), facecolor=DARK_BG)
         for r, ax in enumerate(axes):
             rs = bt + r*10; re = rs+10; m = (dt >= rs) & (dt < re)
             ax.set_facecolor(DARK_BG)
-            if m.any(): ax.plot(dt[m]-rs, dvf[m], lw=0.6, color="#2e8b57", alpha=0.85)
+            if m.any(): ax.plot(dt[m]-rs, dvf[m], lw=0.45, color="#2e8b57", alpha=0.9)
             for d in dpause:
                 if not (rs <= d["t"] < re) or d["i"] not in cmapd: continue
                 c = cmapd[d["i"]]
                 wm = (dt >= d["t"]-0.12) & (dt <= d["t"]+0.12)
-                if wm.any(): ax.plot(dt[wm]-rs, dvf[wm], lw=1.7, color=COLc[c])
-                ax.scatter(d["t"]-rs, min(1.5, d["amp"]+0.26), s=30, marker="v",
-                           color=COLc[c], edgecolors="#1a1a1a", linewidths=0.3, zorder=6)
-            ax.set_xlim(0, 10); ax.set_ylim(-1.2, 1.7); ax.tick_params(colors="#6a6a6a", labelsize=FS_TEXT)
-            ax.grid(True, alpha=0.12, color="#dcdcdc", lw=0.3)
-            for sp in ax.spines.values(): sp.set_color("#c8c8c8")
-            ax.set_ylabel(f"{int(rs//60):02d}:{int(rs%60):02d}", color="#666666", fontsize=FS_TEXT,
-                          rotation=0, ha="right", va="center", labelpad=12)
-        from matplotlib.lines import Line2D
-        axes[0].legend(handles=[Line2D([0],[0], color="#1f7fb0", lw=3, label="Interpolated (silent)"),
-                                Line2D([0],[0], color="#cc3b30", lw=3, label="Compensated (felt)")],
-                       loc="upper right", facecolor="#f2efe9", labelcolor="#1a1a1a",
-                       edgecolor="#c8c8c8", fontsize=FS_LEGEND, ncol=2)
-        axes[-1].set_xlabel("seconds within the row", color="#555555", fontsize=FS_LABEL)
-        fig.subplots_adjust(left=0.05, right=0.99, top=0.97, bottom=0.05, hspace=0.4)
-        img_method_strip = fig_to_b64(fig, dpi=200)
+                if wm.any(): ax.plot(dt[wm]-rs, dvf[wm], lw=0.9, color=COLc[c])
+                ax.scatter(d["t"]-rs, min(1.5, d["amp"]+0.30), s=28, marker="v",
+                           color=COLc[c], edgecolors="#1a1a1a", linewidths=0.35, zorder=6)
+            ax.set_xlim(0, 10); ax.set_ylim(-1.2, 1.7)
+            ax.set_yticks([]); ax.tick_params(axis="x", colors="#777777", labelsize=8.5)
+            if r < nrow - 1: ax.set_xticklabels([])
+            ax.grid(True, alpha=0.13, color="#dcdcdc", lw=0.4)
+            for sp in ax.spines.values(): sp.set_color("#cccccc")
+            ax.text(-0.012, 0.5, f"{int(rs//60):02d}:{int(rs%60):02d}", transform=ax.transAxes,
+                    ha="right", va="center", color="#888888", fontsize=9)
+        axes[-1].set_xlabel("time (s)", color="#666666", fontsize=10)
+        fig.legend(handles=[Line2D([0],[0], color="#1f7fb0", lw=1.8, label="interpolated"),
+                            Line2D([0],[0], color="#cc3b30", lw=1.8, label="compensated")],
+                   loc="upper center", ncol=2, fontsize=9.5, frameon=False,
+                   bbox_to_anchor=(0.5, 0.995), columnspacing=2.4)
+        fig.subplots_adjust(left=0.055, right=0.992, top=0.90, bottom=0.085, hspace=0.30)
+        img_method_strip = fig_to_b64(fig, dpi=450)
 
         # --- variante 3-classi (report, va PRIMA della Fig 7): stesso stile di Fig 9
         #     ma con una TERZA classe gialla per le PVC intermedie (pausa vicino alla
