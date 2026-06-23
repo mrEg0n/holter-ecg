@@ -176,7 +176,11 @@ Across \nSessions{} sessions, corresponding to approximately ($\approx$\totMinut
 analysis. 
 
 \subsection*{Sessions}
+\begin{table}[H]
+\centering
+\caption{The recording sessions analysed in this report, with date/time, duration, classified beats and PVC counts.\label{tab:sessions}}
 \tableSessions
+\end{table}
 
 % ===================== PVC CHARACTERIZATION & MORPHOLOGY =====================
 \section{PVC characterization and morphology}
@@ -396,41 +400,49 @@ strips include several motifs rather than only the dominant one.
 \reportfig{15_couplet_local_rhythm_motifs.png}{Local rhythm motifs surrounding detected couplets, coded as N for sinus beats and V for PVCs. The dominant motif was \texttt{N V N N [V V] N V N N}, present in 30 of 46 couplets.\label{fig:couplet_motifs}}
 
 % ===================== 6. CROSS-SESSION =====================
-\section{Cross-session rhythm \& burden dynamics}
-Longitudinal comparison across all sessions, recomputed at every run.
-Burden $=$ PVCs / all beats; effective SA rate $=$ 60000 /
-median N--N interval (the rate a wrist pulse would read, since most PVCs are
-non-perfusing).
-\begin{itemize}
-  \item \textbf{Burden by session} --- how the PVC load varies recording to recording.
-  \item \textbf{Effective rate vs pause type} --- at lower SA rates interpolated
-        (silent) beats tend to prevail; as the rate rises they shift toward
-        compensated (felt) ones.
-  \item \textbf{Composition} --- interpolated / compensated / incomplete share per session.
-  \item \textbf{Coupling stability} --- a tight, session-stable pre-PVC coupling
-        is consistent with a single monomorphic focus.
-\end{itemize}
+\section{Cross-session rhythm and burden dynamics}
+Cross-session rhythm metrics were recomputed from the curated recordings using the same
+definitions applied throughout the report. PVC burden was defined as the number of PVCs divided
+by the total number of detected beats. The effective sinus-node rate was estimated as
+\texttt{60000 / median N-N interval}, corresponding to the rate expected from the underlying
+sinus rhythm rather than the total number of detected QRS complexes.
 
-\reportfig{09_cross_session_rhythm_and_burden.png}{(a) PVC burden by session; (b) effective rate vs PVC pause type; (c) interpolated vs compensated composition; (d) pre-PVC coupling-interval stability.\label{fig:cross}}
-\tableCross
+\textbf{Figure~\ref{fig:cross}} summarizes four cross-session measures. The first panel shows PVC
+burden by session, capturing how the detected ectopic load varies across recordings. The second
+panel relates effective sinus-node rate to pause type, comparing the relative proportion of
+interpolated and compensated PVCs. The third panel shows the per-session composition of
+interpolated and compensated PVCs. The fourth panel summarizes coupling stability across
+sessions; a tight and session-stable pre-PVC coupling interval supports the interpretation of a
+recurrent monomorphic PVC pattern within the limits of this single-lead setup.
 
-\textbf{Key pattern.} The single relationship that ties the dataset together appears in panel (b)
-of \textbf{Figure~\ref{fig:cross}}: the share of compensated
-(felt) PVCs rises with the resting heart rate while interpolated (silent) ones fall (Spearman
-$r\approx0.78$, $p\approx0.008$) --- so the number of thumps the subject notices tracks heart
-rate, not raw PVC count.
+\reportfig{09_cross_session_rhythm_and_burden.png}{Cross-session rhythm and burden dynamics: PVC burden by session, effective sinus-node rate versus pause type, per-session pause-type composition, and coupling-interval stability.\label{fig:cross}}
+
+The main cross-session relationship appears in the effective-rate-versus-pause-type panel. The
+proportion of compensated PVCs increases with the effective sinus-node rate, whereas the
+proportion of interpolated PVCs decreases. Across sessions, this association is strong and
+positive for compensated PVCs (Spearman $r\approx0.78$, $p\approx0.008$). In practical terms,
+the number of perceptible post-extrasystolic pauses appears to track the underlying sinus rate
+more closely than the raw PVC count.
 
 % ===================== 7. SUMMARY TABLE =====================
 \section{Per-session summary}
-Every session as a column, every metric as a row, computed on the validated
-definitions used throughout (local-sinus pause split, the couplet detector
-below, real pre-PVC coupling median). ``Guarded'' $=$ PVCs whose pause was
-unmeasurable (a sinus beat hidden in the gap), excluded from the interp/comp
-split. ``AF score'' is the 0--4 atrial-fibrillation \emph{signal} screen
-(RMSSD$>$100, pNN50$>$40, high RR entropy, unimodal $+$ high CV) --- a
-signal-level check, not a diagnosis.
+\textbf{Table~\ref{tab:summary}} reports the same dataset at session level, with each recording
+represented as a column and each metric as a row. All values are computed using the validated
+definitions used throughout the report, including the local-sinus pause split, the couplet
+detector, and the measured pre-PVC coupling interval.
 
+``Guarded'' refers to PVC candidates whose pause classification was unreliable, typically because
+a sinus beat was likely hidden or missed within the interval; these beats were excluded from the
+interpolated-versus-compensated split. The AF score is a signal-level atrial-fibrillation screen
+based on four rhythm-irregularity criteria: RMSSD $>$ 100\,ms, pNN50 $>$ 40\%, high RR entropy,
+and a unimodal distribution with high coefficient of variation. It is included only as a
+technical signal check and is not a diagnostic assessment.
+
+\begin{table}[H]
+\centering
+\caption{Per-session summary of recording duration, excluded intervals, beat counts, PVC burden, coupling, couplets, rhythm motifs, interpolated-versus-compensated composition, guarded beats, and signal-level AF-screen metrics.\label{tab:summary}}
 \tableSummary
+\end{table}
 
 % ===================== 8. PAUSE DISTRIBUTION =====================
 \section{Per-session pause distribution}
