@@ -1883,7 +1883,7 @@ def main():
         w0 = tu[0] + 60.0; w1 = w0 + 80.0
         mu = (tu >= w0) & (tu <= w1); mn = (tn >= w0) & (tn <= w1)
         if mu.sum() > 20 and mn.sum() > 10:
-            fig, ax = plt.subplots(figsize=(12, 3.4), facecolor=DARK_BG)
+            fig, ax = plt.subplots(figsize=(8.1, 2.6), facecolor=DARK_BG)
             ax.set_facecolor(DARK_BG)
             # ampiezza R normalizzata (punti) + EDR (linea)
             a = an[mn]; a_z = (a - a.mean()) / (a.std() or 1)
@@ -1901,21 +1901,21 @@ def main():
             ax.set_ylabel("normalized", color="#555555", fontsize=FS_LABEL)
             ax.set_title(f"Respiration recovered from R-amplitude — {short_label(best['label'])} "
                          f"({e['rate_resp']:.1f} breaths/min, SNR {e['snr']:.1f})",
-                         color="#1f1f1f", fontsize=FS_TITLE)
+                         color="#1f1f1f", fontsize=8.5)
             ax.legend(facecolor="#f2efe9", labelcolor="#1a1a1a", edgecolor="#c8c8c8",
                       fontsize=FS_LEGEND, loc="upper right", ncol=3)
             ax.tick_params(colors="#555555", labelsize=FS_TICK)
             ax.grid(alpha=0.16, color="#dcdcdc")
             for sp in ax.spines.values(): sp.set_color("#c8c8c8")
             fig.subplots_adjust(left=0.06, right=0.98, top=0.88, bottom=0.16)
-            img_edr_demo = fig_to_b64(fig, dpi=220)
+            img_edr_demo = fig_to_b64(fig, dpi=450)
 
         # ---- (B) fase: rosetta aggregata + enrichment per sessione ----
         cen = edr_sessions[0]["edr"]["centers"]
         pct = cen * 100 / (2 * np.pi)
-        fig = plt.figure(figsize=(13, 4.6), facecolor=DARK_BG)
+        fig = plt.figure(figsize=(8.1, 3.3), facecolor=DARK_BG)
         gs = fig.add_gridspec(1, 2, width_ratios=[1, 1.5], left=0.02, right=0.97,
-                              top=0.86, bottom=0.16, wspace=0.22)
+                              top=0.84, bottom=0.20, wspace=0.22)
         # rosetta polare aggregata (somma su tutte le sessioni)
         axp = fig.add_subplot(gs[0], projection="polar"); axp.set_facecolor(DARK_BG)
         dn = np.sum([s["edr"]["dens_n"] for s in edr_sessions], axis=0)
@@ -1929,8 +1929,8 @@ def main():
         axp.set_xticklabels(["lungs full\n(end-insp.)", "25%", "lungs empty\n(end-exp.)", "75%"],
                             color="#555555", fontsize=FS_TICK)
         axp.tick_params(colors="#777", labelsize=FS_TICK-1)
-        axp.set_title("Phase distribution (all sessions)", color="#1f1f1f",
-                      fontsize=FS_TITLE, pad=14)
+        axp.set_title("$\\bf{(a)}$ Phase distribution (all sessions)", color="#1f1f1f",
+                      fontsize=8.5, pad=14)
         axp.legend(facecolor="#f2efe9", labelcolor="#1a1a1a", edgecolor="#c8c8c8",
                    fontsize=FS_LEGEND, loc="lower right", bbox_to_anchor=(1.15, -0.05))
         # enrichment per sessione + media
@@ -1952,14 +1952,14 @@ def main():
                        "50 = lungs empty / end-expiration)",
                        color="#555555", fontsize=FS_LABEL)
         axe.set_ylabel("PVC enrichment (PVC density / N density)", color="#555555", fontsize=FS_LABEL)
-        axe.set_title("Where in the breath do PVCs fire? (×1 = no preference)",
-                      color="#1f1f1f", fontsize=FS_TITLE)
+        axe.set_title("$\\bf{(b)}$ Where in the breath do PVCs fire? (×1 = no preference)",
+                      color="#1f1f1f", fontsize=8.5)
         axe.legend(facecolor="#f2efe9", labelcolor="#1a1a1a", edgecolor="#c8c8c8",
                    fontsize=FS_LEGEND, loc="upper right")
         axe.tick_params(colors="#555555", labelsize=FS_TICK)
         axe.grid(alpha=0.16, color="#dcdcdc")
         for sp in axe.spines.values(): sp.set_color("#c8c8c8")
-        img_resp_phase = fig_to_b64(fig, dpi=220)
+        img_resp_phase = fig_to_b64(fig, dpi=450)
 
         # ---- (B2) rosetta per TIPO di PVC: interpolate / compensate / coupled ----
         # cascano alla stessa fase respiratoria o a fasi diverse? Fase di ogni PVC
@@ -1983,7 +1983,7 @@ def main():
         type_peaks = {}
         # figura QUADRATA (come l'outlier): legenda INTERNA in un angolo, niente
         # legenda esterna sotto (che renderebbe il PNG rettangolare col crop tight).
-        fig = plt.figure(figsize=(5.6, 5.6), facecolor=DARK_BG)
+        fig = plt.figure(figsize=(5.4, 5.4), facecolor=DARK_BG)
         axt = fig.add_axes([0.10, 0.08, 0.80, 0.80], projection="polar")
         axt.set_facecolor(DARK_BG)
         for k in ("interp", "comp", "coupled"):
@@ -2002,12 +2002,12 @@ def main():
                             color="#555555", fontsize=FS_TICK)
         axt.tick_params(colors="#777", labelsize=FS_TICK-1)
         axt.set_title("Respiratory phase by PVC type (density per type)",
-                      color="#1f1f1f", fontsize=FS_TITLE, pad=18)
+                      color="#1f1f1f", fontsize=9, pad=18)
         axt.legend(facecolor="#f2efe9", labelcolor="#1a1a1a", edgecolor="#c8c8c8",
                    fontsize=FS_LEGEND-0.5, loc="upper left", bbox_to_anchor=(-0.16, 1.10),
                    ncol=1, handlelength=1.3, handletextpad=0.5, borderpad=0.5,
                    labelspacing=0.4, framealpha=0.9)
-        img_resp_phase_types = fig_to_b64(fig, dpi=220)
+        img_resp_phase_types = fig_to_b64(fig, dpi=450)
 
         # ---- (C) tabella + sintesi ----
         n_sig = sum(1 for s in edr_sessions if s["edr"]["pval"] < 0.05)
