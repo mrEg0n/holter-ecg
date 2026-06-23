@@ -559,22 +559,6 @@ interpreted as a clinical finding.
 \begin{center}{\Large\bfseries Appendix}\end{center}
 \vspace{1.8em}
 
-\section{Per-session pause distribution}\label{app:psp}
-This appendix reports, as a per-session robustness check, the post-extrasystolic pause
-distribution separately for each recording (\textbf{Figure~\ref{fig:psp}}). For each PVC the
-pause \rrpost{} was measured relative to the locally estimated sinus cycle and split at the
-empirical global valley at $\pauseValley\times$: values below the boundary correspond to
-interpolated PVCs, values above it to compensated PVCs.
-
-The two-mode structure of the pooled distribution is reproduced within individual sessions,
-confirming that the interpolated-versus-compensated split is not an artefact of pooling. The left
-mode (around approximately 0.7$\times$ the local sinus cycle) corresponds to interpolated PVCs and
-the right mode (around approximately 1.45$\times$) to compensated ones; the relative weight of the
-two modes shifts from session to session, which is the per-session view of the cross-session
-pause-type composition reported in the main text.
-
-\reportfig{11_per_session_pause_distribution.png}{Per-session distribution of post-extrasystolic pause duration, \rrpost{}, expressed relative to the locally estimated sinus cycle and split at the empirical global valley of $\pauseValley\times$.\label{fig:psp}}
-
 \section{Hardware photographs}\label{app:hw}
 \setcounter{figure}{0}
 Photographs of the assembled prototype used to acquire the recordings analysed in this report.
@@ -592,5 +576,22 @@ The two views show opposite sides of the same body-worn unit.
 \end{minipage}
 \caption{The assembled body-worn recorder, two views. (a) digital side: the Raspberry Pi Pico 2~W; (b) analog front-end side: the SparkFun AD8232 single-lead front-end, the 3-lead electrode cable, and the single-cell LiPo battery. The complete unit ($\sim$8$\times$6$\times$3\,cm) is bundled together for portable, untethered acquisition.\label{fig:hw}}
 \end{figure}
+
+\section{Per-session pause distribution}\label{app:psp}
+\setcounter{figure}{0}
+This appendix reports, as a per-session robustness check, the post-extrasystolic pause
+distribution separately for each recording (\textbf{Figure~\ref{fig:psp}}). For each PVC the
+pause \rrpost{} was measured relative to the locally estimated sinus cycle and split at the
+empirical global valley at $\pauseValley\times$: values below the boundary correspond to
+interpolated PVCs, values above it to compensated PVCs.
+
+The two-mode structure of the pooled distribution is reproduced within individual sessions,
+confirming that the interpolated-versus-compensated split is not an artefact of pooling. The left
+mode (around approximately 0.7$\times$ the local sinus cycle) corresponds to interpolated PVCs and
+the right mode (around approximately 1.45$\times$) to compensated ones; the relative weight of the
+two modes shifts from session to session, which is the per-session view of the cross-session
+pause-type composition reported in the main text.
+
+\reportfig{11_per_session_pause_distribution.png}{Per-session distribution of post-extrasystolic pause duration, \rrpost{}, expressed relative to the locally estimated sinus cycle and split at the empirical global valley of $\pauseValley\times$.\label{fig:psp}}
 
 \end{document}
