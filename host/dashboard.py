@@ -1471,20 +1471,31 @@ def main():
         fig.subplots_adjust(left=0.05, right=0.99, top=0.97, bottom=0.05, hspace=0.4)
         img_method_strip = fig_to_b64(fig, dpi=200)
 
-        # --- variante 3-classi sulla SOMMA convenzionale S (report, va PRIMA della
-        #     Fig 7): stessa finestra/stile di Fig 8 ma classificata col solo
-        #     parametro convenzionale → blu interp (S<=1.15), rosso comp (S>=1.85),
-        #     giallo grey-zone (1.15<S<1.85). Mostra quante PVC restano ambigue con
-        #     la sola somma. Salvata in figs_manual/ (fuori dal pipeline export).
-        def _cls_s(sr):
-            if sr <= 1.15: return "int"
-            if sr >= 1.85: return "comp"
+        # --- variante 3-classi (report, va PRIMA della Fig 7): stesso stile di Fig 9
+        #     ma con una TERZA classe gialla per le PVC intermedie (pausa vicino alla
+        #     valle, ±BAND), oltre a blu=interpolate e rosso=compensate. Mostra che
+        #     col solo taglio sulla pausa restano alcune borderline. Finestra scelta
+        #     per contenere tutte e tre le classi. Salvata in figs_manual/.
+        BAND = 0.15
+        def _cls_p(pr):
+            if pr < PAUSE_VALLEY - BAND: return "int"
+            if pr > PAUSE_VALLEY + BAND: return "comp"
             return "mid"
-        cmap3 = {d["i"]: _cls_s(d["s_ratio"]) for d in dpause if not d["guard"]}
+        cmap3 = {d["i"]: _cls_p(d["post_ratio"]) for d in dpause if not d["guard"]}
         COL3 = {"int": "#1f7fb0", "comp": "#cc3b30", "mid": "#e0a800"}
+        # finestra (nrow x 10s) che massimizza la presenza di TUTTE e tre le classi
+        _tcl = [(d["t"], cmap3[d["i"]]) for d in dpause if d["i"] in cmap3 and d["t"] > 60]
+        bt3, _bsc, _t0 = bt, -1, 60.0
+        while _t0 + nrow*10 < dt[-1]:
+            _c = {"int": 0, "mid": 0, "comp": 0}
+            for _x, _cl in _tcl:
+                if _t0 <= _x < _t0 + nrow*10: _c[_cl] += 1
+            _sc = min(_c.values())*3 + sum(_c.values())
+            if _sc > _bsc: _bsc, bt3 = _sc, _t0
+            _t0 += 20
         fig, axes = plt.subplots(nrow, 1, figsize=(13, 1.1*nrow), facecolor=DARK_BG)
         for r, ax in enumerate(axes):
-            rs = bt + r*10; re = rs+10; m = (dt >= rs) & (dt < re)
+            rs = bt3 + r*10; re = rs+10; m = (dt >= rs) & (dt < re)
             ax.set_facecolor(DARK_BG)
             if m.any(): ax.plot(dt[m]-rs, dvf[m], lw=0.6, color="#2e8b57", alpha=0.85)
             for d in dpause:
