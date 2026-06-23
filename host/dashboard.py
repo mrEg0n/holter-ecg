@@ -1551,7 +1551,7 @@ def main():
     #     gobba con-pausa (~1.45x), valle gialla = soglia interp/comp.
     img_persession_pause = None
     bins_pr = np.linspace(0.2, 2.0, 64)
-    fig, axes_pp = plt.subplots(nS, 1, figsize=(11, 1.85 * nS),
+    fig, axes_pp = plt.subplots(nS, 1, figsize=(8.1, 1.1 * nS),
                                 facecolor=DARK_BG, sharex=True, squeeze=False)
     axes_pp = axes_pp.ravel()
     for ax, s in zip(axes_pp, sessions):
@@ -1585,7 +1585,7 @@ def main():
                            f"(yellow = global valley {PAUSE_VALLEY:.2f}×, interp/comp split)",
                            color="#555555", fontsize=FS_LABEL)
     fig.subplots_adjust(left=0.06, right=0.99, top=0.965, bottom=0.05, hspace=0.45)
-    img_persession_pause = fig_to_b64(fig, dpi=200)
+    img_persession_pause = fig_to_b64(fig, dpi=450)
 
     # (B) distribuzione del COUPLING pre-PVC per sessione (stabilità del focolaio).
     #     Barre colorate per sub-cluster: <500 (blu), 500-600 (rosa), >600 (verde).
@@ -1596,7 +1596,7 @@ def main():
                for x in cen_c]
     # check doppio-focolaio per sessione (modalità del coupling + morfologia)
     focus_findings = []   # per il testo HTML
-    fig, axes_pc = plt.subplots(nS, 1, figsize=(11, 1.7 * nS),
+    fig, axes_pc = plt.subplots(nS, 1, figsize=(8.1, 1.1 * nS),
                                 facecolor=DARK_BG, sharex=True, squeeze=False)
     axes_pc = axes_pc.ravel()
     for ax, s in zip(axes_pc, sessions):
@@ -1617,7 +1617,7 @@ def main():
                 morph = coupling_focus_morph(s["ecg_path"], mod["valley"])
                 ax.axvline(mod["valley"], color="#6f42c1", ls="--", lw=1.2)
                 if morph and morph["corr"] > 0.97:
-                    focus_txt = (f"bimodal: same focus (QRS r={morph['corr']:.3f})")
+                    focus_txt = (f"bimodal: same morphology (QRS r={morph['corr']:.3f})")
                     tag_col = "#6f42c1"
                 elif morph:
                     focus_txt = (f"bimodal: CHECK morphology (QRS r={morph['corr']:.3f})")
@@ -1639,7 +1639,7 @@ def main():
     axes_pc[-1].set_xlabel("pre-PVC coupling interval (ms)",
                            color="#555555", fontsize=FS_LABEL)
     fig.subplots_adjust(left=0.06, right=0.99, top=0.965, bottom=0.05, hspace=0.5)
-    img_persession_coupling = fig_to_b64(fig, dpi=200)
+    img_persession_coupling = fig_to_b64(fig, dpi=450)
 
     # sintesi testuale del check doppio-focolaio (per l'HTML)
     n_bimodal = len(focus_findings)

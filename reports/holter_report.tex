@@ -461,40 +461,53 @@ technical signal check and is not a diagnostic assessment.
 
 % ===================== 8. PAUSE DISTRIBUTION =====================
 \section{Per-session pause distribution}
-One row per recording, using the validated criterion: each beat's pause \rrpost{}
-measured against its \emph{local} sinus cycle, split at the global valley
-($\pauseValley\times$). The left hump (\interp{blue, $\approx$0.7$\times$}) are
-interpolated (silent) beats; the right hump (\comp{pink, $\approx$1.45$\times$})
-compensated (felt) ones. A session whose mass sits almost entirely on one side
-has a correspondingly lopsided \emph{perceived} burden --- the driver behind the
-key pattern above.
+\textbf{Figure~\ref{fig:psp}} shows the pause distribution separately for each recording session.
+For each PVC, the post-extrasystolic pause, \rrpost{}, was measured relative to the locally
+estimated sinus cycle and classified using the empirical global valley at $\pauseValley\times$.
+Values below this boundary correspond to interpolated PVCs, whereas values above it correspond to
+compensated PVCs.
 
-\reportfig{11_per_session_pause_distribution.png}{Per-session pause distribution against the local sinus cycle, split at the global valley.}
+The same two-mode structure observed in the pooled distribution is visible at session level,
+although the relative weight of the two modes varies across recordings. The left mode, centred
+around approximately 0.7$\times$ the local sinus cycle, corresponds to interpolated PVCs. The
+right mode, centred around approximately 1.45$\times$, corresponds to compensated PVCs. Sessions
+in which most PVCs fall on one side of the boundary therefore show a correspondingly shifted
+pause-type composition. This session-to-session shift explains the cross-session relationship
+described above, where recordings with a higher effective sinus-node rate tend to contain a
+larger proportion of compensated PVCs, while recordings at lower effective sinus-node rates
+contain a larger proportion of interpolated PVCs.
+
+\reportfig{11_per_session_pause_distribution.png}{Per-session distribution of post-extrasystolic pause duration, \rrpost{}, expressed relative to the locally estimated sinus cycle and split at the empirical global valley of $\pauseValley\times$.\label{fig:psp}}
 
 % ===================== 9. COUPLING / SINGLE FOCUS =====================
-\section{Per-session coupling distribution \& single-focus check}
-\textbf{What the coupling interval is.} The coupling (\rrpre) is the time from
-the preceding normal beat to the PVC --- how long after each sinus beat the
-ectopic fires. A single focus re-entering on the same circuit fires at a
-near-constant coupling, so a tight, recording-to-recording-stable peak
-is the signature of one monomorphic focus; a second focus would add a
-separate coupling peak \emph{with a different QRS shape}.
+\section{Per-session coupling distribution and single-source consistency check}
+The coupling interval, \rrpre{}, is the time between the preceding sinus beat and the PVC. It
+measures how long after a sinus beat the ectopic complex occurs. A stable monomorphic PVC source
+is expected to show a relatively tight coupling distribution. By contrast, multiple sources or
+clearly distinct ectopic mechanisms may produce separate coupling peaks, particularly if
+associated with different QRS morphologies.
 
-\textbf{Single-focus check (statistical).} For every session a 1- vs 2-component
-Gaussian mixture is fit to the coupling; a session is flagged \emph{bimodal}
-only when the two-component fit is genuinely two-peaked (a real trough, not mere
-skew) and improves the BIC --- confirmed offline by a parametric-bootstrap
-likelihood-ratio test ($p\approx0.002$). Result: 2 sessions show a
-genuinely bimodal coupling (06-05 18:29, 06-06 15:08); in each the two coupling
-clusters have \emph{identical} QRS morphology, so this is the same monomorphic
-focus discharging at two coupling intervals (coupling modulation), \emph{not} a
-second focus. Sessions that show only a right-skewed shoulder rather than two separated
-modes (for example 06-05 14:59) are deliberately left unflagged; forcing a split on them
-anyway still yields two clusters with essentially identical QRS (template
-$r\approx0.998$), so those tails belong to the same focus too. No session shows a
-morphologically distinct second focus.
+For each session, the coupling distribution was tested using one- versus two-component Gaussian
+mixture models. A session was flagged as bimodal only when the two-component fit produced two
+genuinely separated peaks, with a visible trough rather than simple skew, and improved the
+Bayesian information criterion. This classification was further checked offline using a
+parametric-bootstrap likelihood-ratio test.
 
-\reportfig{12_per_session_coupling_distribution.png}{Per-session coupling distribution with the statistical single-focus check.}
+Two sessions, 2026-06-05 18:29 and 2026-06-06 15:08, showed genuinely bimodal coupling
+distributions. In both cases, however, the two coupling clusters had essentially identical QRS
+morphology. Within the limits of a single-lead recording setup, this supports coupling modulation
+of the same dominant monomorphic PVC morphology rather than a morphologically distinct second
+source. Sessions showing only a right-skewed shoulder, rather than two separated modes, were
+deliberately left unflagged. Even when these tails were force-split, the resulting clusters
+retained nearly identical QRS morphology, supporting their inclusion within the same recurrent PVC
+population.
+
+Overall, no session showed a coupling distribution associated with a clearly distinct second QRS
+morphology. The per-session coupling analysis therefore remains consistent with the
+single-population interpretation derived from morphology, clustering, and cross-session
+correlation.
+
+\reportfig{12_per_session_coupling_distribution.png}{Per-session coupling-interval distributions with the statistical single-source consistency check based on Gaussian mixture modelling.}
 
 % ===================== 11. RESPIRATION =====================
 \section{Respiration (EDR) \& respiratory-phase trigger}\label{sec:edr}
