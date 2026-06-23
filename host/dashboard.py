@@ -1414,9 +1414,6 @@ def main():
         a1.set_facecolor(DARK_BG)
         a1.hist(all_sratio, bins=np.arange(0.6, 3.0, 0.04), color="#6a6a6a",
                 alpha=0.55, edgecolor="#ffffff", linewidth=0.3)
-        a1.axvline(1.0, color="#1f7fb0", lw=1.4); a1.axvline(2.0, color="#cc3b30", lw=1.4)
-        a1.text(1.0, a1.get_ylim()[1]*0.94, "1×", color="#1f7fb0", fontsize=FS_TICK, ha="center")
-        a1.text(2.0, a1.get_ylim()[1]*0.94, "2×", color="#cc3b30", fontsize=FS_TICK, ha="center")
         a1.set_title("$\\bf{(a)}$ Conventional sum S", color="#1f1f1f", fontsize=8.5)
         a1.set_xlabel("S  (× sinus cycle)", color="#555555", fontsize=FS_LABEL)
         a2.set_facecolor(DARK_BG)
