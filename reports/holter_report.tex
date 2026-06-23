@@ -580,18 +580,19 @@ Photographs of the assembled device used to acquire the recordings analysed in t
 
 \section{Per-session pause distribution}\label{app:psp}
 \setcounter{figure}{0}
-This appendix reports, as a per-session robustness check, the post-extrasystolic pause
-distribution separately for each recording (\textbf{Figure~\ref{fig:psp}}). For each PVC the
-pause \rrpost{} was measured relative to the locally estimated sinus cycle and split at the
-empirical global valley at $\pauseValley\times$: values below the boundary correspond to
-interpolated PVCs, values above it to compensated PVCs.
+\textbf{Figure~\ref{fig:psp}} shows the post-extrasystolic pause distribution separately for each
+recording session. This provides a per-session robustness check for the interpolated-versus-compensated
+split described in the main text. For each PVC, the pause \rrpost{} was measured relative to the locally
+estimated sinus cycle and classified using the empirical global valley at $\pauseValley\times$. Values
+below this boundary correspond to interpolated PVCs, whereas values above it correspond to compensated
+PVCs.
 
-The two-mode structure of the pooled distribution is reproduced within individual sessions,
-confirming that the interpolated-versus-compensated split is not an artefact of pooling. The left
-mode (around approximately 0.7$\times$ the local sinus cycle) corresponds to interpolated PVCs and
-the right mode (around approximately 1.45$\times$) to compensated ones; the relative weight of the
-two modes shifts from session to session, which is the per-session view of the cross-session
-pause-type composition reported in the main text.
+The two-mode structure observed in the pooled distribution is also visible within individual sessions,
+supporting the interpretation that the interpolated-versus-compensated split is not an artefact of
+pooling. The left mode, centred around approximately 0.7$\times$ the local sinus cycle, corresponds to
+interpolated PVCs. The right mode, centred around approximately 1.45$\times$, corresponds to compensated
+PVCs. The relative weight of the two modes varies across sessions, providing the per-session view of the
+cross-session pause-type composition reported in the main text.
 
 \reportfig{11_per_session_pause_distribution.png}{Per-session distribution of post-extrasystolic pause duration, \rrpost{}, expressed relative to the locally estimated sinus cycle and split at the empirical global valley of $\pauseValley\times$.\label{fig:psp}}
 
