@@ -1628,6 +1628,15 @@ def main():
                 ax.text(0.985, 0.84, focus_txt, transform=ax.transAxes, ha="right",
                         color=tag_col, fontsize=FS_TEXT - 0.5, fontweight="bold")
                 focus_findings.append((short_label(s["label"]), focus_txt, morph))
+            elif mod["ok"] and mod["mu"]:
+                # nessun avvallamento reale (spalla destra): force-split al punto medio
+                # dei due modi e verifica che la morfologia resti la stessa
+                split = 0.5 * (mod["mu"][0] + mod["mu"][1])
+                morph = coupling_focus_morph(s["ecg_path"], split)
+                if morph:
+                    ax.text(0.985, 0.84, f"force-split QRS r={morph['corr']:.3f}",
+                            transform=ax.transAxes, ha="right", color="#9a7d0a",
+                            fontsize=FS_TEXT - 0.5, fontstyle="italic")
         ax.axvline(500, color="#6a6a6a", ls="--", lw=0.7, alpha=0.5)
         ax.axvline(600, color="#6a6a6a", ls="--", lw=0.7, alpha=0.5)
         ax.set_title(f"{short_label(s['label'])}   pre-PVC coupling (n={len(c)})",
