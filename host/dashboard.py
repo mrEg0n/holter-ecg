@@ -1471,6 +1471,45 @@ def main():
         fig.subplots_adjust(left=0.05, right=0.99, top=0.97, bottom=0.05, hspace=0.4)
         img_method_strip = fig_to_b64(fig, dpi=200)
 
+        # --- variante 3-classi sulla SOMMA convenzionale S (report, va PRIMA della
+        #     Fig 7): stessa finestra/stile di Fig 8 ma classificata col solo
+        #     parametro convenzionale → blu interp (S<=1.15), rosso comp (S>=1.85),
+        #     giallo grey-zone (1.15<S<1.85). Mostra quante PVC restano ambigue con
+        #     la sola somma. Salvata in figs_manual/ (fuori dal pipeline export).
+        def _cls_s(sr):
+            if sr <= 1.15: return "int"
+            if sr >= 1.85: return "comp"
+            return "mid"
+        cmap3 = {d["i"]: _cls_s(d["s_ratio"]) for d in dpause if not d["guard"]}
+        COL3 = {"int": "#1f7fb0", "comp": "#cc3b30", "mid": "#e0a800"}
+        fig, axes = plt.subplots(nrow, 1, figsize=(13, 1.1*nrow), facecolor=DARK_BG)
+        for r, ax in enumerate(axes):
+            rs = bt + r*10; re = rs+10; m = (dt >= rs) & (dt < re)
+            ax.set_facecolor(DARK_BG)
+            if m.any(): ax.plot(dt[m]-rs, dvf[m], lw=0.6, color="#2e8b57", alpha=0.85)
+            for d in dpause:
+                if not (rs <= d["t"] < re) or d["i"] not in cmap3: continue
+                c = cmap3[d["i"]]
+                wm = (dt >= d["t"]-0.12) & (dt <= d["t"]+0.12)
+                if wm.any(): ax.plot(dt[wm]-rs, dvf[wm], lw=1.7, color=COL3[c])
+                ax.scatter(d["t"]-rs, min(1.5, d["amp"]+0.26), s=30, marker="v",
+                           color=COL3[c], edgecolors="#1a1a1a", linewidths=0.3, zorder=6)
+            ax.set_xlim(0, 10); ax.set_ylim(-1.2, 1.7); ax.tick_params(colors="#6a6a6a", labelsize=FS_TEXT)
+            ax.grid(True, alpha=0.12, color="#dcdcdc", lw=0.3)
+            for sp in ax.spines.values(): sp.set_color("#c8c8c8")
+            ax.set_ylabel(f"{int(rs//60):02d}:{int(rs%60):02d}", color="#666666", fontsize=FS_TEXT,
+                          rotation=0, ha="right", va="center", labelpad=12)
+        axes[0].legend(handles=[Line2D([0],[0], color="#1f7fb0", lw=3, label="Interpolated"),
+                                Line2D([0],[0], color="#e0a800", lw=3, label="Intermediate (grey zone)"),
+                                Line2D([0],[0], color="#cc3b30", lw=3, label="Compensated")],
+                       loc="upper right", facecolor="#f2efe9", labelcolor="#1a1a1a",
+                       edgecolor="#c8c8c8", fontsize=FS_LEGEND, ncol=3)
+        axes[-1].set_xlabel("seconds within the row", color="#555555", fontsize=FS_LABEL)
+        fig.subplots_adjust(left=0.05, right=0.99, top=0.97, bottom=0.05, hspace=0.4)
+        os.makedirs("reports/figs_manual", exist_ok=True)
+        fig.savefig("reports/figs_manual/interp_comp_3class_strip.png", dpi=200, facecolor=DARK_BG)
+        plt.close(fig)
+
     # ============ PER-SESSION DISTRIBUTIONS: pause & coupling histograms ==========
     # Una riga per sessione, ricalcolate a ogni run (stile report). Usano il
     # criterio validato: pausa RR_post / ciclo sinusale LOCALE, taglio alla valle
