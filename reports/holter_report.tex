@@ -349,46 +349,51 @@ compensated PVCs are followed by a visibly longer pause and a stronger post-extr
 \reportfig{08_final_2_class_strip.png}{A continuous ECG strip classified by the actual pause \rrpost{} into two classes (no grey zone): interpolated (blue) carry no pause, compensated (red) are followed by one.\label{fig:strip2}}
 
 % ===================== COUPLETS =====================
-\section{Couplets --- detection, count \& overlay}
-A \textbf{couplet} is two PVCs in a row (RR 200--700\,ms) that is \emph{not}
-part of a longer run --- the simplest repetitive ectopy, worth counting because
-frequency and uniformity speak to risk. \textbf{46 couplets across 7/10 sessions}
-(none in 3). The inter-PVC interval is strikingly tight --- median 416\,ms
-(range 384--464\,ms) --- and the two beats share the same morphology: the
-couplets are uniform and consistent with the same single focus firing twice, not
-a second focus or a malignant polymorphic pair.
-\begin{itemize}
-  \item \textbf{Count per session} (same session colours as above).
-  \item \textbf{All couplets overlaid}, each aligned on the first PVC's peak and
-        amplitude-normalised --- if they stack, they are uniform.
-  \item \textbf{First vs second beat}: median QRS of the first PVC (\interp{blue})
-        against the second (\textcolor{Orange}{orange}). High correlation means
-        both beats come from the same focus.
-\end{itemize}
+\section{Couplets and local rhythm structure}
+A couplet was defined as two consecutive PVCs separated by an inter-PVC interval between 200 and
+700\,ms and not belonging to a longer run. This represents the simplest form of repetitive
+ventricular ectopy considered in this report. Couplets were counted separately because their
+frequency, timing, and morphological uniformity provide additional information about the behaviour
+of the detected PVC population.
 
-\reportfig{13_couplets_count_and_overlay.png}{Couplet count per session, all couplets overlaid, and first-vs-second-beat median QRS.}
+Across the dataset, 46 couplets were detected in 7 of the 10 recording sessions; no couplets were
+detected in the remaining 3 sessions. The inter-PVC interval was tightly distributed, with a
+median of 416\,ms and a range of 384--464\,ms. The two beats within each couplet showed highly
+similar morphology, consistent with repetitive activation from the same dominant monomorphic
+ectopic source within the limits of a single-lead recording setup.
 
-A few couplets in their raw recording context ($\pm$5\,s), same format as the
-example strips earlier --- green trace, the two ectopic QRS in \comp{red}. One
-clean representative is shown per \textbf{distinct local rhythm} (the N/V motif
-printed in each title) so the gallery spans the variations.
+\textbf{Figure~\ref{fig:couplets}} summarizes the couplet analysis. The first panel reports the
+number of couplets detected in each session. The second panel overlays all couplets, aligned to
+the peak of the first PVC and amplitude-normalised, to assess their morphological consistency. The
+third panel compares the median QRS waveform of the first PVC with that of the second PVC within
+each couplet. The close overlap between the two median waveforms supports the interpretation that
+the two beats in each couplet belong to the same recurrent PVC morphology.
 
-\reportfig{14_couplet_example_strips.png}{A few couplets in raw context ($\pm$5\,s), one per distinct local rhythm motif.}
+\reportfig{13_couplets_count_and_overlay.png}{Couplet count per session, overlay of all detected couplets aligned to the first PVC peak, and comparison between the median QRS waveform of the first and second PVC within each couplet.\label{fig:couplets}}
 
-\subsection{Local rhythm motif --- does the couplet sit in a repeating pattern?}
-Coding each beat as N (sinus) or V (PVC) for the four beats before and after
-every couplet reveals whether it recurs inside a fixed rhythm. The couplet is
-usually embedded in one recurring rhythm: the motif
-\texttt{N V N N [V V] N V N N} occurs in \textbf{30/46 (65\%)} of couplets --- an
-organised, trigeminy-like cadence (an isolated PVC, two sinus beats, the
-couplet, then the same again). These 30 occurrences are spread across six of the
-recordings, with no single session contributing more than a third, so the cadence is a
-stable trait of the focus rather than a quirk of one day. It is not universal: the remaining 16 show
-variants (the couplet out of a longer sinus run, after a bigeminal stretch, or
-followed by quiet), which is why the example strips span different motifs rather
-than repeating the dominant one.
+\textbf{Figure~\ref{fig:couplet_strips}} shows representative couplets in their raw recording
+context, using $\pm$5\,s windows and the same visual convention adopted in the previous example
+strips. The ECG trace is shown in green, and the two ectopic QRS complexes forming the couplet are
+highlighted in red. One clean representative example is shown for each distinct local rhythm motif,
+so that the panel illustrates the range of contexts in which couplets occurred.
 
-\reportfig{15_couplet_local_rhythm_motifs.png}{Local rhythm motifs around the couplet.}
+\reportfig{14_couplet_example_strips.png}{Representative couplets shown in raw recording context over $\pm$5\,s windows, with one example for each distinct local rhythm motif.\label{fig:couplet_strips}}
+
+Local rhythm structure around each couplet was examined by coding the four beats before and after
+the couplet as N, for sinus beats, or V, for PVCs. This analysis tests whether couplets occur
+randomly within the rhythm or tend to recur within a stereotyped local sequence. The most common
+motif was \texttt{N V N N [V V] N V N N}, observed in 30 of 46 couplets, corresponding to 65\% of
+cases. This pattern represents an organised trigeminy-like cadence, with an isolated PVC, two sinus
+beats, the couplet, and then recurrence of the same sequence.
+
+These 30 occurrences were distributed across six recording sessions, with no single session
+contributing more than one third of the cases. This suggests that the motif is not driven by a
+single recording but reflects a recurring rhythm pattern in the dataset. The pattern was not
+universal: the remaining 16 couplets occurred in variant contexts, including after longer sinus
+runs, after bigeminal stretches, or before quieter segments. For this reason, the representative
+strips include several motifs rather than only the dominant one.
+
+\reportfig{15_couplet_local_rhythm_motifs.png}{Local rhythm motifs surrounding detected couplets, coded as N for sinus beats and V for PVCs. The dominant motif was \texttt{N V N N [V V] N V N N}, present in 30 of 46 couplets.\label{fig:couplet_motifs}}
 
 % ===================== 6. CROSS-SESSION =====================
 \section{Cross-session rhythm \& burden dynamics}
