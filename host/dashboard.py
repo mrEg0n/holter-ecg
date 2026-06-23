@@ -1483,42 +1483,45 @@ def main():
             return "mid"
         cmap3 = {d["i"]: _cls_p(d["post_ratio"]) for d in dpause if not d["guard"]}
         COL3 = {"int": "#1f7fb0", "comp": "#cc3b30", "mid": "#e0a800"}
-        # finestra (nrow x 10s) che massimizza la presenza di TUTTE e tre le classi
+        nrow3 = 6   # stile quality_strip / Fig 1: 8.1in, 6 righe da 10s, 450 dpi
+        # finestra (nrow3 x 10s) che massimizza la presenza di TUTTE e tre le classi
         _tcl = [(d["t"], cmap3[d["i"]]) for d in dpause if d["i"] in cmap3 and d["t"] > 60]
         bt3, _bsc, _t0 = bt, -1, 60.0
-        while _t0 + nrow*10 < dt[-1]:
+        while _t0 + nrow3*10 < dt[-1]:
             _c = {"int": 0, "mid": 0, "comp": 0}
             for _x, _cl in _tcl:
-                if _t0 <= _x < _t0 + nrow*10: _c[_cl] += 1
+                if _t0 <= _x < _t0 + nrow3*10: _c[_cl] += 1
             _sc = min(_c.values())*3 + sum(_c.values())
             if _sc > _bsc: _bsc, bt3 = _sc, _t0
             _t0 += 20
-        fig, axes = plt.subplots(nrow, 1, figsize=(13, 1.1*nrow), facecolor=DARK_BG)
+        fig, axes = plt.subplots(nrow3, 1, figsize=(8.1, 0.8*nrow3 + 1.0), facecolor=DARK_BG)
         for r, ax in enumerate(axes):
             rs = bt3 + r*10; re = rs+10; m = (dt >= rs) & (dt < re)
             ax.set_facecolor(DARK_BG)
-            if m.any(): ax.plot(dt[m]-rs, dvf[m], lw=0.6, color="#2e8b57", alpha=0.85)
+            if m.any(): ax.plot(dt[m]-rs, dvf[m], lw=0.45, color="#2e8b57", alpha=0.9)
             for d in dpause:
                 if not (rs <= d["t"] < re) or d["i"] not in cmap3: continue
                 c = cmap3[d["i"]]
                 wm = (dt >= d["t"]-0.12) & (dt <= d["t"]+0.12)
-                if wm.any(): ax.plot(dt[wm]-rs, dvf[wm], lw=1.7, color=COL3[c])
-                ax.scatter(d["t"]-rs, min(1.5, d["amp"]+0.26), s=30, marker="v",
-                           color=COL3[c], edgecolors="#1a1a1a", linewidths=0.3, zorder=6)
-            ax.set_xlim(0, 10); ax.set_ylim(-1.2, 1.7); ax.tick_params(colors="#6a6a6a", labelsize=FS_TEXT)
-            ax.grid(True, alpha=0.12, color="#dcdcdc", lw=0.3)
-            for sp in ax.spines.values(): sp.set_color("#c8c8c8")
-            ax.set_ylabel(f"{int(rs//60):02d}:{int(rs%60):02d}", color="#666666", fontsize=FS_TEXT,
-                          rotation=0, ha="right", va="center", labelpad=12)
-        axes[0].legend(handles=[Line2D([0],[0], color="#1f7fb0", lw=3, label="Interpolated"),
-                                Line2D([0],[0], color="#e0a800", lw=3, label="Intermediate (grey zone)"),
-                                Line2D([0],[0], color="#cc3b30", lw=3, label="Compensated")],
-                       loc="upper right", facecolor="#f2efe9", labelcolor="#1a1a1a",
-                       edgecolor="#c8c8c8", fontsize=FS_LEGEND, ncol=3)
-        axes[-1].set_xlabel("seconds within the row", color="#555555", fontsize=FS_LABEL)
-        fig.subplots_adjust(left=0.05, right=0.99, top=0.97, bottom=0.05, hspace=0.4)
+                if wm.any(): ax.plot(dt[wm]-rs, dvf[wm], lw=0.9, color=COL3[c])
+                ax.scatter(d["t"]-rs, min(1.5, d["amp"]+0.30), s=28, marker="v",
+                           color=COL3[c], edgecolors="#1a1a1a", linewidths=0.35, zorder=6)
+            ax.set_xlim(0, 10); ax.set_ylim(-1.2, 1.7)
+            ax.set_yticks([]); ax.tick_params(axis="x", colors="#777777", labelsize=8.5)
+            if r < nrow3 - 1: ax.set_xticklabels([])
+            ax.grid(True, alpha=0.13, color="#dcdcdc", lw=0.4)
+            for sp in ax.spines.values(): sp.set_color("#cccccc")
+            ax.text(-0.012, 0.5, f"{int(rs//60):02d}:{int(rs%60):02d}", transform=ax.transAxes,
+                    ha="right", va="center", color="#888888", fontsize=9)
+        axes[-1].set_xlabel("time (s)", color="#666666", fontsize=10)
+        fig.legend(handles=[Line2D([0],[0], color="#1f7fb0", lw=1.8, label="interpolated"),
+                            Line2D([0],[0], color="#e0a800", lw=1.8, label="intermediate"),
+                            Line2D([0],[0], color="#cc3b30", lw=1.8, label="compensated")],
+                   loc="upper center", ncol=3, fontsize=9.5, frameon=False,
+                   bbox_to_anchor=(0.5, 0.995), columnspacing=2.4)
+        fig.subplots_adjust(left=0.055, right=0.992, top=0.90, bottom=0.085, hspace=0.30)
         os.makedirs("reports/figs_manual", exist_ok=True)
-        fig.savefig("reports/figs_manual/interp_comp_3class_strip.png", dpi=200, facecolor=DARK_BG)
+        fig.savefig("reports/figs_manual/interp_comp_3class_strip.png", dpi=450, facecolor=DARK_BG)
         plt.close(fig)
 
     # ============ PER-SESSION DISTRIBUTIONS: pause & coupling histograms ==========
