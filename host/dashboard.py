@@ -1344,7 +1344,7 @@ def main():
             cand = [d for d in cand if (d["post_ratio"] < PAUSE_VALLEY) == (kind == "int")]
             cand.sort(key=lambda d: abs(d["post_ratio"] - tgt))
             return cand[0] if cand else None
-        def _draw_demo(ax, d, color, title):
+        def _draw_demo(ax, d, color, title, show_xlabel=True):
             c = d["t"]; half = 2.6; m = (dt >= c-half) & (dt <= c+half)
             ax.set_facecolor(DARK_BG); ax.plot(dt[m]-c, dvf[m], lw=0.9, color="#5a6b78")
             wm = (dt >= c-0.12) & (dt <= c+0.12)
@@ -1367,15 +1367,22 @@ def main():
             ax.tick_params(colors="#555555", labelsize=FS_TICK)
             for sp in ax.spines.values(): sp.set_color("#c8c8c8")
             ax.grid(True, alpha=0.13, color="#dcdcdc", lw=0.3)
-            ax.set_xlabel("t (s) relative to the PVC", color="#555555", fontsize=FS_LABEL)
-            ax.set_title(title, color=color, fontsize=FS_TITLE)
+            if show_xlabel:
+                ax.set_xlabel("t (s) relative to the PVC", color="#555555", fontsize=FS_LABEL)
+            ax.set_title(title, color=color, fontsize=8.5)
         di, dc = _clean("int"), _clean("comp")
         if di and dc:
-            fig, (a1, a2) = plt.subplots(1, 2, figsize=(13, 3.3), facecolor=DARK_BG)
-            _draw_demo(a1, di, "#1f7fb0", f"Interpolated — pause {di['post_ratio']:.2f}× sinus (silent)")
-            _draw_demo(a2, dc, "#cc3b30", f"Compensated — pause {dc['post_ratio']:.2f}× sinus (felt)")
-            fig.subplots_adjust(left=0.05, right=0.99, top=0.87, bottom=0.15, wspace=0.12)
-            img_method_example = fig_to_b64(fig, dpi=200)
+            # impilati verticalmente: 8.1in di larghezza come le altre figure
+            # (la strip ECG resta larga), font/dpi uniformi, lettere (a)/(b) in grassetto
+            fig, (a1, a2) = plt.subplots(2, 1, figsize=(8.1, 5.0), facecolor=DARK_BG)
+            _draw_demo(a1, di, "#1f7fb0",
+                       f"$\\bf{{(a)}}$ Interpolated — pause {di['post_ratio']:.2f}× sinus (silent)",
+                       show_xlabel=False)
+            _draw_demo(a2, dc, "#cc3b30",
+                       f"$\\bf{{(b)}}$ Compensated — pause {dc['post_ratio']:.2f}× sinus (felt)")
+            a1.tick_params(labelbottom=False)   # numeri x solo sul pannello in basso
+            fig.subplots_adjust(left=0.06, right=0.99, top=0.93, bottom=0.10, hspace=0.30)
+            img_method_example = fig_to_b64(fig, dpi=450)
 
         # distribuzioni: somma S (convenzione) vs pausa RR_post (percezione)
         fig, (a1, a2) = plt.subplots(1, 2, figsize=(13, 3.6), facecolor=DARK_BG)
