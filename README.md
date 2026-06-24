@@ -207,8 +207,9 @@ corrupted segments do not contribute to figures, tables, or summaries.
 
 ### Report generation
 
-The pipeline regenerates a full report from stored recordings — every figure and table is computed
-from the underlying data — making the analysis reproducible and providing a transparent record of each
+Re-running the pipeline regenerates the **data-derived** parts of the report — every figure, table, and
+numerical summary — directly from the stored recordings. Adding a new session and re-running updates all
+of them coherently, which keeps the analysis reproducible and provides a transparent record of each
 processing step:
 
 ```bash
@@ -217,9 +218,15 @@ python3 host/export_latex.py   # HTML → reports/figs/*.png + reports/tables.te
 latexmk -pdf reports/holter_report.tex   # → reports/holter_report.pdf
 ```
 
-The report includes: session overview, beat counts, PVC burden, noise-exclusion summary, PVC
-morphology, interpolated vs. compensated classification, couplet detection, cross-session rhythm
+The regenerated material includes: session overview, beat counts, PVC burden, noise-exclusion summary,
+PVC morphology, interpolated vs. compensated classification, couplet detection, cross-session rhythm
 metrics, ECG-derived respiration, and per-session appendices.
+
+**What is automated, and what is not.** The tooling regenerates only the figures, tables, and numbers
+computed from the data, keeping them in sync with the recordings. The written analysis, interpretation,
+and conclusions live in the LaTeX source (`reports/holter_report.tex`), are authored by hand, and are
+never generated or rewritten automatically. The pipeline keeps the *evidence* current; reading and
+interpreting that evidence remains the author's.
 
 ---
 
