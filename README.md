@@ -298,6 +298,7 @@ Host-side Python with common scientific libraries (the Pico runs MicroPython —
 numpy
 scipy
 matplotlib
+scikit-learn
 flask
 ```
 
