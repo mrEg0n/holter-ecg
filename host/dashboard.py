@@ -2732,11 +2732,7 @@ def main():
   This dashboard is intended for personal use and as a discussion document with
   the supervising cardiologist. It does <b>not</b> constitute a diagnostic
   report. To export a printable copy, open in a browser and use
-  <em>Print → Save as PDF</em>.<br/>
-  This report was built with heavy AI assistance; some of its analyses were
-  initially wrong and were caught only by ground-truth checks. That story — what
-  it teaches about trusting AI with biomedical data — is written up in
-  <code>docs/caso-studio-ai-sicurezza.md</code>.
+  <em>Print → Save as PDF</em>.
 </footer>
 
 </body>

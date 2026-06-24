@@ -26,10 +26,12 @@ pico/wifi_config.py
 /peaks_*.csv
 /markers_*.csv
 
-# Reports: ignora gli output auto-generati (HTML/PDF/docx) ma TRACCIA il sorgente
-# LaTeX scritto a mano + le figure/tabelle necessarie a compilarlo.
+# Reports: ignore auto-generated outputs (HTML/docx, LaTeX build files) but TRACK
+# the hand-written LaTeX source, the figures/tables needed to compile it, and the
+# final compiled PDF (the main deliverable).
 reports/*
 !reports/holter_report.tex
+!reports/holter_report.pdf
 !reports/tables.tex
 !reports/figs/
 !reports/figs_manual/
