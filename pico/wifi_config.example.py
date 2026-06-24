@@ -1,9 +1,9 @@
 # Copy this file to wifi_config.py and fill in your values.
 # wifi_config.py is gitignored so credentials never reach GitHub.
 #
-# NETWORKS è una lista di reti che il Pico proverà a contattare.
-# Per ognuna serve l'IP del server (Mac/Pi 5) sulla LAN locale —
-# in genere diverso per ciascuna rete.
+# NETWORKS is a list of networks the Pico will try to contact.
+# Each one needs the IP of the server (Mac/Pi 5) on the local LAN —
+# usually different for each network.
 
 NETWORKS = [
     {
@@ -11,7 +11,7 @@ NETWORKS = [
         "password":  "YOUR_WIFI_PASSWORD",
         "server_ip": "192.168.x.x",
     },
-    # aggiungi qui altre reti se il dispositivo si sposta:
+    # add other networks here if the device moves around:
     # {"ssid": "...", "password": "...", "server_ip": "..."},
 ]
 

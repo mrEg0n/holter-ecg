@@ -1,6 +1,6 @@
 """
-Plot del file CSV registrato dal Pico.
-Mostra il tracciato ECG su 5 secondi.
+Plot of the CSV file recorded by the Pico.
+Shows the ECG trace over 5 seconds.
 """
 import csv
 import sys

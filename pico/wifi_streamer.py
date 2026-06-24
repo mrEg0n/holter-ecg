@@ -1,13 +1,13 @@
 """
-WiFi streamer multi-rete per Pi Pico W / Pico 2 W.
+Multi-network WiFi streamer for Pi Pico W / Pico 2 W.
 
-Al boot esegue una scansione WiFi e si connette alla prima rete configurata
-in `wifi_config.NETWORKS` che risulta visibile. Per ogni rete è definito
-anche l'IP del server LAN da contattare via TCP, così il dispositivo si
-adatta automaticamente quando viene spostato fra case con LAN diverse.
+On boot it runs a WiFi scan and connects to the first network configured
+in `wifi_config.NETWORKS` that is visible. For each network the IP of the
+LAN server to contact via TCP is also defined, so the device adapts
+automatically when moved between houses with different LANs.
 
-Streama poi i campioni ADC (ECG) a 250 Hz sul server. Reconnect in caso
-di drop. Pensato per essere salvato come main.py su flash per autostart.
+It then streams the ADC (ECG) samples at 250 Hz to the server. Reconnects
+on drop. Intended to be saved as main.py on flash for autostart.
 """
 from machine import ADC, Pin
 import network
@@ -40,9 +40,9 @@ def blink(n, t=0.1):
         set_led(1); time.sleep(t)
         set_led(0); time.sleep(t)
 
-# ---- WiFi multi-rete ----
+# ---- WiFi multi-network ----
 def scan_wifi(wlan):
-    """Restituisce un set di SSID visibili."""
+    """Return a set of visible SSIDs."""
     try:
         return {ssid.decode() if isinstance(ssid, bytes) else str(ssid)
                 for ssid, *_ in wlan.scan()}
@@ -51,7 +51,7 @@ def scan_wifi(wlan):
         return set()
 
 def connect_one(wlan, ssid, password, timeout_s=20):
-    """Prova a connettersi a una rete specifica. Ritorna True/False."""
+    """Try to connect to a specific network. Returns True/False."""
     print(f"WiFi: connecting to {ssid}...")
     try: wlan.disconnect()
     except Exception: pass
@@ -60,29 +60,29 @@ def connect_one(wlan, ssid, password, timeout_s=20):
     t0 = time.ticks_ms()
     while not wlan.isconnected():
         if time.ticks_diff(time.ticks_ms(), t0) > timeout_s * 1000:
-            print(f"WiFi: timeout su {ssid}, status={wlan.status()}")
+            print(f"WiFi: timeout on {ssid}, status={wlan.status()}")
             return False
         time.sleep(0.5)
     print(f"WiFi: connected to {ssid}, ifconfig={wlan.ifconfig()}")
     return True
 
 def connect_any():
-    """Cerca la prima rete configurata visibile, prova a connettersi.
-    Ritorna (wlan, server_ip) oppure (None, None) se nessuna disponibile."""
+    """Look for the first visible configured network, try to connect.
+    Returns (wlan, server_ip) or (None, None) if none available."""
     wlan = network.WLAN(network.STA_IF)
     wlan.active(True)
     time.sleep(0.5)
     visible = scan_wifi(wlan)
-    print(f"WiFi visibili ({len(visible)}): {sorted(visible)[:10]}...")
+    print(f"WiFi visible ({len(visible)}): {sorted(visible)[:10]}...")
     for net in cfg.NETWORKS:
         if net["ssid"] in visible:
             if connect_one(wlan, net["ssid"], net["password"]):
                 return wlan, net["server_ip"]
         else:
-            print(f"WiFi: '{net['ssid']}' non visibile, skip")
-    # fallback: prova a connettersi anche alle reti non viste dallo scan
-    # (può succedere che lo scan abbia mancato la rete in quel momento)
-    print("WiFi: nessuna rete visibile, tento i fallback...")
+            print(f"WiFi: '{net['ssid']}' not visible, skip")
+    # fallback: try to connect even to networks not seen by the scan
+    # (the scan may have missed the network at that moment)
+    print("WiFi: no network visible, trying fallbacks...")
     for net in cfg.NETWORKS:
         if connect_one(wlan, net["ssid"], net["password"], timeout_s=12):
             return wlan, net["server_ip"]
@@ -96,7 +96,7 @@ def stream_forever():
         if wlan is None or not wlan.isconnected():
             wlan, server_ip = connect_any()
             if wlan is None:
-                print("WiFi: nessuna rete raggiungibile, retry tra 5s")
+                print("WiFi: no network reachable, retry in 5s")
                 blink(3, 0.2)
                 time.sleep(5)
                 continue
@@ -131,9 +131,9 @@ def stream_forever():
                 if s is not None: s.close()
             except Exception: pass
             blink(4, 0.05); set_led(0)
-            # se l'errore è di rete, mantieni wlan; se persistente, forzeremo riconnessione
+            # if the error is network-related, keep wlan; if persistent, we'll force a reconnect
             time.sleep(2)
-            # se siamo ancora connessi al WiFi, riprova solo il TCP — altrimenti tutto da capo
+            # if we're still connected to WiFi, retry only the TCP — otherwise start over
             if wlan is not None and not wlan.isconnected():
                 wlan = None
                 server_ip = None

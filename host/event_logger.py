@@ -1,29 +1,29 @@
 """
-Event logger per gli esperimenti di PROVOCAZIONE (apnee, peso braccio, scale...).
+Event logger for the PROVOCATION experiments (breath-holds, arm load, stairs...).
 
-Mentre il server (host/server.py) sta registrando, premi un tasto e questo
-strumento manda un marker al server, che lo stampa col tempo ESATTO della
-registrazione nel file  logs/markers_<sessione>.csv  (colonne t_s,text).
-Cosi dopo, in analisi, puoi segmentare la traccia per manovra.
+While the server (host/server.py) is recording, press a key and this tool sends
+a marker to the server, which stamps it with the EXACT recording time in the file
+logs/markers_<session>.csv  (columns t_s,text).
+This way, later in analysis, you can segment the trace by maneuver.
 
-I tasti delle MANOVRE fanno da interruttore START/END (premi una volta = START,
-ripremi = END), cosi ogni ripetizione resta delimitata. In alto vedi quali sono
-"aperte". Ogni evento viene anche salvato in locale (logs/eventlog_<ora>.csv) con
-l'orario da orologio, come backup nel caso il server non risponda.
+The MANEUVER keys act as a START/END toggle (press once = START, press again =
+END), so each repetition stays delimited. At the top you can see which ones are
+"open". Every event is also saved locally (logs/eventlog_<time>.csv) with the
+wall-clock time, as a backup in case the server doesn't respond.
 
-USO:
-    # 1) in un terminale, avvia la registrazione:
-    TRANSPORT=usb python3 host/server.py      (oppure TRANSPORT=wifi)
-    # 2) in un ALTRO terminale, avvia questo logger:
+USAGE:
+    # 1) in one terminal, start the recording:
+    TRANSPORT=usb python3 host/server.py      (or TRANSPORT=wifi)
+    # 2) in ANOTHER terminal, start this logger:
     python3 host/event_logger.py
-    # (se il server e' su un altro PC:  python3 host/event_logger.py --url http://IP:8081 )
+    # (if the server is on another PC:  python3 host/event_logger.py --url http://IP:8081 )
 
-TASTI (manovre = interruttore START/END):
-    b  baseline          f  apnea polmoni PIENI     e  apnea polmoni VUOTI
-    l  peso braccio SX    r  peso braccio DX
-    w  cammino            s  scale                   c  recupero
-    spazio  marker istantaneo (es. i "3 colpetti" di sync / confine generico)
-    t  testo libero        ?  mostra i tasti          q  esci
+KEYS (maneuvers = START/END toggle):
+    b  baseline          f  breath-hold lungs FULL   e  breath-hold lungs EMPTY
+    l  arm load LEFT      r  arm load RIGHT
+    w  walking           s  stairs                   c  recovery
+    space   instant marker (e.g. the "3 taps" sync / generic boundary)
+    t  free text          ?  show the keys           q  quit
 """
 import argparse
 import json
@@ -34,20 +34,20 @@ import tty
 import urllib.request
 from datetime import datetime
 
-MANEUVERS = {  # tasto -> etichetta (interruttore start/end)
+MANEUVERS = {  # key -> label (start/end toggle)
     "b": "baseline",
-    "f": "apnea_full",      # polmoni pieni
-    "e": "apnea_empty",     # polmoni vuoti
+    "f": "apnea_full",      # lungs full
+    "e": "apnea_empty",     # lungs empty
     "l": "weight_left",
     "r": "weight_right",
     "w": "walking",
     "s": "stairs",
     "c": "recovery",
 }
-HELP = __doc__.split("TASTI")[1]
+HELP = __doc__.split("KEYS")[1]
 
 def getch():
-    """legge UN tasto senza invio (raw mode)."""
+    """reads ONE key without Enter (raw mode)."""
     fd = sys.stdin.fileno()
     old = termios.tcgetattr(fd)
     try:
@@ -69,10 +69,10 @@ def main():
                   "w", buffering=1)
     backup.write("wall_time,text,server_t_s\n")
 
-    open_state = {}   # etichetta -> True se "aperta" (in attesa di END)
+    open_state = {}   # label -> True if "open" (waiting for END)
 
     def post(text):
-        """manda il marker al server; ritorna t_s (sec nella registrazione) o None."""
+        """sends the marker to the server; returns t_s (sec into the recording) or None."""
         t_s = None
         try:
             req = urllib.request.Request(
@@ -91,11 +91,11 @@ def main():
         print(bar)
 
     print("=" * 68)
-    print("EVENT LOGGER — registrazione esperimenti di provocazione")
+    print("EVENT LOGGER — logging of provocation experiments")
     print(f"server: {args.url}   ·   backup locale: logs/eventlog_*.csv")
     print(HELP.rstrip())
     print("=" * 68)
-    # verifica connessione
+    # check connection
     try:
         urllib.request.urlopen(args.url.rstrip("/") + "/markers", timeout=3)
         print("✓ server raggiungibile. Premi i tasti durante gli esperimenti.\n")
@@ -114,7 +114,7 @@ def main():
             t_s = post("sync"); show_t = f"  t={t_s:.1f}s" if t_s is not None else ""
             print(f"[{ts_label}] • sync{show_t}"); continue
         if ch == "t":
-            # testo libero: torno in modalita' normale per leggere la riga
+            # free text: switch back to normal mode to read the line
             sys.stdout.write("  testo > "); sys.stdout.flush()
             txt = sys.stdin.readline().strip()
             if txt:
@@ -132,13 +132,13 @@ def main():
             print(f"[{ts_label}] {arrow} {name} {phase}{show_t}")
             show_open()
             continue
-        # tasto non mappato: ignora
+        # unmapped key: ignore
     backup.close()
-    # avviso se restano manovre aperte (dimenticato l'END)
+    # warn if any maneuvers are left open (forgot the END)
     leftover = [k for k, v in open_state.items() if v]
     if leftover:
         print(f"\n⚠ manovre lasciate APERTE (nessun END): {', '.join(leftover)}")
-    print("\nChiuso. I marker sono in  logs/markers_<sessione>.csv  (e nel backup locale).")
+    print("\nClosed. Markers are in  logs/markers_<session>.csv  (and in the local backup).")
 
 if __name__ == "__main__":
     main()

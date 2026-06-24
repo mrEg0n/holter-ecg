@@ -1,22 +1,22 @@
 """
-Editor interattivo per marcare manualmente i tratti rumorosi di una sessione ECG.
+Interactive editor to manually mark the noisy stretches of an ECG session.
 
-Apre uno strip-chart paginato (10 minuti per pagina, 1 min/riga). L'utente
-seleziona col mouse (click-and-drag) gli intervalli da escludere; ogni intervallo
-appare come overlay rosso. I tasti permettono di navigare le pagine, salvare,
-annullare l'ultimo, uscire.
+Opens a paginated strip-chart (10 minutes per page, 1 min/row). The user
+selects with the mouse (click-and-drag) the intervals to exclude; each interval
+appears as a red overlay. The keys allow navigating pages, saving,
+undoing the last one, and quitting.
 
-Output: JSON in exclusions/exclusions_<base>.json, leggibile dai report
-generators tramite EXCLUDE_INTERVALS o caricamento diretto.
+Output: JSON in exclusions/exclusions_<base>.json, readable by the report
+generators via EXCLUDE_INTERVALS or direct loading.
 
-Tasti:
-  drag mouse     marca intervallo da escludere
-  n / →          pagina successiva
-  p / ←          pagina precedente
-  u              undo (rimuove ultimo intervallo aggiunto)
-  s              salva
-  q              salva e esce
-  d              cancella TUTTI gli intervalli (chiede conferma in terminale)
+Keys:
+  drag mouse     mark interval to exclude
+  n / →          next page
+  p / ←          previous page
+  u              undo (removes the last interval added)
+  s              save
+  q              save and quit
+  d              delete ALL intervals (asks for confirmation in the terminal)
 
 Usage:
     python3 host/mark_exclusions.py logs/ecg_YYYYMMDD_HHMMSS.csv
@@ -35,7 +35,7 @@ if len(sys.argv) < 2:
 
 ECG = sys.argv[1]
 ROWS_PER_PAGE = 10
-ROW_S = 60   # 1 min per riga
+ROW_S = 60   # 1 min per row
 SR = 250
 
 # ---- load ECG (filt) ----
@@ -52,10 +52,10 @@ vf = np.array(vf)
 total_s = float(t[-1] - t[0])
 total_rows = int(np.ceil(total_s / ROW_S))
 total_pages = int(np.ceil(total_rows / ROWS_PER_PAGE))
-print(f"Sessione {os.path.basename(ECG)}: {total_s/60:.1f} min, "
-      f"{total_rows} righe, {total_pages} pagine")
+print(f"Session {os.path.basename(ECG)}: {total_s/60:.1f} min, "
+      f"{total_rows} rows, {total_pages} pages")
 
-# ---- load peaks (per overlay marker) ----
+# ---- load peaks (for overlay markers) ----
 PK = ECG.replace("ecg_", "peaks_")
 peaks = []
 if os.path.exists(PK):
@@ -71,12 +71,12 @@ if os.path.exists(PK):
                 })
             except (KeyError, ValueError):
                 continue
-# riclassifica col criterio attuale (amp >= 0.70)
+# reclassify with the current criterion (amp >= 0.70)
 for p in peaks:
     shape = (p["reb"] >= 0.40 or p["w"] >= 95.0)
     p["cls"] = "pvc" if (shape and p["amp"] >= 0.70) else "normal"
 
-# ---- carica esclusioni esistenti ----
+# ---- load existing exclusions ----
 os.makedirs("exclusions", exist_ok=True)
 base = os.path.basename(ECG).replace("ecg_", "").replace(".csv", "")
 EXCL_FILE = f"exclusions/exclusions_{base}.json"
@@ -85,9 +85,9 @@ if os.path.exists(EXCL_FILE):
     with open(EXCL_FILE) as f:
         data = json.load(f)
     exclusions = [(d["start"], d["end"]) for d in data.get("intervals", [])]
-    print(f"Caricate {len(exclusions)} esclusioni esistenti da {EXCL_FILE}")
+    print(f"Loaded {len(exclusions)} existing exclusions from {EXCL_FILE}")
 
-# ---- stato globale UI ----
+# ---- global UI state ----
 state = {
     "page": 0,
     "fig": None,
@@ -100,7 +100,7 @@ def fmt_ts(s):
     return f"{int(s//60):02d}:{s%60:05.2f}"
 
 def save_excl():
-    """Scrive il JSON con gli intervalli (sorted, no overlap merge per ora)."""
+    """Writes the JSON with the intervals (sorted, no overlap merge for now)."""
     intervals_sorted = sorted(exclusions, key=lambda x: x[0])
     with open(EXCL_FILE, "w") as f:
         json.dump({
@@ -110,15 +110,15 @@ def save_excl():
             "intervals": [{"start": round(s, 3), "end": round(e, 3)} for s, e in intervals_sorted],
         }, f, indent=2)
     state["dirty"] = False
-    print(f"💾 Salvate {len(intervals_sorted)} esclusioni "
+    print(f"💾 Saved {len(intervals_sorted)} exclusions "
           f"({sum(e-s for s,e in intervals_sorted):.1f}s) → {EXCL_FILE}")
 
 def draw_page():
-    """Ridisegna la pagina corrente. Chiamato dopo ogni modifica."""
+    """Redraws the current page. Called after every modification."""
     fig = state["fig"]
     if fig is None:
         return
-    state["selectors"] = []  # ricrea tutti gli span selector
+    state["selectors"] = []  # recreate all span selectors
     for k, ax in enumerate(state["axes"]):
         ax.clear()
         row = state["page"] * ROWS_PER_PAGE + k
@@ -142,7 +142,7 @@ def draw_page():
                 else:
                     ax.plot(x, 0.85, "v", color="#33aa66", ms=3)
                     n_norm += 1
-        # esclusioni che intersecano questa riga
+        # exclusions that intersect this row
         for (s, e) in exclusions:
             if e < t0 or s > t1:
                 continue
@@ -177,12 +177,12 @@ def draw_page():
                            useblit=True,
                            props=dict(alpha=0.4, facecolor="red"))
         state["selectors"].append(sel)
-    # titolo
+    # title
     n_excl = len(exclusions)
     tot_s = sum(e - s for s, e in exclusions)
-    title = (f"Pagina {state['page']+1}/{total_pages}  ·  "
-             f"esclusioni: {n_excl} ({tot_s:.0f}s)  ·  "
-             f"DIRTY={'sì' if state['dirty'] else 'no'}   "
+    title = (f"Page {state['page']+1}/{total_pages}  ·  "
+             f"exclusions: {n_excl} ({tot_s:.0f}s)  ·  "
+             f"DIRTY={'yes' if state['dirty'] else 'no'}   "
              f"[ drag=mark · n/→=next · p/←=prev · u=undo · s=save · q=save+quit · d=clear ]")
     fig.suptitle(title, color="white", fontsize=9)
     fig.canvas.draw_idle()
@@ -195,7 +195,7 @@ def on_key(event):
         if exclusions:
             removed = exclusions.pop()
             state["dirty"] = True
-            print(f"- Undo: rimosso {fmt_ts(removed[0])} → {fmt_ts(removed[1])}")
+            print(f"- Undo: removed {fmt_ts(removed[0])} → {fmt_ts(removed[1])}")
             draw_page()
     elif event.key in ("n", "right", "pagedown"):
         if state["page"] < total_pages - 1:
@@ -210,27 +210,27 @@ def on_key(event):
             save_excl()
         plt.close("all")
     elif event.key == "d":
-        # chiede conferma in terminale
-        print(f"⚠️  Davvero cancello tutte le {len(exclusions)} esclusioni? "
-              f"Premi 'd' di nuovo entro 3s per confermare.")
+        # asks for confirmation in the terminal
+        print(f"⚠️  Really delete all {len(exclusions)} exclusions? "
+              f"Press 'd' again within 3s to confirm.")
         state["clear_pending"] = True
     elif event.key == "D" or (event.key == "d" and state.get("clear_pending")):
         exclusions.clear()
         state["dirty"] = True
         state["clear_pending"] = False
-        print("🗑  Tutte le esclusioni cancellate.")
+        print("🗑  All exclusions deleted.")
         draw_page()
     elif event.key == "g":
-        # goto: input da terminale
+        # goto: input from terminal
         try:
-            v = input("Vai a minuto (es. 45): ").strip()
+            v = input("Go to minute (e.g. 45): ").strip()
             m = int(v)
             target_page = m // (ROWS_PER_PAGE)
             if 0 <= target_page < total_pages:
                 state["page"] = target_page
                 draw_page()
         except Exception as e:
-            print(f"input invalido: {e}")
+            print(f"invalid input: {e}")
 
 # ---- build figure once ----
 fig, axes = plt.subplots(ROWS_PER_PAGE, 1, figsize=(16, ROWS_PER_PAGE*1.1),
@@ -239,7 +239,7 @@ state["fig"] = fig
 state["axes"] = list(axes) if ROWS_PER_PAGE > 1 else [axes]
 fig.canvas.mpl_connect("key_press_event", on_key)
 
-# imposta close → salva
+# set close → save
 def on_close(event):
     if state["dirty"]:
         save_excl()

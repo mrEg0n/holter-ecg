@@ -1,7 +1,7 @@
 """
 Blink test for Raspberry Pi Pico 2 W.
-Lampeggia il LED onboard per 10 secondi a 1 Hz.
-Conferma che MicroPython gira e abbiamo controllo del board.
+Blinks the onboard LED for 10 seconds at 1 Hz.
+Confirms that MicroPython is running and we have control of the board.
 """
 from machine import Pin
 import time

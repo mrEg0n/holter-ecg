@@ -22,7 +22,7 @@ if PATH is None:
     print("usage: plot_session.py <ecg_*.csv> [row_seconds]")
     sys.exit(1)
 
-ROW_S = int(sys.argv[2]) if len(sys.argv) > 2 else 60   # 1 minuto per riga di default
+ROW_S = int(sys.argv[2]) if len(sys.argv) > 2 else 60   # 1 minute per row by default
 SAMPLE_HZ = 250
 ROW_SAMPLES = ROW_S * SAMPLE_HZ
 
@@ -39,7 +39,7 @@ with open(PATH) as f:
             continue
 
 if not t_s:
-    print("CSV vuoto o malformato")
+    print("Empty or malformed CSV")
     sys.exit(1)
 
 t  = np.array(t_s)
@@ -73,9 +73,9 @@ total_s = t[-1] - t[0]
 norm = [p for p in peaks if p["cls"] == "normal"]
 pvc  = [p for p in peaks if p["cls"] == "pvc"]
 print(f"\n=== SESSION STATS ===")
-print(f"durata totale:  {total_s/60:.1f} min ({total_s:.0f} s)")
-print(f"battiti totali: {len(peaks)}")
-print(f"  normali:      {len(norm)}  ({60*len(norm)/total_s:.0f} BPM sinus)")
+print(f"total duration: {total_s/60:.1f} min ({total_s:.0f} s)")
+print(f"total beats:    {len(peaks)}")
+print(f"  normal:       {len(norm)}  ({60*len(norm)/total_s:.0f} BPM sinus)")
 print(f"  PVC:          {len(pvc)}  ({60*len(pvc)/total_s:.1f}/min, burden {100*len(pvc)/max(1,len(peaks)):.1f}%)")
 
 # --- plot multi-row ---
@@ -100,7 +100,7 @@ for i, ax in enumerate(axes):
     for p in row_peaks:
         pt = p["t"] - t0
         if p["cls"] == "pvc":
-            # overlay finestra ±120ms
+            # overlay window ±120ms
             window_mask = (tt >= pt - 0.12) & (tt <= pt + 0.12)
             if window_mask.any():
                 ax.plot(tt[window_mask], vv[window_mask],
@@ -115,7 +115,7 @@ for i, ax in enumerate(axes):
     ax.set_ylim(-1.0, 1.6)
     ax.tick_params(colors="#aaaaaa", labelsize=8)
     ax.grid(True, alpha=0.2, color="#444444")
-    # label sull'asse Y: che minuto è
+    # label on the Y axis: which minute it is
     mm = int(t0 // 60)
     ss = int(t0 % 60)
     ax.set_ylabel(f"{mm:02d}:{ss:02d}", color="#aaaaaa", fontsize=8, rotation=0,

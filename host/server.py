@@ -72,7 +72,7 @@ else:
 
 # ---------------- DSP / detector constants ----------------
 SAMPLE_HZ          = 250
-WINDOW_S           = 180   # 3 minuti di traccia scorrevole
+WINDOW_S           = 180   # 3 minutes of scrolling trace
 BUF_SIZE           = SAMPLE_HZ * WINDOW_S
 WIDTH_THR          = 0.10
 DETECT_THR_FLOOR   = 0.30
@@ -80,8 +80,8 @@ DETECT_THR_RATIO   = 0.45
 POST_PEAK_MS       = 200
 REBOUND_RATIO_PVC  = 0.40
 PVC_WIDTH_MS       = 95.0
-PVC_MIN_AMP_V      = 0.70   # ampiezza minima richiesta per accettare un PVC
-                            # (esclude i piccoli battiti normali rumorosi)
+PVC_MIN_AMP_V      = 0.70   # minimum amplitude required to accept a PVC
+                            # (excludes small noisy normal beats)
 REFRACTORY_S       = 0.30
 BPM_WINDOW_S       = 60
 
@@ -142,11 +142,11 @@ state = {
     "lock":            threading.Lock(),
 }
 
-# Coda per ogni client SSE collegato. Ogni client ha la sua coda separata
-# cosi due browser aperti contemporaneamente non si rubano i sample a vicenda.
+# One queue per connected SSE client. Each client has its own separate queue
+# so that two browsers open at the same time don't steal samples from each other.
 clients = []          # list of {samples_q, peaks_q, last_markers_rev}
 clients_lock = threading.Lock()
-MAX_QUEUE = 4000      # se un client e' troppo lento, droppa i sample extra
+MAX_QUEUE = 4000      # if a client is too slow, drop the extra samples
 
 
 def detect_threshold():
@@ -181,7 +181,7 @@ def process_sample(v_raw, v_filt):
     # log every sample (raw + filtered)
     samples_log.write(f"{t_s:.4f},{v_raw:.4f},{v_filt:.4f}\n")
 
-    # push to ogni client SSE collegato (ognuno ha la sua coda)
+    # push to every connected SSE client (each has its own queue)
     with clients_lock:
         for c in clients:
             try:
@@ -236,9 +236,9 @@ def process_sample(v_raw, v_filt):
             ratio = rebound / p_amp if p_amp > 0 else 0.0
             lps = state["last_peak_sample"]
             if lps is None or (p_n - lps) > REFRACTORY_SAMPLES:
-                # PVC se rebound profondo OPPURE QRS largo, E ampiezza sopra soglia minima
-                # (l'AND con amp evita di scambiare per PVC piccoli battiti normali rumorosi
-                # con S-wave fisiologica relativamente alta)
+                # PVC if deep rebound OR wide QRS, AND amplitude above the minimum threshold
+                # (the AND with amp avoids mistaking small noisy normal beats with a
+                # relatively tall physiological S-wave for PVCs)
                 is_pvc_shape = (ratio >= REBOUND_RATIO_PVC or w_ms >= PVC_WIDTH_MS)
                 cls = "pvc" if (is_pvc_shape and p_amp >= PVC_MIN_AMP_V) else "normal"
                 state["peak_amplitudes"].append(p_amp)
@@ -394,9 +394,9 @@ def add_marker():
 
 @app.route("/mark", methods=["POST"])
 def add_mark_now():
-    """Come /marker, ma il server stampa il marker col campione CORRENTE: il
-    client manda solo {text} (usato da host/event_logger.py per gli esperimenti
-    di provocazione). Cosi il tempo e' esatto sull'orologio della registrazione."""
+    """Like /marker, but the server stamps the marker with the CURRENT sample: the
+    client sends only {text} (used by host/event_logger.py for the provocation
+    experiments). This way the time is exact on the recording's clock."""
     data = request.get_json(silent=True) or {}
     text = (data.get("text") or "").strip()
     if not text:
@@ -418,8 +418,8 @@ def list_markers():
 
 @app.route("/stream")
 def stream():
-    # Ogni client SSE riceve la propria coda dedicata.
-    # Niente competizione tra browser sui sample.
+    # Each SSE client gets its own dedicated queue.
+    # No competition between browsers over samples.
     client = {
         "samples_q":        queue.Queue(maxsize=MAX_QUEUE),
         "peaks_q":          queue.Queue(maxsize=MAX_QUEUE),

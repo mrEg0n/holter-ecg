@@ -1,35 +1,35 @@
 % !TEX program = pdflatex
 % !TEX encoding = UTF-8 Unicode
 % =====================================================================
-%  DIY Holter ECG — documento conclusivo (sorgente LaTeX, da lavorare a mano)
+%  DIY Holter ECG — conclusive document (LaTeX source, hand-edited)
 % ---------------------------------------------------------------------
-%  COME E' FATTO:
-%   - Il TESTO sta qui sotto: modificalo liberamente, e' tuo.
-%   - Le FIGURE sono in  figs/*.png  e le TABELLE + i numeri aggregati
-%     stanno in  tables.tex : entrambi si RIGENERANO dai dati con
-%         python3 host/dashboard.py        (ricalcola -> HTML + figure)
+%  HOW IT WORKS:
+%   - The PROSE is below: edit it freely, it's yours.
+%   - The FIGURES are in  figs/*.png  and the TABLES + aggregate numbers
+%     live in  tables.tex : both REGENERATE from the data with
+%         python3 host/dashboard.py        (recompute -> HTML + figures)
 %         python3 host/export_latex.py     (HTML -> figs/ + tables.tex)
-%     quindi non toccarli a mano: aggiungi una registrazione, rilanci i
-%     due comandi, e qui cambiano numeri/figure senza perdere il testo.
-%   - COMPILA con:  latexmk -pdf holter_report.tex   (o  pdflatex x2)
+%     so do not edit them by hand: add a recording, rerun the two
+%     commands, and the numbers/figures change here without losing the prose.
+%   - COMPILE with:  latexmk -pdf holter_report.tex   (or  pdflatex x2)
 % =====================================================================
 \documentclass[11pt,a4paper]{article}
 
-% ---- font & codifica (newpx = Palatino, taglio editoriale) ----
+% ---- fonts & encoding (Times, academic-paper style) ----
 \usepackage[T1]{fontenc}
 \usepackage[utf8]{inputenc}
 \usepackage{newtxtext,newtxmath}   % Times (stile paper accademico)
 \usepackage{microtype}
 
-% ---- impaginazione ----
+% ---- page layout ----
 \usepackage[a4paper,margin=2.5cm]{geometry}
 \usepackage{graphicx}
 \graphicspath{{figs/}{figs_manual/}}   % figs/=auto (export_latex.py)  ·  figs_manual/=figure curate a mano
 \usepackage{float}
 \usepackage{booktabs}
 \usepackage{array}
-\usepackage{changepage}   % adjustwidth: blocchi rientrati (abstract/disclaimer)
-\usepackage{comment}      % \begin{comment}...\end{comment} per escludere blocchi
+\usepackage{changepage}   % adjustwidth: indented blocks (abstract/disclaimer)
+\usepackage{comment}      % \begin{comment}...\end{comment} to exclude blocks
 \usepackage[table,dvipsnames]{xcolor}
 \usepackage{enumitem}
 \usepackage{caption}
@@ -38,16 +38,16 @@
 \usepackage[hidelinks]{hyperref}
 
 \setlist{nosep,leftmargin=1.6em}
-% stile accademico: rientro di prima riga, nessuno spazio tra paragrafi
+% academic style: first-line indent, no space between paragraphs
 \setlength{\parindent}{1.4em}
 \setlength{\parskip}{0pt}
 \linespread{1.05}
 
-% ---- colori ----
+% ---- colors ----
 \definecolor{accent}{HTML}{7A3B2E}
 \definecolor{muted}{HTML}{6B6862}
-\definecolor{cInterp}{HTML}{1F7FB0}   % interpolate (silenziose)
-\definecolor{cComp}{HTML}{C0392B}     % compensate (sentite)
+\definecolor{cInterp}{HTML}{1F7FB0}   % interpolated (silent)
+\definecolor{cComp}{HTML}{C0392B}     % compensated (felt)
 \definecolor{cCoupled}{HTML}{9A7D0A}  % coupled
 \newcommand{\interp}[1]{\textcolor{cInterp}{#1}}
 \newcommand{\comp}[1]{\textcolor{cComp}{#1}}
@@ -55,7 +55,7 @@
 \newcommand{\rrpre}{RR\textsubscript{pre}}
 \newcommand{\rrpost}{RR\textsubscript{post}}
 
-% ---- titoli di sezione (numero in accento + filetto) ----
+% ---- section titles (number in accent color + rule) ----
 \titleformat{\section}{\normalfont\large\bfseries}{\thesection.}{0.6em}{}
 \titleformat{\subsection}{\normalfont\normalsize\bfseries}{\thesubsection}{0.6em}{}
 \titlespacing*{\section}{0pt}{2.2ex plus .3ex}{1.0ex}
@@ -65,25 +65,25 @@
 \captionsetup{font={footnotesize,it},labelfont={bf,up},labelsep=period,skip=5pt,justification=justified,singlelinecheck=false}
 
 % ---- testatina ----
-\pagestyle{plain}   % numero pagina centrato in basso, stile paper
+\pagestyle{plain}   % page number centered at the bottom, paper style
 
-% ---- scorciatoia figura: \reportfig[width]{file}{didascalia} ----
+% ---- figure shortcut: \reportfig[width]{file}{caption} ----
 \newcommand{\reportfig}[3][\linewidth]{%
   \begin{figure}[H]\centering
     \includegraphics[width=#1]{#2}\caption{#3}
   \end{figure}}
-% variante per figure grandi: pagina dedicata (float [p]), evita pagine mezze vuote
+% variant for large figures: dedicated page (float [p]), avoids half-empty pages
 \newcommand{\reportfigP}[3][\linewidth]{%
   \begin{figure}[p]\centering
     \includegraphics[width=#1]{#2}\caption{#3}
   \end{figure}}
 
-% numeri aggregati + tabelle (AUTO-generati: non modificare a mano)
+% aggregate numbers + tables (AUTO-generated: do not edit by hand)
 \input{tables.tex}
 
 \begin{document}
 
-% ===================== TESTATA =====================
+% ===================== HEADER =====================
 \thispagestyle{empty}
 
 \begin{center}
@@ -167,7 +167,7 @@ The only operation left to manual curation is the exclusion of intervals corrupt
 \reportfig{quality_strip.png}{Continuous 72-second segment, displayed in consecutive 12-second rows. Beats are detected automatically, with PVCs shown in red and sinus beats in green. The shaded 10 s interval corresponds to motion/contact noise and was manually excluded before analysis. The bracket in the 62:07 and 62:19 rows marks a transient slowing of the sinus rate to $\sim$60\,bpm.
 \label{fig:quality}}
 
-% ===================== DATASET OVERVIEW (dopo) =====================
+% ===================== DATASET OVERVIEW =====================
 \section{Dataset overview}
 All data presented in the following sections were obtained from the \nSessions{} recording
 sessions listed in \textbf{Table~\ref{tab:sessions}}. The sessions span different times of day and were acquired mainly under

@@ -1,7 +1,7 @@
 """
-Report sintetico cross-sessione: confronta 3 registrazioni ECG, calcola gli stessi
-indicatori (burden, couplet, interpolate vs compensate, AF screening) e produce
-un PDF di sintesi con tabelle, grafici e esempi delle classificazioni chiave.
+Cross-session synthetic report: compares 3 ECG recordings, computes the same
+indicators (burden, couplet, interpolated vs compensatory, AF screening) and produces
+a summary PDF with tables, charts and examples of the key classifications.
 
 Usage:
     python3 synthetic_report.py ecg_A.csv ecg_B.csv ecg_C.csv
@@ -32,9 +32,9 @@ DARK_BG, GRID = "#0d0f12", "#333"
 PVC_MIN_AMP = 0.70
 REBOUND_PVC = 0.40
 PVC_W_MS    = 95.0
-PVC_W_MIN_MS = 40.0   # range fisiologico per la width PVC: sotto = spike, sopra = baseline shift
+PVC_W_MIN_MS = 40.0   # physiological range for PVC width: below = spike, above = baseline shift
 PVC_W_MAX_MS = 220.0
-PVC_MIN_REBOUND = 0.05  # rebound minimo: artefatti larghi hanno reb=0
+PVC_MIN_REBOUND = 0.05  # minimum rebound: wide artifacts have reb=0
 COUPLET_MAX_RR_S = 0.70
 
 # ---------- analysis core ----------
@@ -58,26 +58,26 @@ def load_session(ecg_path):
                      "cls": r["class"]}
                 peaks.append(p)
             except (KeyError, ValueError): continue
-    # riclassifica col criterio attuale (plausibility check + rebound minimo)
+    # reclassify with the current criterion (plausibility check + minimum rebound)
     for p in peaks:
         shape_pvc = (p["reb"] >= REBOUND_PVC or p["w"] >= PVC_W_MS)
         plausible_w = PVC_W_MIN_MS <= p["w"] <= PVC_W_MAX_MS
         has_rebound = p["reb"] >= PVC_MIN_REBOUND
         p["cls"] = "pvc" if (shape_pvc and p["amp"] >= PVC_MIN_AMP
                               and plausible_w and has_rebound) else "normal"
-    # togli spike di rumore
+    # remove noise spikes
     peaks = [p for p in peaks if not (p["w"] <= 16 and p["amp"] < PVC_MIN_AMP)]
     return t, vr, vf, peaks
 
 def detect_noise_intervals(t, vr, win_s=4.0, min_s=1.0):
-    """Auto-rileva burst di rumore con soglia ADATTIVA al baseline della sessione.
-    La soglia è (mediana std baseline) + 0.10V, così funziona anche su sessioni
-    registrate con gain diverso dell'AD8232."""
+    """Auto-detect noise bursts with a threshold ADAPTIVE to the session baseline.
+    The threshold is (median baseline std) + 0.10V, so it works even on sessions
+    recorded with a different AD8232 gain."""
     WIN = int(win_s * SR)
     std_arr = np.zeros(len(vr))
     for i in range(0, len(vr) - WIN, SR):
         std_arr[i:i+SR] = vr[i:i+WIN].std()
-    # soglia: mediana + offset, ma minimo 0.30
+    # threshold: median + offset, but minimum 0.30
     baseline = float(np.median(std_arr[std_arr > 0]))
     std_thresh = max(0.30, baseline + 0.10)
     noisy = std_arr > std_thresh
@@ -92,8 +92,8 @@ def detect_noise_intervals(t, vr, win_s=4.0, min_s=1.0):
     return out
 
 def load_manual_exclusions(ecg_path):
-    """Carica le esclusioni manuali dal file JSON prodotto da mark_exclusions.py.
-    Restituisce lista di (start_s, end_s)."""
+    """Load the manual exclusions from the JSON file produced by mark_exclusions.py.
+    Returns a list of (start_s, end_s)."""
     import json as _json
     base = os.path.basename(ecg_path).replace("ecg_", "").replace(".csv", "")
     p = os.path.join("exclusions", f"exclusions_{base}.json")
@@ -103,34 +103,34 @@ def load_manual_exclusions(ecg_path):
             data = _json.load(f)
         return [(d["start"], d["end"]) for d in data.get("intervals", [])]
     except Exception as e:
-        print(f"[{base}] errore lettura {p}: {e}")
+        print(f"[{base}] error reading {p}: {e}")
         return []
 
 def analyze(ecg_path, manual_excl=None):
-    """Restituisce dict con tutti i numeri della sessione.
-    Se manual_excl è None, carica dal file JSON exclusions_<base>.json se esiste,
-    altrimenti usa solo l'auto-detection del rumore."""
+    """Return a dict with all the session numbers.
+    If manual_excl is None, load from the JSON file exclusions_<base>.json if it exists,
+    otherwise use only the noise auto-detection."""
     t, vr, vf, peaks = load_session(ecg_path)
     if manual_excl is None:
         manual_excl = load_manual_exclusions(ecg_path)
         if manual_excl:
-            print(f"  caricate {len(manual_excl)} esclusioni manuali da JSON")
+            print(f"  loaded {len(manual_excl)} manual exclusions from JSON")
     noise_excl = detect_noise_intervals(t, vr)
-    # consolida intervalli (manuale + auto, no fusione complicata)
+    # consolidate intervals (manual + auto, no complicated merging)
     excl = list(noise_excl) + list(manual_excl)
     def in_excl(tv): return any(s <= tv <= e for s, e in excl)
     def in_manual(tv): return any(s <= tv <= e for s, e in manual_excl)
     peaks_clean = [p for p in peaks if not in_excl(p["t"])]
-    # Per couplet usiamo SOLO esclusioni manuali (più conservative):
-    # l'auto-detection del rumore può tagliare zone dove esiste un couplet vero
-    # adiacente a un burst rumoroso. Couplet ha pattern molto specifico (2 PVC
-    # con RR<700ms) e non viene generato dal rumore.
+    # For couplets we use ONLY manual exclusions (more conservative):
+    # the noise auto-detection may cut zones where a true couplet exists
+    # adjacent to a noisy burst. A couplet has a very specific pattern (2 PVC
+    # with RR<700ms) and is not generated by noise.
     peaks_for_couplet = [p for p in peaks if not in_manual(p["t"])]
     # RR
     for i in range(len(peaks_clean)):
         peaks_clean[i]["rr_prev"] = (peaks_clean[i]["t"] - peaks_clean[i-1]["t"]) if i > 0 else None
         peaks_clean[i]["rr_next"] = (peaks_clean[i+1]["t"] - peaks_clean[i]["t"]) if i < len(peaks_clean)-1 else None
-    # tempo utile
+    # useful time
     total_s_raw = float(t[-1] - t[0])
     excl_s = sum(e - s for s, e in excl)
     clean_s = total_s_raw - excl_s
@@ -143,7 +143,7 @@ def analyze(ecg_path, manual_excl=None):
     # sinus RR
     sinus_rr = [p["rr_prev"] for p in peaks_clean if p["cls"]=="normal" and p["rr_prev"] and 0.6<p["rr_prev"]<1.4]
     RR_S = statistics.median(sinus_rr)*1000 if sinus_rr else 1000
-    # couplet veri (RR < 700ms) — usa solo esclusioni manuali
+    # true couplets (RR < 700ms) — use only manual exclusions
     couplets = []
     i = 0
     while i < len(peaks_for_couplet) - 1:
@@ -155,7 +155,7 @@ def analyze(ecg_path, manual_excl=None):
             couplets.append((peaks_for_couplet[i], peaks_for_couplet[i+1]))
             i += 2
         else: i += 1
-    # interpolate vs compensate
+    # interpolated vs compensatory
     interp = []; comp = []; incomp = []
     for idx, p in enumerate(peaks_clean):
         if p["cls"] != "pvc": continue
@@ -170,7 +170,7 @@ def analyze(ecg_path, manual_excl=None):
             p["pause_type"] = "comp"; comp.append(p)
         else:
             p["pause_type"] = "incomp"; incomp.append(p)
-    # bigeminia / trigeminia / iso
+    # bigeminy / trigeminy / iso
     iso_pvc = sum(1 for k, p in enumerate(peaks_clean) if p["cls"]=="pvc"
                   and (k==0 or peaks_clean[k-1]["cls"]!="pvc")
                   and (k==len(peaks_clean)-1 or peaks_clean[k+1]["cls"]!="pvc"))
@@ -181,7 +181,7 @@ def analyze(ecg_path, manual_excl=None):
     trigem = sum(1 for k in range(3, len(peaks_clean))
                  if peaks_clean[k]["cls"]=="pvc" and peaks_clean[k-1]["cls"]=="normal"
                  and peaks_clean[k-2]["cls"]=="normal" and peaks_clean[k-3]["cls"]=="pvc")
-    # AF screening (NN consecutivi)
+    # AF screening (consecutive NN)
     af_nn = []
     for k in range(1, len(peaks_clean)):
         if peaks_clean[k]["cls"]=="normal" and peaks_clean[k-1]["cls"]=="normal":
@@ -258,7 +258,7 @@ def styled_ax(ax, title=None, xlabel=None, ylabel=None):
 
 def make_example_strip(t, vf, peaks, p_center, win_s=6.0, title=None,
                        highlight_center=True, RR_S=None):
-    """Strip didattico con annotazioni RR_pre, RR_post se disponibili."""
+    """Didactic strip with RR_pre, RR_post annotations if available."""
     c0 = p_center["t"]
     mask = (t >= c0 - win_s/2) & (t <= c0 + win_s/2)
     fig, ax = plt.subplots(figsize=(7.5, 2.3))
@@ -290,17 +290,17 @@ def make_example_strip(t, vf, peaks, p_center, win_s=6.0, title=None,
         comp_x = -p_center["rr_prev"] + 2*RR_S/1000.0
         if -win_s/2 < comp_x < win_s/2:
             ax.axvline(comp_x, color="#ff4d6d", lw=0.8, ls="--", alpha=0.7)
-    styled_ax(ax, title, "t (s) rispetto al centro", "ECG (V)")
+    styled_ax(ax, title, "t (s) relative to the center", "ECG (V)")
     ax.set_xlim(-win_s/2, win_s/2); ax.set_ylim(-1.2, 1.7)
     plt.tight_layout()
     return fig_to_bytes(fig)
 
-# ---------- EDR (ECG-Derived Respiration) + analisi fasica PVC ----------
+# ---------- EDR (ECG-Derived Respiration) + PVC phasic analysis ----------
 NBINS_RESP = 12
 FS_RESP = 4.0
 
 def extract_edr_and_phase(peaks):
-    """Restituisce dict con EDR + fase istantanea + analisi distribuzione PVC."""
+    """Return a dict with EDR + instantaneous phase + PVC distribution analysis."""
     norm = [p for p in peaks if p["cls"] == "normal"]
     pvc  = [p for p in peaks if p["cls"] == "pvc"]
     if len(norm) < 200 or len(pvc) < 30:
@@ -354,30 +354,30 @@ if len(sys.argv) < 4:
     print("usage: synthetic_report.py ecg_A.csv ecg_B.csv ecg_C.csv")
     sys.exit(1)
 
-# Esclusioni manuali per sessione (se serve)
+# Manual exclusions per session (if needed)
 MANUAL_EXCL = {
     "ecg_20260607_113338.csv": [(1472, 1505), (1690, 1780)],
 }
 
-print("Analisi sessioni...")
+print("Analyzing sessions...")
 sessions = []
 for arg in sys.argv[1:]:
     key = os.path.basename(arg)
     excl = MANUAL_EXCL.get(key, [])
     print(f"  {key} ...")
     s = analyze(arg, manual_excl=excl)
-    # estrai EDR + fase respiratoria
+    # extract EDR + respiratory phase
     s["edr"] = extract_edr_and_phase(s["peaks"])
     if s["edr"]:
         print(f"    EDR: rate {s['edr']['rate_resp']:.1f}/min, "
-              f"picco fasico {s['edr']['peak_phase_pct']:.0f}% ciclo, "
+              f"phasic peak {s['edr']['peak_phase_pct']:.0f}% of cycle, "
               f"enrich ×{s['edr']['peak_enrich']:.2f}, p={s['edr']['pval']:.0e}")
     sessions.append(s)
 
 def label_of(s):
     base = os.path.basename(s["ecg_path"]).replace("ecg_", "").replace(".csv", "")
-    # 20260605_131136 → 05 giu 13:11
-    d = base[6:8] + " giu " + base[9:11] + ":" + base[11:13]
+    # 20260605_131136 → 05 Jun 13:11
+    d = base[6:8] + " Jun " + base[9:11] + ":" + base[11:13]
     return d
 
 LABELS = [label_of(s) for s in sessions]
@@ -386,19 +386,19 @@ for s, L in zip(sessions, LABELS):
     pct_i = 100*len(s["interp"])/max(1, n_class)
     pct_c = 100*len(s["comp"])/max(1, n_class)
     print(f"\n--- {L} ---")
-    print(f"  durata utile: {s['clean_s']/60:.1f} min  (esclusi {s['excl_s']:.0f}s)")
-    print(f"  battiti: {s['n_total']} (N={s['n_norm']}, PVC={s['n_pvc']})")
+    print(f"  useful duration: {s['clean_s']/60:.1f} min  (excluded {s['excl_s']:.0f}s)")
+    print(f"  beats: {s['n_total']} (N={s['n_norm']}, PVC={s['n_pvc']})")
     print(f"  sinus {s['sinus_bpm']:.1f} BPM   PVC rate {s['pvc_rate']:.1f}/min   burden {s['burden']:.1f}%")
-    print(f"  couplet veri (RR<700ms): {len(s['couplets'])}")
-    print(f"  interpolate {len(s['interp'])} ({pct_i:.0f}%)   compensate {len(s['comp'])} ({pct_c:.0f}%)   incomplete {len(s['incomp'])}")
-    if s["af"]: print(f"  AF score {s['af']['score']}/4 — RMSSD {s['af']['rmssd']:.0f}ms pNN50 {s['af']['pnn50']:.0f}% picchi-hist {s['af']['n_peaks']}")
+    print(f"  true couplets (RR<700ms): {len(s['couplets'])}")
+    print(f"  interpolated {len(s['interp'])} ({pct_i:.0f}%)   compensated {len(s['comp'])} ({pct_c:.0f}%)   incomplete {len(s['incomp'])}")
+    if s["af"]: print(f"  AF score {s['af']['score']}/4 — RMSSD {s['af']['rmssd']:.0f}ms pNN50 {s['af']['pnn50']:.0f}% hist-peaks {s['af']['n_peaks']}")
 
-# ---------- PLOTS COMPARATIVI ----------
-print("\nGenero plot comparativi...")
+# ---------- COMPARATIVE PLOTS ----------
+print("\nGenerating comparative plots...")
 
-# A) Burden + rate confronto
+# A) Burden + rate comparison
 fig, axes = plt.subplots(1, 3, figsize=(13, 3.6), facecolor=DARK_BG)
-metrics = [("burden", "Burden PVC (%)"),
+metrics = [("burden", "PVC burden (%)"),
            ("sinus_bpm", "Sinus rate (BPM)"),
            ("pvc_rate", "PVC rate (/min)")]
 for ax, (key, ylabel) in zip(axes, metrics):
@@ -412,7 +412,7 @@ for ax, (key, ylabel) in zip(axes, metrics):
 plt.tight_layout()
 img_bars = fig_to_bytes(fig)
 
-# A2) Plot HR vs % compensate — il pattern chiave
+# A2) Plot HR vs % compensatory — the key pattern
 fig, ax = plt.subplots(figsize=(9, 4.2), facecolor=DARK_BG)
 hr_vals = [s["sinus_bpm"] for s in sessions]
 comp_pct = []
@@ -422,9 +422,9 @@ for s in sessions:
     comp_pct.append(100*len(s["comp"])/max(1,nc))
     interp_pct.append(100*len(s["interp"])/max(1,nc))
 ax.scatter(hr_vals, comp_pct, s=200, c=RED, edgecolors="white", linewidths=1.5,
-           zorder=10, label="% Compensate (tonfi percepiti)")
+           zorder=10, label="% Compensatory (felt thumps)")
 ax.scatter(hr_vals, interp_pct, s=200, c=BLUE, edgecolors="white", linewidths=1.5,
-           zorder=10, label="% Interpolate (silenziose)")
+           zorder=10, label="% Interpolated (silent)")
 for hr, cp, ip, lab in zip(hr_vals, comp_pct, interp_pct, LABELS):
     ax.annotate(lab, (hr, cp), textcoords="offset points", xytext=(8, 8),
                 color=RED, fontsize=8, fontweight="bold")
@@ -438,25 +438,25 @@ ax.plot(hr_arr[order], i_arr[order], color=BLUE, lw=2, alpha=0.6)
 ax.set_xlim(50, 60)
 ax.set_ylim(-5, 80)
 ax.legend(facecolor="#222", labelcolor="white", fontsize=10, loc="center right")
-styled_ax(ax, "Pattern chiave: la HR basale decide quante PVC si sentono",
-          "Sinus BPM (frequenza media a riposo)", "% delle PVC classificate")
+styled_ax(ax, "Key pattern: the baseline HR decides how many PVC are felt",
+          "Sinus BPM (mean resting rate)", "% of classified PVC")
 plt.tight_layout()
 img_hr_comp = fig_to_bytes(fig)
 
-# B) Composition stacked (interpolate / compensate / incomplete)
+# B) Composition stacked (interpolated / compensatory / incomplete)
 fig, ax = plt.subplots(figsize=(11, 3.6), facecolor=DARK_BG)
 ax.set_facecolor(DARK_BG)
 i_vals = [len(s["interp"]) for s in sessions]
 c_vals = [len(s["comp"]) for s in sessions]
 x_vals = [len(s["incomp"]) for s in sessions]
 totals = [i+c+x for i,c,x in zip(i_vals, c_vals, x_vals)]
-# percentuali
+# percentages
 ip = [100*v/max(1,t) for v,t in zip(i_vals, totals)]
 cp = [100*v/max(1,t) for v,t in zip(c_vals, totals)]
 xp = [100*v/max(1,t) for v,t in zip(x_vals, totals)]
 y = np.arange(len(LABELS))
-ax.barh(y, ip, color=BLUE, edgecolor="white", label="Interpolate (no pausa)")
-ax.barh(y, cp, left=ip, color=RED, edgecolor="white", label="Compensate (pausa piena)")
+ax.barh(y, ip, color=BLUE, edgecolor="white", label="Interpolated (no pause)")
+ax.barh(y, cp, left=ip, color=RED, edgecolor="white", label="Compensatory (full pause)")
 ax.barh(y, xp, left=[a+b for a,b in zip(ip,cp)], color=GRAY, edgecolor="white", label="Incomplete")
 for k, (i_, c_, x_, t_) in enumerate(zip(i_vals, c_vals, x_vals, totals)):
     ax.text(50, k, f"i={i_}  c={c_}  x={x_}  (tot {t_})", color="white",
@@ -464,15 +464,15 @@ for k, (i_, c_, x_, t_) in enumerate(zip(i_vals, c_vals, x_vals, totals)):
 ax.set_yticks(y); ax.set_yticklabels(LABELS, color="white")
 ax.set_xlim(0, 100)
 ax.legend(facecolor="#222", labelcolor="white", fontsize=9, loc="upper right")
-styled_ax(ax, "Composizione PVC: interpolate vs compensate (per sessione)",
-          "% del totale classificato", None)
+styled_ax(ax, "PVC composition: interpolated vs compensatory (per session)",
+          "% of total classified", None)
 plt.tight_layout()
 img_comp = fig_to_bytes(fig)
 
-# B2) Distribuzione del rapporto (RR_pre+RR_post)/RR_sinus per le 3 sessioni
-# Mostra DIRETTAMENTE perché 6 giu non ha interpolate: il suo istogramma non
-# scende mai sotto 1.30 (la soglia interpolata), tutto si concentra su 1.85-2.15
-# (compensatoria piena).
+# B2) Distribution of the ratio (RR_pre+RR_post)/RR_sinus for the 3 sessions
+# Shows DIRECTLY why Jun 6 has no interpolated beats: its histogram never
+# drops below 1.30 (the interpolated threshold), everything concentrates on 1.85-2.15
+# (full compensatory).
 fig, axes_d = plt.subplots(len(sessions), 1, figsize=(11, 2.6*len(sessions)),
                             facecolor=DARK_BG, sharex=True)
 _palette = [BLUE, ORANGE, RED, "#33aa66", "#a64dff", "#ffe169", "#9b6b00"]
@@ -493,18 +493,18 @@ for ax, s, lab, col in zip(axes_d, sessions, LABELS, colors_3):
     ax.axvline(2.15, color="white", ls="--", lw=0.7, alpha=0.6)
     med = statistics.median(ratios) if ratios else 0
     ax.axvline(med, color="yellow", ls="-", lw=1.5)
-    ax.text(med + 0.02, ax.get_ylim()[1]*0.85, f"mediana {med:.2f}",
+    ax.text(med + 0.02, ax.get_ylim()[1]*0.85, f"median {med:.2f}",
             color="yellow", fontsize=9, fontweight="bold")
     ax.text(0.05, 0.85, "← interp", transform=ax.transAxes, color=col, fontsize=8)
     ax.text(0.78, 0.85, "comp →", transform=ax.transAxes, color=col, fontsize=8)
     styled_ax(ax, f"{lab}   (sinus {s['sinus_bpm']:.0f} BPM, RR sinus {s['RR_SINUS_MS']:.0f}ms, n={len(ratios)})",
-              None, "Conteggio")
-axes_d[-1].set_xlabel("rapporto (RR_pre + RR_post) / RR_sinus", color="white")
+              None, "Count")
+axes_d[-1].set_xlabel("ratio (RR_pre + RR_post) / RR_sinus", color="white")
 plt.tight_layout()
 img_distrib = fig_to_bytes(fig)
 
-# B3) Bucket per BPM istantanea: a quale frequenza compaiono le compensate?
-# Aggrego tutte le PVC delle 3 sessioni per BPM istantanea (= RR pre-N-N convertito).
+# B3) Bucket by instantaneous BPM: at what rate do compensatory ones appear?
+# Aggregate all PVC of the 3 sessions by instantaneous BPM (= pre-N-N RR converted).
 fig, ax = plt.subplots(figsize=(12, 5.5), facecolor=DARK_BG)
 ax.set_facecolor(DARK_BG)
 buckets = list(range(45, 95, 5))
@@ -535,26 +535,26 @@ for b0 in buckets[:-1]:
     n_i_b.append(n_i); n_c_b.append(n_c); pct_c_b.append(pct_c)
 
 x_b = np.arange(len(labels_b)); w = 0.40
-ax.bar(x_b - w/2, n_i_b, w, color=BLUE, edgecolor="white", linewidth=0.4, label="Interpolate")
-ax.bar(x_b + w/2, n_c_b, w, color=RED, edgecolor="white", linewidth=0.4, label="Compensate")
+ax.bar(x_b - w/2, n_i_b, w, color=BLUE, edgecolor="white", linewidth=0.4, label="Interpolated")
+ax.bar(x_b + w/2, n_c_b, w, color=RED, edgecolor="white", linewidth=0.4, label="Compensatory")
 ax2 = ax.twinx(); ax2.set_facecolor(DARK_BG)
-ax2.plot(x_b, pct_c_b, color="#ffe169", marker="o", lw=2, label="% compensate")
+ax2.plot(x_b, pct_c_b, color="#ffe169", marker="o", lw=2, label="% compensatory")
 ax2.axhline(50, color="#ffe169", ls="--", lw=0.7, alpha=0.5)
-ax2.set_ylim(0, 100); ax2.set_ylabel("% compensate sulla somma classificata", color="#ffe169")
+ax2.set_ylim(0, 100); ax2.set_ylabel("% compensatory of the classified sum", color="#ffe169")
 ax2.tick_params(colors="#ffe169")
 for sp in ax2.spines.values(): sp.set_color("#444")
 ax.set_xticks(x_b); ax.set_xticklabels(labels_b, color="white")
-styled_ax(ax, "Quale frequenza istantanea favorisce la pausa compensatoria? (aggregato 3 sessioni)",
-          "BPM istantanea (RR N-N pre-PVC convertito)", "N° PVC")
+styled_ax(ax, "Which instantaneous rate favors the compensatory pause? (3-session aggregate)",
+          "Instantaneous BPM (pre-PVC N-N RR converted)", "N PVC")
 ax.legend(loc="upper left", facecolor="#222", labelcolor="white", fontsize=9)
 ax2.legend(loc="upper right", facecolor="#222", labelcolor="#ffe169", fontsize=9)
 plt.tight_layout()
 img_bpm_bucket = fig_to_bytes(fig)
 
-# C0) Dettaglio coupling per sessione + segmentazione cluster
-# Analisi morfologica per ogni sub-cluster: stesso focolaio o bifocale?
+# C0) Coupling detail per session + cluster segmentation
+# Morphological analysis for each sub-cluster: same focus or bifocal?
 def cluster_analyze(coup_list):
-    """Restituisce dict con conteggi e morfologia mediana dei sub-cluster
+    """Return a dict with counts and median morphology of the sub-clusters
     (<500ms / 500-600ms / >600ms)."""
     out = {}
     for label, lo, hi in [("c1",0,500),("c2",500,600),("c3",600,2000)]:
@@ -578,7 +578,7 @@ for s in sessions:
                  and 200 < p["rr_prev"]*1000 < 800]
     session_clusters.append(cluster_analyze(coup_list))
 
-# Plot dettagliato: histograms a bin stretti per le 3 sessioni con cluster colorati
+# Detailed plot: narrow-bin histograms for the 3 sessions with colored clusters
 fig, axes_cc = plt.subplots(len(sessions), 1, figsize=(11, 2.4*len(sessions)),
                              facecolor=DARK_BG, sharex=True)
 for ax, s, lab in zip(axes_cc, sessions, LABELS):
@@ -589,7 +589,7 @@ for ax, s, lab in zip(axes_cc, sessions, LABELS):
     bins = np.arange(300, 700, 15)
     hist, edges = np.histogram(coup_arr, bins=bins)
     centers = (edges[:-1]+edges[1:])/2
-    # colora le barre per cluster
+    # color the bars by cluster
     cols = ["#7ad9ff" if c<500 else ("#ff4d6d" if c<600 else "#33ff66") for c in centers]
     ax.bar(centers, hist, width=14, color=cols, edgecolor="white", linewidth=0.3)
     ax.axvline(500, color="white", ls="--", lw=0.7, alpha=0.5)
@@ -598,13 +598,13 @@ for ax, s, lab in zip(axes_cc, sessions, LABELS):
     ax.axvline(med, color="yellow", ls="-", lw=1.5)
     ax.text(med+5, ax.get_ylim()[1]*0.85, f"med {med:.0f}ms",
             color="yellow", fontsize=8, fontweight="bold")
-    styled_ax(ax, f"{lab}   coupling pre-PVC (n={len(coup_arr)})",
-              None, "Conteggio")
-axes_cc[-1].set_xlabel("Coupling pre-PVC (ms)", color="white")
+    styled_ax(ax, f"{lab}   pre-PVC coupling (n={len(coup_arr)})",
+              None, "Count")
+axes_cc[-1].set_xlabel("Pre-PVC coupling (ms)", color="white")
 plt.tight_layout()
 img_cluster = fig_to_bytes(fig)
 
-# C) Distribuzione coupling (istogrammi sovrapposti)
+# C) Coupling distribution (overlaid histograms)
 fig, ax = plt.subplots(figsize=(11, 3.6), facecolor=DARK_BG)
 _palette = [BLUE, ORANGE, RED, "#33aa66", "#a64dff", "#ffe169", "#9b6b00"]
 colors_3 = [_palette[i % len(_palette)] for i in range(len(sessions))]
@@ -616,16 +616,16 @@ for s, lab, col in zip(sessions, LABELS, colors_3):
                 color=col, edgecolor="white", linewidth=0.3,
                 label=f"{lab} (n={len(coups)}, med {statistics.median(coups):.0f}ms)")
 ax.legend(facecolor="#222", labelcolor="white", fontsize=9)
-styled_ax(ax, "Distribuzione coupling pre-PVC (stabilità del focolaio)",
-          "Coupling (ms)", "Conteggio")
+styled_ax(ax, "Pre-PVC coupling distribution (focus stability)",
+          "Coupling (ms)", "Count")
 plt.tight_layout()
 img_coup = fig_to_bytes(fig)
 
-# D) HR vs burden minuto per minuto, una sessione per riga
+# D) HR vs burden minute by minute, one session per row
 fig, axes = plt.subplots(3, 1, figsize=(11, 6), facecolor=DARK_BG)
 for ax, s, lab in zip(axes, sessions, LABELS):
     ax.set_facecolor(DARK_BG)
-    # minuti
+    # minutes
     if not s["peaks"]: continue
     n_min = int(s["peaks"][-1]["t"]//60) + 1
     bpm_m, burden_m, mins = [], [], []
@@ -640,14 +640,14 @@ for ax, s, lab in zip(axes, sessions, LABELS):
     ax.plot(mins, bpm_m, color=GREEN, lw=1.5, marker="o", ms=3, label="Sinus BPM")
     ax2.plot(mins, burden_m, color=RED, lw=1.5, marker="s", ms=3, label="Burden %")
     ax.set_ylim(40, 90); ax2.set_ylim(0, 60)
-    styled_ax(ax, f"{lab} — andamento minuto per minuto", "Min", "Sinus BPM")
+    styled_ax(ax, f"{lab} — minute-by-minute trend", "Min", "Sinus BPM")
     ax2.set_ylabel("Burden %", color="white"); ax2.tick_params(colors="white", labelsize=8)
     for sp in ax2.spines.values(): sp.set_color("#444")
 plt.tight_layout()
 img_temporal = fig_to_bytes(fig)
 
-# E) ANALISI RESPIRATORIA — distribuzione fasica PVC per ogni sessione
-# Plot a 2 colonne: rosetta polare a sx, enrichment bar a dx per ogni sessione
+# E) RESPIRATORY ANALYSIS — PVC phasic distribution for each session
+# 2-column plot: polar rosette on the left, enrichment bar on the right for each session
 sessions_with_edr = [s for s in sessions if s.get("edr")]
 img_resp_phases = None
 img_resp_example = None
@@ -658,7 +658,7 @@ if sessions_with_edr:
     for i_s, s in enumerate(sessions_with_edr):
         edr = s["edr"]
         lab = label_of(s)
-        # ROSETTA polare
+        # polar ROSETTE
         ax_p = fig.add_subplot(gs_[i_s, 0], projection="polar")
         ax_p.set_facecolor(DARK_BG)
         centers_arr = np.array(edr["centers"])
@@ -670,9 +670,9 @@ if sessions_with_edr:
         ax_p.set_theta_zero_location("E")
         ax_p.set_theta_direction(1)
         ax_p.set_xticks([0, np.pi/2, np.pi, 3*np.pi/2])
-        # Convenzione Hilbert su EDR (max amp = max inspir): phase=0 → max INSPIR,
-        # π/2 → mid espir, π → fine espir, 3π/2 → mid inspir
-        ax_p.set_xticklabels(["max\ninspir.", "mid\nespir.", "fine\nespir.", "mid\ninspir."],
+        # Hilbert convention on EDR (max amp = max inspir): phase=0 → max INSPIR,
+        # π/2 → mid expir, π → end expir, 3π/2 → mid inspir
+        ax_p.set_xticklabels(["max\ninspir.", "mid\nexpir.", "end\nexpir.", "mid\ninspir."],
                              color="white", fontsize=7)
         ax_p.set_yticklabels([])
         ax_p.set_title(f"{lab}\n({edr['n_p']} PVC, p={edr['pval']:.0e})",
@@ -687,23 +687,23 @@ if sessions_with_edr:
                  edgecolor="white", linewidth=0.4)
         ax_e.axhline(1, color="white", ls="--", lw=0.8, alpha=0.5)
         # 0=max inspir, 25=mid espir, 50=fine espir, 75=mid inspir
-        for x, lab2 in [(0, "insp."), (25, "espir."), (50, "espir."), (75, "insp.")]:
+        for x, lab2 in [(0, "insp."), (25, "expir."), (50, "expir."), (75, "insp.")]:
             ax_e.axvline(x, color="cyan", ls=":", alpha=0.3)
         ax_e.set_xlim(0, 100)
         ax_e.set_ylim(0, max(2.5, max(enrich)*1.1))
         ax_e.set_ylabel("PVC/N\nratio", color="white", fontsize=8)
-        ax_e.set_title(f"rate {edr['rate_resp']:.1f}/min · picco @ {edr['peak_phase_pct']:.0f}% · "
+        ax_e.set_title(f"rate {edr['rate_resp']:.1f}/min · peak @ {edr['peak_phase_pct']:.0f}% · "
                        f"enrich ×{edr['peak_enrich']:.2f}",
                        color="white", fontsize=8, loc="left")
         ax_e.tick_params(colors="white", labelsize=7)
         for sp in ax_e.spines.values(): sp.set_color("#444")
         ax_e.grid(alpha=0.18, color="#666")
         if i_s == n_with_edr - 1:
-            ax_e.set_xlabel("% del ciclo respiratorio  (0=max inspir., 50=fine espir.)",
+            ax_e.set_xlabel("% of the respiratory cycle  (0=max inspir., 50=end expir.)",
                             color="white", fontsize=8)
     img_resp_phases = fig_to_bytes(fig)
 
-    # F) ESEMPIO EDR — sessione ultima (più recente, di norma il 9 giu) — primi 30s
+    # F) EDR EXAMPLE — last session (most recent, usually Jun 9) — first 30s
     s_demo = sessions_with_edr[-1]
     edr_demo = s_demo["edr"]
     t_demo = s_demo["t"]; vf_demo = s_demo["vf"]
@@ -712,22 +712,22 @@ if sessions_with_edr:
     T_SHOW = 30
     mask_e = (t_demo < T_SHOW)
     ax.plot(t_demo[mask_e], vf_demo[mask_e], color=GREEN, lw=0.6, label="ECG")
-    # peaks N nel range
+    # N peaks in the range
     for p in s_demo["peaks"]:
         if p["t"] < T_SHOW and p["cls"] == "normal":
             ax.plot(p["t"], p["amp"]+0.05, "v", color="#ffe169", ms=4)
-    # respirazione sovrapposta (scalata)
+    # respiration overlaid (scaled)
     t_unif = edr_demo["t_unif"]
     resp = edr_demo["resp"]
     mask_r = t_unif < T_SHOW
     ax.plot(t_unif[mask_r], resp[mask_r]*3 + 1.8, color="cyan", lw=2.2,
-            label="Respirazione (EDR)")
+            label="Respiration (EDR)")
     ax.set_xlim(0, T_SHOW)
     ax.set_ylim(-1, 3.3)
-    ax.set_xlabel("Tempo (s)", color="white")
-    ax.set_ylabel("ECG (V) + respirazione (norm)", color="white")
-    ax.set_title(f"Esempio EDR — {label_of(s_demo)}, primi {T_SHOW}s. "
-                 f"R-peaks (gialli), respirazione estratta dall'ampiezza QRS (ciano)",
+    ax.set_xlabel("Time (s)", color="white")
+    ax.set_ylabel("ECG (V) + respiration (norm)", color="white")
+    ax.set_title(f"EDR example — {label_of(s_demo)}, first {T_SHOW}s. "
+                 f"R-peaks (yellow), respiration extracted from QRS amplitude (cyan)",
                  color="white", fontsize=10)
     ax.legend(facecolor="#222", labelcolor="white", fontsize=9, loc="upper right")
     ax.tick_params(colors="white", labelsize=8)
@@ -736,8 +736,8 @@ if sessions_with_edr:
     plt.tight_layout()
     img_resp_example = fig_to_bytes(fig)
 
-# ---------- ESEMPI ----------
-print("Estraggo esempi...")
+# ---------- EXAMPLES ----------
+print("Extracting examples...")
 def pick_spread(lst, n=1, min_gap_s=60):
     out, last = [], -1e9
     for p in sorted(lst, key=lambda q: q["t"]):
@@ -746,21 +746,21 @@ def pick_spread(lst, n=1, min_gap_s=60):
         if len(out) >= n: break
     return out
 
-# Per ogni tipo: una strip per sessione (3 sessioni × 4 tipi = 12 strip max)
+# For each type: one strip per session (3 sessions × 4 types = 12 strips max)
 example_strips = {"couplet": [], "interp": [], "comp": []}
 for s, lab in zip(sessions, LABELS):
-    # interpolata
+    # interpolated
     if s["interp"]:
         p = pick_spread(s["interp"], n=1, min_gap_s=120)[0]
         img = make_example_strip(s["t"], s["vf"], s["peaks"], p, win_s=7.0,
-            title=f"{lab} — INTERPOLATA  {int(p['t']//60):02d}:{int(p['t']%60):02d}  Σ={p['sum_pre_post_ms']:.0f}ms",
+            title=f"{lab} — INTERPOLATED  {int(p['t']//60):02d}:{int(p['t']%60):02d}  Σ={p['sum_pre_post_ms']:.0f}ms",
             RR_S=s["RR_SINUS_MS"])
         example_strips["interp"].append((lab, img))
-    # compensata
+    # compensatory
     if s["comp"]:
         p = pick_spread(s["comp"], n=1, min_gap_s=120)[0]
         img = make_example_strip(s["t"], s["vf"], s["peaks"], p, win_s=7.0,
-            title=f"{lab} — COMPENSATA  {int(p['t']//60):02d}:{int(p['t']%60):02d}  Σ={p['sum_pre_post_ms']:.0f}ms",
+            title=f"{lab} — COMPENSATORY  {int(p['t']//60):02d}:{int(p['t']%60):02d}  Σ={p['sum_pre_post_ms']:.0f}ms",
             RR_S=s["RR_SINUS_MS"])
         example_strips["comp"].append((lab, img))
     # couplet
@@ -774,7 +774,7 @@ for s, lab in zip(sessions, LABELS):
         example_strips["couplet"].append((lab, img))
 
 # ---------- PDF ----------
-print("Genero PDF...")
+print("Generating PDF...")
 out_path = "reports/synthetic_3sessions.pdf"
 doc = SimpleDocTemplate(out_path, pagesize=A4,
                         leftMargin=18*mm, rightMargin=18*mm,
@@ -810,18 +810,18 @@ def kv_table(rows, widths=(70*mm, 100*mm)):
 story = []
 
 # === COVER ===
-story.append(Paragraph("Holter DIY — sintesi 3 sessioni", H1))
+story.append(Paragraph("DIY Holter — 3-session summary", H1))
 story.append(Paragraph(
-    f"Periodo osservato: <b>{LABELS[0]} → {LABELS[-1]}</b>. "
-    f"Hardware: AD8232 (singolo derivato precordiale, 250 Hz) + Pi Pico W → server Mac via TCP. "
-    f"Analisi automatica con criterio uniforme: PVC se "
-    f"(rebound ≥ {REBOUND_PVC} oppure width ≥ {PVC_W_MS:.0f}ms) <b>e</b> "
-    f"ampiezza ≥ {PVC_MIN_AMP}V. Spike sub-fisiologici (≤16ms) e intervalli rumorosi "
-    f"auto-rilevati esclusi prima del calcolo.",
+    f"Observed period: <b>{LABELS[0]} → {LABELS[-1]}</b>. "
+    f"Hardware: AD8232 (single precordial lead, 250 Hz) + Pi Pico W → Mac server via TCP. "
+    f"Automatic analysis with a uniform criterion: PVC if "
+    f"(rebound ≥ {REBOUND_PVC} or width ≥ {PVC_W_MS:.0f}ms) <b>and</b> "
+    f"amplitude ≥ {PVC_MIN_AMP}V. Sub-physiological spikes (≤16ms) and auto-detected "
+    f"noisy intervals are excluded before the computation.",
     NORMAL))
 story.append(Spacer(1, 8))
 
-# --- Highlight box: i 3 messaggi chiave ---
+# --- Highlight box: the 3 key messages ---
 all_pvc = sum(s["n_pvc"] for s in sessions)
 all_couplets = sum(len(s["couplets"]) for s in sessions)
 coup_medians = []
@@ -831,23 +831,23 @@ for s in sessions:
     if cs: coup_medians.append(statistics.median(cs))
 
 highlight_rows = [
-    [Paragraph("<b>Focolaio</b>", SMALL),
-     Paragraph(f"Singolo, monomorfo. Coupling stabile (~{statistics.mean(coup_medians):.0f}ms) "
-               f"su tutte e 3 le sessioni — stessa origine elettrica.", SMALL)],
-    [Paragraph("<b>Pericolosità</b>", SMALL),
-     Paragraph(f"Nessun R-on-T (coupling sempre &gt; 360ms). Nessuna run ≥3 PVC. "
-               f"<b>{all_couplets} couplet su {all_pvc} PVC totali</b> "
-               f"({100*all_couplets/max(1,all_pvc):.2f}%): pochissime, "
-               f"isolate, RR fra 384-460 ms; segnalate ed evidenziate nei "
-               f"singoli report di sessione.", SMALL)],
-    [Paragraph("<b>Aritmie</b>", SMALL),
-     Paragraph(f"Screening AF negativo o borderline su tutte: l'irregolarità RR "
-               f"si spiega con bradicardia + RSA + ectopia frequente, distribuzione "
-               f"RR bimodale conservata.", SMALL)],
-    [Paragraph("<b>Pattern HR↔sintomi</b>", SMALL),
-     Paragraph(f"A HR basale più bassa prevalgono PVC interpolate (silenziose, "
-               f"no pausa); salendo verso 57 BPM virano a compensate (percepite "
-               f"come 'tonfo'). Spiega le fluttuazioni di percezione soggettiva.", SMALL)],
+    [Paragraph("<b>Focus</b>", SMALL),
+     Paragraph(f"Single, monomorphic. Stable coupling (~{statistics.mean(coup_medians):.0f}ms) "
+               f"across all 3 sessions — same electrical origin.", SMALL)],
+    [Paragraph("<b>Danger</b>", SMALL),
+     Paragraph(f"No R-on-T (coupling always &gt; 360ms). No run of ≥3 PVC. "
+               f"<b>{all_couplets} couplets out of {all_pvc} total PVC</b> "
+               f"({100*all_couplets/max(1,all_pvc):.2f}%): very few, "
+               f"isolated, RR between 384-460 ms; flagged and highlighted in the "
+               f"individual session reports.", SMALL)],
+    [Paragraph("<b>Arrhythmias</b>", SMALL),
+     Paragraph(f"AF screening negative or borderline in all: the RR irregularity "
+               f"is explained by bradycardia + RSA + frequent ectopy, with the bimodal "
+               f"RR distribution preserved.", SMALL)],
+    [Paragraph("<b>HR↔symptoms pattern</b>", SMALL),
+     Paragraph(f"At lower baseline HR, interpolated PVC prevail (silent, "
+               f"no pause); rising toward 57 BPM they turn into compensatory ones (felt "
+               f"as a 'thump'). Explains the fluctuations in subjective perception.", SMALL)],
 ]
 htbl = Table(highlight_rows, colWidths=[35*mm, 138*mm])
 htbl.setStyle(TableStyle([
@@ -863,23 +863,23 @@ htbl.setStyle(TableStyle([
 story.append(htbl)
 story.append(Spacer(1, 12))
 
-# === TABELLA RIASSUNTIVA ===
-story.append(Paragraph("Tabella riassuntiva", H2))
+# === SUMMARY TABLE ===
+story.append(Paragraph("Summary table", H2))
 header = [Paragraph(f"<b>{x}</b>", SMALL) for x in
-          ["Metrica"] + LABELS]
+          ["Metric"] + LABELS]
 def fmt(v, dec=1):
     if isinstance(v,(int,)): return str(v)
     return f"{v:.{dec}f}"
 rows = [header]
 for label, key, dec in [
-    ("Durata utile (min)", "clean_s", 0),
-    ("Esclusi (s)", "excl_s", 0),
-    ("Battiti totali", "n_total", 0),
+    ("Useful duration (min)", "clean_s", 0),
+    ("Excluded (s)", "excl_s", 0),
+    ("Total beats", "n_total", 0),
     ("Sinus BPM", "sinus_bpm", 1),
-    ("PVC totali", "n_pvc", 0),
+    ("Total PVC", "n_pvc", 0),
     ("PVC rate (/min)", "pvc_rate", 1),
     ("Burden (%)", "burden", 1),
-    ("Coupling mediano (ms)", "RR_SINUS_MS", 0),
+    ("Median coupling (ms)", "RR_SINUS_MS", 0),
 ]:
     cells = [Paragraph(label, SMALL)]
     for s in sessions:
@@ -888,11 +888,11 @@ for label, key, dec in [
         cells.append(Paragraph(fmt(v, dec), SMALL))
     rows.append(cells)
 # PVC patterns
-for label, key in [("Couplet veri", "couplets"),
-                    ("Interpolate", "interp"),
-                    ("Compensate", "comp"),
+for label, key in [("True couplets", "couplets"),
+                    ("Interpolated", "interp"),
+                    ("Compensatory", "comp"),
                     ("Incomplete", "incomp"),
-                    ("PVC isolate", "iso_pvc"),
+                    ("Isolated PVC", "iso_pvc"),
                     ("Bigem PVC-N-PVC", "bigem"),
                     ("Trigem PVC-N-N-PVC", "trigem")]:
     cells = [Paragraph(label, SMALL)]
@@ -911,23 +911,23 @@ for s in sessions:
     cells.append(Paragraph(f"{s['af'].get('rmssd',0):.0f}" if s.get("af") else "-", SMALL))
 rows.append(cells)
 # --- color coding ---
-# colonne sessione: ognuna ha un colore tenue (corrisponde alle barre nei grafici)
+# session columns: each has a faint color (matches the bars in the charts)
 _TINT_PALETTE = [
-    colors.HexColor("#e8f0f7"),   # azzurro tenue
-    colors.HexColor("#fbeedd"),   # arancio tenue
-    colors.HexColor("#fbe5e7"),   # rosa tenue
-    colors.HexColor("#e6f4ec"),   # verde tenue
-    colors.HexColor("#f1e6f7"),   # viola tenue
-    colors.HexColor("#fff7d6"),   # giallo tenue
-    colors.HexColor("#f4e8cf"),   # ocra tenue
+    colors.HexColor("#e8f0f7"),   # faint blue
+    colors.HexColor("#fbeedd"),   # faint orange
+    colors.HexColor("#fbe5e7"),   # faint pink
+    colors.HexColor("#e6f4ec"),   # faint green
+    colors.HexColor("#f1e6f7"),   # faint purple
+    colors.HexColor("#fff7d6"),   # faint yellow
+    colors.HexColor("#f4e8cf"),   # faint ochre
 ]
 COL_TINTS = [_TINT_PALETTE[i % len(_TINT_PALETTE)] for i in range(len(sessions))]
-# righe-evidenziate: burden, couplet, interpolate, compensate, AF score
-ROW_EMPH = {7: True, 9: True, 10: True, 11: True, 17: True}  # 1-indexed dopo header
+# highlighted rows: burden, couplet, interpolated, compensatory, AF score
+ROW_EMPH = {7: True, 9: True, 10: True, 11: True, 17: True}  # 1-indexed after header
 
-# valuta semaforicamente burden e AF
+# traffic-light evaluation of burden and AF
 def burden_color(v):
-    # 0-15 green, 15-25 yellow, >25 orange (PVC monofocali fino al 30% sono benigne)
+    # 0-15 green, 15-25 yellow, >25 orange (monofocal PVC up to 30% are benign)
     if v < 15: return colors.HexColor("#1b4034")
     if v < 25: return colors.HexColor("#9b6b00")
     return colors.HexColor("#a3320c")
@@ -940,17 +940,17 @@ def couplet_color(n):
     if n <= 3: return colors.HexColor("#9b6b00")
     return colors.HexColor("#a3320c")
 
-# ricostruisco rows con celle colorate per le metriche chiave
+# rebuild rows with colored cells for the key metrics
 new_rows = [header]
 metric_specs = [
-    ("Durata utile (min)", "clean_s", 0),
-    ("Esclusi (s)", "excl_s", 0),
-    ("Battiti totali", "n_total", 0),
+    ("Useful duration (min)", "clean_s", 0),
+    ("Excluded (s)", "excl_s", 0),
+    ("Total beats", "n_total", 0),
     ("Sinus BPM", "sinus_bpm", 1),
-    ("PVC totali", "n_pvc", 0),
+    ("Total PVC", "n_pvc", 0),
     ("PVC rate (/min)", "pvc_rate", 1),
     ("Burden (%)", "burden", 1),
-    ("Coupling mediano (ms)", "RR_SINUS_MS", 0),
+    ("Median coupling (ms)", "RR_SINUS_MS", 0),
 ]
 for label, key, dec in metric_specs:
     cells = [Paragraph(label, SMALL)]
@@ -963,7 +963,7 @@ for label, key, dec in metric_specs:
         elif key == "sinus_bpm":
             cells.append(Paragraph(f"<b>{v:.{dec}f}</b>", SMALL))
         elif key == "n_pvc":
-            # PVC totali + % sul totale battiti (= burden)
+            # total PVC + % of total beats (= burden)
             pct = 100*v/max(1, s["n_total"])
             cells.append(Paragraph(f"{v} <font color='#666'>({pct:.1f}%)</font>", SMALL))
         elif key == "pvc_rate":
@@ -971,12 +971,12 @@ for label, key, dec in metric_specs:
         else:
             cells.append(Paragraph(fmt(v, dec), SMALL))
     new_rows.append(cells)
-# PVC patterns con couplet evidenziati
-pattern_specs = [("Couplet veri", "couplets"),
-                  ("Interpolate", "interp"),
-                  ("Compensate", "comp"),
+# PVC patterns with couplets highlighted
+pattern_specs = [("True couplets", "couplets"),
+                  ("Interpolated", "interp"),
+                  ("Compensatory", "comp"),
                   ("Incomplete", "incomp"),
-                  ("PVC isolate", "iso_pvc"),
+                  ("Isolated PVC", "iso_pvc"),
                   ("Bigem PVC-N-PVC", "bigem"),
                   ("Trigem PVC-N-N-PVC", "trigem")]
 for label, key in pattern_specs:
@@ -984,8 +984,8 @@ for label, key in pattern_specs:
     for s in sessions:
         v = s[key]
         if isinstance(v, list): v = len(v)
-        # denominatore per il %: interp/comp/incomp rapportate alle PVC classificabili
-        # (sandwich N-PVC-N); couplet/iso/bigem/trigem rapportate al totale PVC
+        # denominator for the %: interp/comp/incomp relative to the classifiable PVC
+        # (N-PVC-N sandwich); couplet/iso/bigem/trigem relative to total PVC
         n_class = len(s["interp"]) + len(s["comp"]) + len(s["incomp"])
         denom = n_class if key in ("interp","comp","incomp") else s["n_pvc"]
         pct = 100*v/denom if denom else 0
@@ -1007,7 +1007,7 @@ for label, key in pattern_specs:
             cells.append(Paragraph(
                 f"{v} <font color='#888'>({pct:.0f}%)</font>", SMALL))
     new_rows.append(cells)
-# AF score colorato
+# colored AF score
 cells = [Paragraph("AF score (0-4)", SMALL)]
 for s in sessions:
     sc = s["af"].get("score") if s.get("af") else None
@@ -1033,13 +1033,13 @@ style_cmds = [
     ("RIGHTPADDING", (0,0), (-1,-1), 5),
     ("TOPPADDING", (0,0), (-1,-1), 3),
     ("BOTTOMPADDING", (0,0), (-1,-1), 3),
-    # background tinto per ciascuna colonna sessione
-    # prima colonna metrica
+    # tinted background for each session column
+    # first metric column
     ("BACKGROUND", (0,1), (0,-1), colors.HexColor("#f0f0f0")),
 ]
 for _ci in range(len(sessions)):
     style_cmds.append(("BACKGROUND", (_ci+1, 1), (_ci+1, -1), COL_TINTS[_ci]))
-# evidenzia righe chiave con bordo verde
+# highlight key rows with a green border
 for r_idx in [7, 9, 10, 11, 17]:  # burden, couplet, interp, comp, AF
     if r_idx < len(new_rows):
         style_cmds.append(("LINEBEFORE", (0, r_idx), (0, r_idx), 3, colors.HexColor("#33aa66")))
@@ -1047,143 +1047,143 @@ tbl.setStyle(TableStyle(style_cmds))
 story.append(tbl)
 story.append(Spacer(1, 4))
 story.append(Paragraph(
-    "<font color='#1b4034'>■</font> verde = nella norma per PVC monofocale benigna · "
-    "<font color='#9b6b00'>■</font> ambra = intermedio · "
-    "<font color='#a3320c'>■</font> rosso = sopra soglia attenzione · "
-    "<font color='#1f6fa8'>■</font> interpolate · <font color='#a3320c'>■</font> compensate. "
-    "Le 3 colonne sessione corrispondono ai colori dei grafici. "
-    "Le % per interp/comp/incomp sono sulle PVC classificabili (sandwich N-PVC-N); "
-    "couplet/isolate/bigem/trigem sono sul totale PVC; PVC totali e burden sono "
-    "sul totale battiti.",
+    "<font color='#1b4034'>■</font> green = within norms for benign monofocal PVC · "
+    "<font color='#9b6b00'>■</font> amber = intermediate · "
+    "<font color='#a3320c'>■</font> red = above the attention threshold · "
+    "<font color='#1f6fa8'>■</font> interpolated · <font color='#a3320c'>■</font> compensatory. "
+    "The 3 session columns correspond to the colors of the charts. "
+    "The % for interp/comp/incomp are over the classifiable PVC (N-PVC-N sandwich); "
+    "couplet/isolated/bigem/trigem are over the total PVC; total PVC and burden are "
+    "over the total beats.",
     SMALL))
 story.append(Spacer(1, 10))
 
-# === BARS comparativi ===
-story.append(Paragraph("Confronto principali parametri", H2))
+# === comparative BARS ===
+story.append(Paragraph("Comparison of the main parameters", H2))
 story.append(Paragraph(
-    "Burden = % di battiti ectopici sul totale; sinus rate = battiti normali al "
-    "minuto; PVC rate = ectopie al minuto.", SMALL))
+    "Burden = % of ectopic beats over the total; sinus rate = normal beats per "
+    "minute; PVC rate = ectopics per minute.", SMALL))
 story.append(fit_image(img_bars, max_w_mm=175, max_h_mm=65))
 story.append(Spacer(1, 10))
 
 # === COMPOSITION ===
-story.append(Paragraph("Composizione PVC: interpolate vs compensate", H2))
+story.append(Paragraph("PVC composition: interpolated vs compensatory", H2))
 story.append(Paragraph(
-    "Una <b>PVC interpolata</b> si infila fra due battiti N senza resettare il nodo "
-    "SA (somma RR_pre + RR_post ≈ 1× RR sinus). Una <b>PVC con pausa compensatoria "
-    "piena</b> resetta il SA (somma ≈ 2× RR sinus). Le interpolate sono favorite "
-    "dalle bradicardie e sono emodinamicamente più benigne (no perdita di gittata, "
-    "no percezione del 'tonfo').", NORMAL))
+    "An <b>interpolated PVC</b> slots between two N beats without resetting the SA "
+    "node (sum RR_pre + RR_post ≈ 1× RR sinus). A <b>PVC with a full compensatory "
+    "pause</b> resets the SA node (sum ≈ 2× RR sinus). Interpolated ones are favored "
+    "by bradycardia and are hemodynamically more benign (no loss of output, "
+    "no perception of the 'thump').", NORMAL))
 story.append(Spacer(1, 4))
 story.append(fit_image(img_comp, max_w_mm=175, max_h_mm=65))
 story.append(Spacer(1, 10))
 
 # === KEY PATTERN HR vs %COMP ===
-story.append(Paragraph("Il pattern chiave: HR basale → tipo di pausa → percezione", H2))
+story.append(Paragraph("The key pattern: baseline HR → pause type → perception", H2))
 story.append(Paragraph(
-    "Le 3 sessioni mostrano un <b>gradiente coerente</b> tra frequenza basale e tipo "
-    "di pausa post-PVC. Nell'arco di soli 5 BPM (da 52 a 57) la quota di PVC "
-    "compensate (quelle che generano il 'tonfo' percepito) passa da ~25% a 63%. "
-    "Speculare l'andamento delle interpolate, che dominano a HR più bassa. "
-    "Spiegazione elettrofisiologica: a HR più bassa il nodo SA ha cicli più lunghi "
-    "(~1100ms), la PVC fa quasi sempre in tempo a infilarsi prima che il SA spari di "
-    "nuovo (interpolata silenziosa); a HR più alta il SA è prossimo allo scatto e si "
-    "fa resettare dall'onda retrograda (compensatoria percepita).",
+    "The 3 sessions show a <b>consistent gradient</b> between the baseline rate and the type "
+    "of post-PVC pause. Over a span of just 5 BPM (from 52 to 57) the share of "
+    "compensatory PVC (the ones that produce the felt 'thump') goes from ~25% to 63%. "
+    "The trend of the interpolated ones is mirror-image, dominating at lower HR. "
+    "Electrophysiological explanation: at lower HR the SA node has longer cycles "
+    "(~1100ms), and the PVC almost always has time to slot in before the SA fires "
+    "again (silent interpolated); at higher HR the SA is close to firing and gets "
+    "reset by the retrograde wave (felt compensatory).",
     NORMAL))
 story.append(Spacer(1, 4))
 story.append(fit_image(img_hr_comp, max_w_mm=140, max_h_mm=80))
 story.append(Spacer(1, 6))
 story.append(Paragraph(
-    "<b>Implicazione clinica:</b> le fluttuazioni di sintomatologia (alcuni giorni "
-    "'le sento tantissime', altri 'oggi niente') non sono variazioni del numero di "
-    "PVC, ma di <b>quanti</b> di quei battiti diventano <b>percepibili</b>. La "
-    "soglia critica è ~55 BPM per questo paziente: sotto, le PVC sono silenziose; "
-    "sopra, virano a compensate sintomatiche.",
+    "<b>Clinical implication:</b> the fluctuations in symptoms (some days "
+    "'I feel tons of them', others 'nothing today') are not variations in the number of "
+    "PVC, but in <b>how many</b> of those beats become <b>perceptible</b>. The "
+    "critical threshold is ~55 BPM for this patient: below it, the PVC are silent; "
+    "above it, they turn into symptomatic compensatory ones.",
     NORMAL))
 story.append(PageBreak())
 
-# === DISTRIBUZIONE DEL RAPPORTO PER SESSIONE ===
-story.append(Paragraph("Distribuzione del rapporto pausa / RR sinusale per sessione", H2))
+# === RATIO DISTRIBUTION PER SESSION ===
+story.append(Paragraph("Distribution of the pause / sinus RR ratio per session", H2))
 story.append(Paragraph(
-    "Per ogni PVC sandwich-fra-due-N si calcola il rapporto "
-    "<i>(RR_pre + RR_post) / RR_sinus</i>. La distribuzione di questo rapporto "
-    "rivela direttamente il comportamento del nodo SA: la zona ombreggiata sinistra "
-    "(&lt;1.30) indica le interpolate, quella destra (1.85-2.15) le compensate "
-    "piene. La linea gialla è la mediana della sessione.", NORMAL))
+    "For each PVC sandwiched between two N beats the ratio "
+    "<i>(RR_pre + RR_post) / RR_sinus</i> is computed. The distribution of this ratio "
+    "directly reveals the behavior of the SA node: the left shaded zone "
+    "(&lt;1.30) indicates the interpolated ones, the right one (1.85-2.15) the full "
+    "compensatory ones. The yellow line is the session median.", NORMAL))
 story.append(Spacer(1, 4))
 story.append(fit_image(img_distrib, max_w_mm=175, max_h_mm=170))
 story.append(Spacer(1, 6))
 story.append(Paragraph(
-    "Le 3 sessioni hanno <b>forme diverse</b> nonostante lo stesso focolaio: il "
-    "comportamento del SA dipende dallo stato autonomico in quel momento, non dalla "
-    "PVC in sé. Il 6 giu (mediana 1.99) mostra un cuore in modalità 'reset sempre'; "
-    "il 7 giu (mediana 1.40-1.50) mostra distribuzione bimodale con metà delle PVC "
-    "in zona interpolata; il 5 giu è intermedio.",
+    "The 3 sessions have <b>different shapes</b> despite the same focus: the "
+    "behavior of the SA node depends on the autonomic state at that moment, not on the "
+    "PVC itself. Jun 6 (median 1.99) shows a heart in 'always reset' mode; "
+    "Jun 7 (median 1.40-1.50) shows a bimodal distribution with half the PVC "
+    "in the interpolated zone; Jun 5 is intermediate.",
     NORMAL))
 story.append(PageBreak())
 
 # === BPM BUCKET ANALYSIS ===
-story.append(Paragraph("A quale frequenza istantanea compaiono le compensate?", H2))
+story.append(Paragraph("At what instantaneous rate do the compensatory ones appear?", H2))
 story.append(Paragraph(
-    "Ogni PVC è etichettata con la frequenza istantanea immediatamente precedente "
-    "(RR del N-N appena prima della PVC, convertito in BPM). Aggregando tutte le "
-    "PVC delle 3 sessioni per fascia di BPM si ottiene la <b>curva dose-risposta</b> "
-    "della percezione: la linea gialla mostra la percentuale di PVC compensate "
-    "(percepibili) in funzione della frequenza basale istantanea.", NORMAL))
+    "Each PVC is labeled with the instantaneous rate immediately preceding it "
+    "(the RR of the N-N right before the PVC, converted to BPM). Aggregating all the "
+    "PVC of the 3 sessions by BPM band yields the <b>dose-response curve</b> "
+    "of perception: the yellow line shows the percentage of compensatory PVC "
+    "(perceptible) as a function of the instantaneous baseline rate.", NORMAL))
 story.append(Spacer(1, 4))
 story.append(fit_image(img_bpm_bucket, max_w_mm=175, max_h_mm=110))
 story.append(Spacer(1, 6))
 story.append(Paragraph(
-    "Lettura (aggregato 3 sessioni, n=1249 PVC classificabili): sotto 60 BPM "
-    "<b>0% compensate</b> (tutte interpolate, silenziose). Il <b>crossover al 50%</b> "
-    "avviene in fascia <b>60-65 BPM</b>. Tra 65-80 BPM la quota compensate cresce "
-    "rapidamente fino al <b>picco del 94% in fascia 75-80 BPM</b>. Oltre 80 BPM la "
-    "classificazione diventa sfumata (gli RR si accorciano e la maggior parte delle "
-    "PVC cade nella zona 'incompleta', né interpolata né compensata pura).",
+    "Reading (3-session aggregate, n=1249 classifiable PVC): below 60 BPM "
+    "<b>0% compensatory</b> (all interpolated, silent). The <b>50% crossover</b> "
+    "occurs in the <b>60-65 BPM</b> band. Between 65-80 BPM the compensatory share grows "
+    "rapidly up to the <b>94% peak in the 75-80 BPM band</b>. Above 80 BPM the "
+    "classification becomes blurred (the RR shorten and most of the "
+    "PVC fall into the 'incomplete' zone, neither interpolated nor purely compensatory).",
     NORMAL))
 story.append(Spacer(1, 6))
 story.append(Paragraph(
-    "<i>Note metodologiche: i buckets di 5 BPM e le soglie 1.30 / 1.85-2.15 RR_sinus "
-    "(per definire interpolata / compensatoria) sono scelte parametriche, derivate "
-    "dalla fisiologia da manuale. Il gradiente HR→%comp e i numeri qui sopra sono "
-    "invece calcolati direttamente dai dati. La sessione 6 giu (0% interpolate "
-    "intrinsecamente) trascina la statistica aggregata; analizzando le sessioni "
-    "individualmente il crossover si sposta avanti (es. su 7 giu da sola era ~70 BPM).</i>",
+    "<i>Methodological notes: the 5 BPM buckets and the 1.30 / 1.85-2.15 RR_sinus thresholds "
+    "(to define interpolated / compensatory) are parametric choices, derived "
+    "from textbook physiology. The HR→%comp gradient and the numbers above are "
+    "instead computed directly from the data. The Jun 6 session (intrinsically 0% "
+    "interpolated) drags the aggregate statistic; analyzing the sessions "
+    "individually, the crossover shifts later (e.g. on Jun 7 alone it was ~70 BPM).</i>",
     SMALL))
 story.append(Spacer(1, 10))
 
 # === COUPLING STABILITY ===
-story.append(Paragraph("Stabilità del coupling (origine del focolaio)", H2))
+story.append(Paragraph("Coupling stability (origin of the focus)", H2))
 story.append(Paragraph(
-    "Distribuzione del coupling pre-PVC (intervallo tra N che precede e la PVC). "
-    "Se la distribuzione è stretta e la mediana è coerente fra sessioni, il focolaio "
-    "è <b>monomorfo e fisso</b> nello stesso punto del ventricolo. Se si allarga o "
-    "compaiono picchi separati, suggerisce origine multifocale.", NORMAL))
+    "Distribution of the pre-PVC coupling (interval between the preceding N and the PVC). "
+    "If the distribution is narrow and the median is consistent across sessions, the focus "
+    "is <b>monomorphic and fixed</b> at the same point of the ventricle. If it widens or "
+    "separate peaks appear, it suggests a multifocal origin.", NORMAL))
 story.append(Spacer(1, 4))
 story.append(fit_image(img_coup, max_w_mm=175, max_h_mm=65))
 story.append(PageBreak())
 
-# === DETTAGLIO COUPLING: ANALISI CLUSTER (BIMODALITÀ 6 GIU) ===
-story.append(Paragraph("Analisi cluster del coupling per sessione", H2))
+# === COUPLING DETAIL: CLUSTER ANALYSIS (JUN 6 BIMODALITY) ===
+story.append(Paragraph("Cluster analysis of the coupling per session", H2))
 story.append(Paragraph(
-    "Zoom sulla distribuzione del coupling pre-PVC con bin da 15 ms. Le barre sono "
-    "colorate per fascia: <font color='#3a9'>azzurro &lt; 500 ms</font>, "
-    "<font color='#c33'>rosa 500-600 ms</font>, "
-    "<font color='#393'>verde &gt; 600 ms</font>. Questa visualizzazione rivela una "
-    "<b>bimodalità nascosta nella sessione 6 giu</b>: oltre al cluster principale a "
-    "~470 ms, esiste un secondo gruppo persistente attorno a 540-560 ms (43% delle "
-    "PVC). Le altre sessioni mostrano cluster singolo.",
+    "Zoom on the pre-PVC coupling distribution with 15 ms bins. The bars are "
+    "colored by band: <font color='#3a9'>light blue &lt; 500 ms</font>, "
+    "<font color='#c33'>pink 500-600 ms</font>, "
+    "<font color='#393'>green &gt; 600 ms</font>. This visualization reveals a "
+    "<b>hidden bimodality in the Jun 6 session</b>: besides the main cluster at "
+    "~470 ms, there is a persistent second group around 540-560 ms (43% of the "
+    "PVC). The other sessions show a single cluster.",
     NORMAL))
 story.append(Spacer(1, 4))
 story.append(fit_image(img_cluster, max_w_mm=175, max_h_mm=140))
 story.append(Spacer(1, 8))
 
-# Tabella morfologica dei cluster per ciascuna sessione
-story.append(Paragraph("<b>Morfologia mediana per cluster (sessione 6 giu)</b>", H3))
-ses_6giu = sessions[1]  # 6 giu è l'indice 1
+# Morphological table of the clusters for each session
+story.append(Paragraph("<b>Median morphology per cluster (Jun 6 session)</b>", H3))
+ses_6giu = sessions[1]  # Jun 6 is index 1
 clus_6 = session_clusters[1]
 rows_c = [[Paragraph(f"<b>{x}</b>", SMALL) for x in
-           ["Cluster","n (%)","Coupling (ms)","Ampiezza (V)","Width (ms)","Rebound"]]]
+           ["Cluster","n (%)","Coupling (ms)","Amplitude (V)","Width (ms)","Rebound"]]]
 for label, key in [("A < 500ms","c1"),("B 500-600ms","c2"),("C > 600ms","c3")]:
     d = clus_6.get(key)
     if d is None:
@@ -1210,74 +1210,74 @@ ct.setStyle(TableStyle([
 story.append(ct)
 story.append(Spacer(1, 8))
 
-story.append(Paragraph("<b>Interpretazione fisiologica</b>", H3))
+story.append(Paragraph("<b>Physiological interpretation</b>", H3))
 story.append(Paragraph(
-    "Le micro-differenze morfologiche fra i cluster (width 100 vs 104 ms, rebound "
-    "0.59 vs 0.65, ampiezze sovrapponibili) sono <b>troppo piccole</b> per "
-    "indicare un secondo focolaio: una vera ectopia di origine diversa mostrerebbe "
-    "delta di 20-30 ms in width e cambi di polarità/morfologia ben visibili. "
-    "Le tre ipotesi in ordine di plausibilità:",
+    "The morphological micro-differences between the clusters (width 100 vs 104 ms, rebound "
+    "0.59 vs 0.65, overlapping amplitudes) are <b>too small</b> to "
+    "indicate a second focus: a true ectopy of different origin would show "
+    "deltas of 20-30 ms in width and clearly visible polarity/morphology changes. "
+    "The three hypotheses in order of plausibility:",
     NORMAL))
 story.append(Spacer(1, 4))
 story.append(Paragraph(
-    "<b>1. Modulazione del coupling (più probabile).</b> Lo stesso focolaio scarica "
-    "a 2 frequenze leggermente diverse in base allo stato autonomico: quando il SA "
-    "è più veloce il coupling è più corto (~470 ms), quando rallenta sale (~545 ms). "
-    "Pattern compatibile con parasistolia benigna.",
+    "<b>1. Coupling modulation (most likely).</b> The same focus fires "
+    "at 2 slightly different rates depending on the autonomic state: when the SA "
+    "is faster the coupling is shorter (~470 ms), when it slows down it rises (~545 ms). "
+    "A pattern compatible with benign parasystole.",
     NORMAL))
 story.append(Spacer(1, 3))
 story.append(Paragraph(
-    "<b>2. Stesso focolaio, due vie d'uscita.</b> L'ectopia nasce nello stesso "
-    "punto ma può prendere due cammini di conduzione leggermente diversi verso il "
-    "ventricolo, arrivando con ~70 ms di ritardo. Spiega le micro-differenze "
-    "morfologiche senza richiedere un secondo focus.",
+    "<b>2. Same focus, two exit routes.</b> The ectopy arises at the same "
+    "point but can take two slightly different conduction paths toward the "
+    "ventricle, arriving with ~70 ms of delay. It explains the morphological "
+    "micro-differences without requiring a second focus.",
     NORMAL))
 story.append(Spacer(1, 3))
 story.append(Paragraph(
-    "<b>3. Bifocale lieve.</b> Due cellule ectopiche vicine con proprietà simili. "
-    "Difficile da escludere con un solo derivato precordiale.",
+    "<b>3. Mild bifocal.</b> Two nearby ectopic cells with similar properties. "
+    "Hard to rule out with a single precordial lead.",
     NORMAL))
 story.append(Spacer(1, 6))
 story.append(Paragraph(
-    "Solo la sessione 6 giu mostra questa bimodalità — le altre due hanno cluster "
-    "singolo. Coerente con stato autonomico più 'tonico' (HR 57 vs 52-54 delle "
-    "altre): possibile che il livello simpatico più alto attivi un secondo 'mode' "
-    "di scarica o una via di conduzione alternativa. <b>Da segnalare al "
-    "cardiologo</b>: se eseguono un holter 24h è utile verificare se la "
-    "bimodalità è riproducibile e se compare in fasce orarie specifiche.",
+    "Only the Jun 6 session shows this bimodality — the other two have a single "
+    "cluster. Consistent with a more 'tonic' autonomic state (HR 57 vs 52-54 in the "
+    "others): it is possible that the higher sympathetic level activates a second "
+    "firing 'mode' or an alternative conduction path. <b>Worth flagging to the "
+    "cardiologist</b>: if they run a 24h holter it is useful to verify whether the "
+    "bimodality is reproducible and whether it appears at specific times of day.",
     NORMAL))
 story.append(PageBreak())
 
-# === ANDAMENTO TEMPORALE ===
-story.append(Paragraph("Andamento temporale intra-sessione", H2))
+# === TEMPORAL TREND ===
+story.append(Paragraph("Intra-session temporal trend", H2))
 story.append(Paragraph(
-    "Per ogni sessione: sinus rate (verde) e burden (rosso) minuto per minuto. "
-    "Permette di vedere se la frequenza basale è stabile e se il burden cambia "
-    "nel tempo (es. risposta a respirazione, stress, posizione).", NORMAL))
+    "For each session: sinus rate (green) and burden (red) minute by minute. "
+    "It lets you see whether the baseline rate is stable and whether the burden changes "
+    "over time (e.g. response to respiration, stress, position).", NORMAL))
 story.append(Spacer(1, 4))
 story.append(fit_image(img_temporal, max_w_mm=175, max_h_mm=120))
 story.append(PageBreak())
 
-# === ESEMPI ===
-story.append(Paragraph("Esempi morfologici delle classificazioni", H2))
+# === EXAMPLES ===
+story.append(Paragraph("Morphological examples of the classifications", H2))
 story.append(Paragraph(
-    "Per ogni sessione, una strip rappresentativa di ciascun tipo. Cerchio "
-    "arancione = PVC analizzata, barra azzurra = RR_pre, barra gialla = RR_post, "
-    "linea rossa tratteggiata = posizione attesa del battito successivo se la "
-    "pausa fosse compensatoria piena (2× RR sinus). Una interpolata mostra il "
-    "battito N successivo <b>prima</b> di quella linea; una compensata lo mostra "
-    "<b>sulla</b> linea.", NORMAL))
+    "For each session, a representative strip of each type. Orange "
+    "circle = analyzed PVC, light blue bar = RR_pre, yellow bar = RR_post, "
+    "dashed red line = expected position of the next beat if the "
+    "pause were a full compensatory one (2× RR sinus). An interpolated one shows the "
+    "next N beat <b>before</b> that line; a compensatory one shows it "
+    "<b>on</b> the line.", NORMAL))
 story.append(Spacer(1, 8))
 
 for kind_label, kind_key in [
-    ("Interpolate (no reset del SA)", "interp"),
-    ("Compensate (reset completo del SA)", "comp"),
-    ("Couplet (2 PVC consecutive entro 700ms)", "couplet"),
+    ("Interpolated (no SA reset)", "interp"),
+    ("Compensatory (full SA reset)", "comp"),
+    ("Couplet (2 consecutive PVC within 700ms)", "couplet"),
 ]:
     story.append(Paragraph(kind_label, H3))
     items = example_strips.get(kind_key, [])
     if not items:
-        story.append(Paragraph("(nessun esempio disponibile)", SMALL))
+        story.append(Paragraph("(no example available)", SMALL))
     for (lab, img) in items:
         story.append(fit_image(img, max_w_mm=175, max_h_mm=55))
         story.append(Spacer(1, 3))
@@ -1285,56 +1285,56 @@ for kind_label, kind_key in [
 
 story.append(PageBreak())
 
-# === ANALISI RESPIRATORIA + TRIGGER FASICO ===
+# === RESPIRATORY ANALYSIS + PHASIC TRIGGER ===
 if img_resp_phases is not None:
-    story.append(Paragraph("Analisi respiratoria: trigger fasico end-expiratorio", H2))
+    story.append(Paragraph("Respiratory analysis: end-expiratory phasic trigger", H2))
     story.append(Paragraph(
-        "Le PVC non scoccano in modo casuale durante il ciclo respiratorio. Estraendo "
-        "il segnale respiratorio direttamente dall'ECG (tecnica <b>EDR — ECG-Derived "
-        "Respiration</b>: la modulazione dell'ampiezza R battito-per-battito traccia "
-        "il respiro grazie alla rotazione del vettore elettrico durante l'escursione "
-        "diaframmatica) e calcolando la fase istantanea via trasformata di Hilbert, "
-        "si può associare a ciascuna PVC la sua posizione nel ciclo respiratorio "
-        "(0% = fine espirazione = ampiezza minima; 50% = fine inspirazione = "
-        "ampiezza massima).",
+        "PVCs do not fire randomly during the respiratory cycle. By extracting "
+        "the respiratory signal directly from the ECG (the <b>EDR — ECG-Derived "
+        "Respiration</b> technique: the beat-by-beat R amplitude modulation tracks "
+        "breathing thanks to the rotation of the electrical vector during the "
+        "diaphragmatic excursion) and computing the instantaneous phase via the Hilbert transform, "
+        "each PVC can be associated with its position in the respiratory cycle "
+        "(0% = end expiration = minimum amplitude; 50% = end inspiration = "
+        "maximum amplitude).",
         NORMAL))
     story.append(Spacer(1, 6))
     if img_resp_example is not None:
-        story.append(Paragraph("Esempio di estrazione respiratoria dall'ECG (sessione di riferimento)", H3))
+        story.append(Paragraph("Example of respiratory extraction from the ECG (reference session)", H3))
         story.append(fit_image(img_resp_example, max_w_mm=175, max_h_mm=60))
         story.append(Spacer(1, 6))
         story.append(Paragraph(
-            "Sopra: 30 secondi di ECG (verde) con triangoli gialli sui picchi R. "
-            "La linea ciano sovrapposta è la respirazione ricostruita dall'ampiezza "
-            "dei picchi R, perfettamente sinusoidale e in fase con i cicli respiratori "
-            "osservati a occhio nudo nella variazione di altezza dei QRS.",
+            "Above: 30 seconds of ECG (green) with yellow triangles on the R peaks. "
+            "The overlaid cyan line is the respiration reconstructed from the amplitude "
+            "of the R peaks, perfectly sinusoidal and in phase with the respiratory cycles "
+            "observed by eye in the variation of the QRS heights.",
             SMALL))
         story.append(Spacer(1, 10))
-    story.append(Paragraph("Distribuzione delle PVC nel ciclo respiratorio per sessione", H3))
+    story.append(Paragraph("Distribution of the PVC across the respiratory cycle per session", H3))
     story.append(Paragraph(
-        "Per ciascuna sessione: a sinistra rosetta polare (verde = battiti N, rosso = PVC); "
-        "a destra rapporto PVC/N per fase (barre rosse = eccesso PVC, verdi = deficit, "
-        "azzurre = neutre; linea bianca tratteggiata = uniforme).",
+        "For each session: on the left a polar rosette (green = N beats, red = PVC); "
+        "on the right the PVC/N ratio by phase (red bars = PVC excess, green = deficit, "
+        "light blue = neutral; dashed white line = uniform).",
         SMALL))
     story.append(Spacer(1, 6))
     story.append(fit_image(img_resp_phases, max_w_mm=180, max_h_mm=240))
     story.append(PageBreak())
-    # Tabella riassuntiva trigger respiratorio
-    story.append(Paragraph("Riassunto trigger fasico — tutte le sessioni", H3))
+    # Summary table for the respiratory trigger
+    story.append(Paragraph("Phasic trigger summary — all sessions", H3))
     resp_rows = [
         [Paragraph(f"<b>{x}</b>", SMALL) for x in
-         ["Sessione","Rate resp /min","Picco fasico","Enrichment","p-value","Significativo"]]
+         ["Session","Resp rate /min","Phasic peak","Enrichment","p-value","Significant"]]
     ]
     for s in sessions_with_edr:
         edr = s["edr"]
-        # interpretazione fase (Hilbert: 0=max inspir, 50%=fine espir)
+        # phase interpretation (Hilbert: 0=max inspir, 50%=end expir)
         ph = edr["peak_phase_pct"]
         if ph < 15 or ph > 85:
             phase_lab = "max inspir. ★"
         elif 15 <= ph < 35:
-            phase_lab = "mid espir."
+            phase_lab = "mid expir."
         elif 35 <= ph < 65:
-            phase_lab = "fine espir."
+            phase_lab = "end expir."
         else:
             phase_lab = "mid inspir."
         sig_lab = "★★ p<10⁻⁹" if edr["pval"] < 1e-9 else ("★ p<0.001" if edr["pval"]<1e-3 else f"p={edr['pval']:.0e}")
@@ -1363,52 +1363,52 @@ if img_resp_phases is not None:
     n_maxinsp = sum(1 for s in sessions_with_edr
                     if s["edr"]["peak_phase_pct"] < 15 or s["edr"]["peak_phase_pct"] > 85)
     story.append(Paragraph(
-        f"<b>Pattern ricorrente:</b> {n_maxinsp} su {len(sessions_with_edr)} sessioni "
-        f"mostrano picco di scarica PVC attorno alla <b>massima inspirazione / "
-        f"transizione verso espirazione</b> (entro il 15% del ciclo da phase 0 = "
-        f"picco di ampiezza QRS). Riproducibilità straordinaria nonostante "
-        f"variabilità di postura, orario, pasti, attività.",
+        f"<b>Recurring pattern:</b> {n_maxinsp} of {len(sessions_with_edr)} sessions "
+        f"show a peak of PVC firing around <b>maximum inspiration / "
+        f"transition toward expiration</b> (within 15% of the cycle from phase 0 = "
+        f"QRS amplitude peak). Extraordinary reproducibility despite "
+        f"variability of posture, time of day, meals, and activity.",
         NORMAL))
     story.append(Spacer(1, 6))
     story.append(Paragraph(
-        "<b>Interpretazione fisiologica.</b> A massima inspirazione convergono "
-        "fattori meccanici e neurovegetativi che spiegano l'eccesso di scarica del "
-        "focolaio: "
-        "(1) <b>diaframma al punto più caudale</b>, massimamente contratto, scivolato "
-        "verso l'addome. Il pericardio, attaccato al centro tendineo del diaframma, "
-        "subisce <b>massima trazione verso il basso</b>; il cuore viene stirato/spostato "
-        "inferiormente. "
-        "(2) <b>Riempimento ventricolare massimo</b> (precarico al picco) → stretch "
-        "delle camere → attivazione meccanoricettori → ectopia triggered. "
-        "(3) <b>Tachicardia inspiratoria RSA</b>: la fase ascendente del ciclo "
-        "Respiratory Sinus Arrhythmia coincide con leggero aumento simpatico locale. "
-        "Per il paziente con pattern respiratorio apicale + rib flare la trazione "
-        "pericardica anomala amplifica l'effetto. Il focolaio è dunque "
+        "<b>Physiological interpretation.</b> At maximum inspiration several "
+        "mechanical and neurovegetative factors converge that explain the excess firing of the "
+        "focus: "
+        "(1) the <b>diaphragm at its most caudal point</b>, maximally contracted, slid "
+        "toward the abdomen. The pericardium, attached to the central tendon of the diaphragm, "
+        "undergoes <b>maximum downward traction</b>; the heart is stretched/displaced "
+        "inferiorly. "
+        "(2) <b>Maximum ventricular filling</b> (preload at its peak) → stretch "
+        "of the chambers → mechanoreceptor activation → triggered ectopy. "
+        "(3) <b>RSA inspiratory tachycardia</b>: the rising phase of the "
+        "Respiratory Sinus Arrhythmia cycle coincides with a slight local sympathetic increase. "
+        "For a patient with an apical breathing pattern + rib flare the anomalous "
+        "pericardial traction amplifies the effect. The focus is therefore "
         "<b>mechanically-triggered (stretch) + RSA-modulated</b>.",
         NORMAL))
     story.append(Spacer(1, 6))
     story.append(Paragraph(
-        "<b>Implicazione terapeutica:</b> riduzione dello stretch inspiratorio massimo. "
-        "Tecniche che limitano la <b>profondità inspiratoria</b> (volume tidale ridotto, "
-        "respirazione consapevole \"shallow\") riducono il tempo trascorso a picco "
-        "inspiratorio. La <b>coherent breathing 6/min</b> con volumi piccoli (no respiri "
-        "molto profondi) è preferibile a tecniche con inspirazioni massimali "
-        "(es. respirazione yogica completa, sospiri profondi). Anche il lavoro sul "
-        "pattern diaframmatico (PRI/DNS) per riportare il diaframma a posizione neutra "
-        "riduce l'escursione anomala e quindi la trazione pericardica.",
+        "<b>Therapeutic implication:</b> reduction of the maximum inspiratory stretch. "
+        "Techniques that limit the <b>inspiratory depth</b> (reduced tidal volume, "
+        "conscious \"shallow\" breathing) reduce the time spent at peak "
+        "inspiration. <b>Coherent breathing at 6/min</b> with small volumes (no very "
+        "deep breaths) is preferable to techniques with maximal inspirations "
+        "(e.g. full yogic breathing, deep sighs). Work on the "
+        "diaphragmatic pattern (PRI/DNS) to bring the diaphragm back to a neutral position "
+        "also reduces the anomalous excursion and therefore the pericardial traction.",
         NORMAL))
     story.append(PageBreak())
 
-# === SINTESI ===
-story.append(Paragraph("Sintesi e osservazioni cross-sessione", H2))
+# === SUMMARY ===
+story.append(Paragraph("Cross-session summary and observations", H2))
 all_couplets = sum(len(s["couplets"]) for s in sessions)
 all_pvc = sum(s["n_pvc"] for s in sessions)
 all_interp = sum(len(s["interp"]) for s in sessions)
 all_comp = sum(len(s["comp"]) for s in sessions)
 all_classified = all_interp + all_comp + sum(len(s["incomp"]) for s in sessions)
 ratio_interp = 100*all_interp/max(1, all_classified)
-coup_meds = [s["RR_SINUS_MS"] for s in sessions]  # qui RR sinus, non coupling, ma è ok
-# coupling veri
+coup_meds = [s["RR_SINUS_MS"] for s in sessions]  # here RR sinus, not coupling, but it's fine
+# true couplings
 coup_medians = []
 for s in sessions:
     cs = [p["rr_prev"]*1000 for p in s["peaks"]
@@ -1416,50 +1416,50 @@ for s in sessions:
     if cs: coup_medians.append(statistics.median(cs))
 
 bullets = [
-    f"<b>PVC totali nelle 3 sessioni</b>: {all_pvc} su {sum(s['n_total'] for s in sessions)} battiti totali.",
-    f"<b>Couplet veri</b> (2 PVC consecutive con RR &lt; 700ms): <b>{all_couplets} in totale</b> "
-    f"(0 nella sessione 5 giu, 2 il 6 giu, 2 il 7 giu), tutti con RR fra 384-460 ms. "
-    f"Rappresentano lo <b>0.23% del totale PVC</b> — pochissimi ma esistono. "
-    f"Sono individuati e mostrati nei singoli report di sessione (sezione 'Esempi "
-    f"morfologici', stesso stile della traccia esemplificativa). "
-    f"<b>Nessun run di tachicardia ventricolare</b> (≥3 PVC consecutive): 0 in tutte le sessioni.",
-    f"<b>Focolaio singolo monomorfo</b>: il coupling mediano è stabile fra sessioni "
-    f"({', '.join(f'{m:.0f}ms' for m in coup_medians)}). Distribuzione stretta = unica origine elettrica.",
-    f"<b>{ratio_interp:.0f}% delle PVC classificate sono interpolate</b> (no pausa "
-    f"compensatoria). Compatibile con bradicardia di base e buon tono vagale: "
-    f"queste PVC non disturbano il riempimento ventricolare e tipicamente non vengono percepite.",
-    f"<b>No R-on-T</b>: nessuna PVC con coupling < 360ms in nessuna delle 3 sessioni.",
+    f"<b>Total PVC across the 3 sessions</b>: {all_pvc} out of {sum(s['n_total'] for s in sessions)} total beats.",
+    f"<b>True couplets</b> (2 consecutive PVC with RR &lt; 700ms): <b>{all_couplets} in total</b> "
+    f"(0 in the Jun 5 session, 2 on Jun 6, 2 on Jun 7), all with RR between 384-460 ms. "
+    f"They represent <b>0.23% of the total PVC</b> — very few but they exist. "
+    f"They are identified and shown in the individual session reports (section 'Morphological "
+    f"examples', same style as the example trace). "
+    f"<b>No ventricular tachycardia run</b> (≥3 consecutive PVC): 0 in all sessions.",
+    f"<b>Single monomorphic focus</b>: the median coupling is stable across sessions "
+    f"({', '.join(f'{m:.0f}ms' for m in coup_medians)}). Narrow distribution = single electrical origin.",
+    f"<b>{ratio_interp:.0f}% of the classified PVC are interpolated</b> (no compensatory "
+    f"pause). Compatible with baseline bradycardia and good vagal tone: "
+    f"these PVC do not disturb ventricular filling and are typically not perceived.",
+    f"<b>No R-on-T</b>: no PVC with coupling < 360ms in any of the 3 sessions.",
 ]
 af_scores = [s["af"].get("score","-") for s in sessions if s.get("af")]
 if af_scores:
-    bullets.append(f"<b>Screening AF</b>: score {'/'.join(str(x) for x in af_scores)} (su 4). "
-                   f"Markers HRV alti ma struttura RR bimodale conservata; non suggestivo di fibrillazione atriale. "
-                   f"L'irregolarità RR osservata si spiega con bradicardia + RSA + ectopia frequente.")
+    bullets.append(f"<b>AF screening</b>: score {'/'.join(str(x) for x in af_scores)} (out of 4). "
+                   f"High HRV markers but the bimodal RR structure is preserved; not suggestive of atrial fibrillation. "
+                   f"The observed RR irregularity is explained by bradycardia + RSA + frequent ectopy.")
 
-bullets.append(f"<b>Correlazione frequenza vs percezione</b>: a HR basale bassa (~55-65 BPM) "
-               f"prevalgono interpolate silenziose; nella fascia 70-80 BPM crescono "
-               f"le compensate, percepite come 'tonfo'. Coerente con la fisiologia del nodo SA.")
+bullets.append(f"<b>Rate vs perception correlation</b>: at low baseline HR (~55-65 BPM) "
+               f"silent interpolated ones prevail; in the 70-80 BPM band the "
+               f"compensatory ones grow, felt as a 'thump'. Consistent with the physiology of the SA node.")
 
 for b in bullets:
     story.append(Paragraph("• " + b, NORMAL))
     story.append(Spacer(1, 3))
 
-# === TABELLA FINALE: PVC totali vs percepite ===
+# === FINAL TABLE: total vs perceived PVC ===
 story.append(Spacer(1, 14))
-story.append(Paragraph("PVC reali vs PVC percepite — riepilogo", H2))
+story.append(Paragraph("Real PVC vs perceived PVC — recap", H2))
 story.append(Paragraph(
-    "Il dato controintuitivo che emerge dalle 3 sessioni: <b>il numero di PVC "
-    "percepite NON è proporzionale al numero di PVC reali</b>. La sessione con più "
-    "PVC in assoluto (7 giu) è quella in cui ne sono state percepite di meno, "
-    "perché aveva la HR più bassa e quindi la più alta quota di interpolate "
-    "silenziose. Il numero di 'tonfi' al minuto è stimato come N° PVC compensate / "
-    "durata utile della sessione.",
+    "The counterintuitive finding that emerges from the 3 sessions: <b>the number of "
+    "perceived PVC is NOT proportional to the number of real PVC</b>. The session with the most "
+    "PVC overall (Jun 7) is the one where the fewest were perceived, "
+    "because it had the lowest HR and therefore the highest share of silent "
+    "interpolated ones. The number of 'thumps' per minute is estimated as N compensatory PVC / "
+    "useful session duration.",
     NORMAL))
 story.append(Spacer(1, 6))
 
-# Calcolo tonfi/min per ciascuna sessione
+# Compute thuds/min for each session
 header_perc = [Paragraph(f"<b>{x}</b>", SMALL) for x in
-               ["Indicatore"] + LABELS]
+               ["Indicator"] + LABELS]
 rows_perc = [header_perc]
 def cell_perc(text, col_hex=None, bold=False):
     if bold and col_hex:
@@ -1470,19 +1470,19 @@ def cell_perc(text, col_hex=None, bold=False):
         return Paragraph(f"<b>{text}</b>", SMALL)
     return Paragraph(text, SMALL)
 
-# riga 1: PVC totali al minuto
-cells = [cell_perc("PVC totali (/min)")]
+# row 1: total PVC per minute
+cells = [cell_perc("Total PVC (/min)")]
 pvc_rates = [s["pvc_rate"] for s in sessions]
 max_pvc = max(pvc_rates); min_pvc = min(pvc_rates)
 for s in sessions:
     v = s["pvc_rate"]
-    if v == max_pvc: c = "#a3320c"   # alto = rosso
-    elif v == min_pvc: c = "#1b4034" # basso = verde
+    if v == max_pvc: c = "#a3320c"   # high = red
+    elif v == min_pvc: c = "#1b4034" # low = green
     else: c = "#9b6b00"
     cells.append(cell_perc(f"{v:.1f} /min", c, bold=True))
 rows_perc.append(cells)
 
-# riga 2: Burden %
+# row 2: Burden %
 cells = [cell_perc("Burden")]
 burdens = [s["burden"] for s in sessions]
 max_b = max(burdens); min_b = min(burdens)
@@ -1494,34 +1494,34 @@ for s in sessions:
     cells.append(cell_perc(f"{v:.1f}%", c, bold=True))
 rows_perc.append(cells)
 
-# riga 3: SA effettiva — vera frequenza del pacemaker
-# Calcolata come 60000/median(RR_NN) dopo esclusione rumore + manuale,
-# solo coppie N-N consecutive con RR fisiologico (0.6-1.4s).
-# Corrisponde a quello che senti al polso (le PVC hanno gittata insufficiente
-# per generare onda pulsatile palpabile).
-cells = [cell_perc("Frequenza SA effettiva (al polso)")]
+# row 3: effective SA — the true pacemaker rate
+# Computed as 60000/median(RR_NN) after noise + manual exclusion,
+# only consecutive N-N pairs with physiological RR (0.6-1.4s).
+# Matches what you feel at the wrist (PVC have insufficient output
+# to generate a palpable pulse wave).
+cells = [cell_perc("Effective SA rate (at the wrist)")]
 sa_eff = [60000/s["RR_SINUS_MS"] if s["RR_SINUS_MS"] else 0 for s in sessions]
 max_sa = max(sa_eff); min_sa = min(sa_eff)
 for s, v in zip(sessions, sa_eff):
-    if v == max_sa: c = "#a3320c"   # alta = rosso (più compensate)
-    elif v == min_sa: c = "#1b4034" # bassa = verde (più interpolate)
+    if v == max_sa: c = "#a3320c"   # high = red (more compensatory)
+    elif v == min_sa: c = "#1b4034" # low = green (more interpolated)
     else: c = "#9b6b00"
     cells.append(cell_perc(f"{v:.1f} BPM", c, bold=True))
 rows_perc.append(cells)
 
-# riga 3b: RR sinus medio (ms) — il "tempo di carica" del nodo SA
-cells = [cell_perc("RR SA medio (ms)")]
+# row 3b: mean sinus RR (ms) — the "charge time" of the SA node
+cells = [cell_perc("Mean SA RR (ms)")]
 rr_values = [s["RR_SINUS_MS"] for s in sessions]
 max_rr = max(rr_values); min_rr = min(rr_values)
 for s, rr in zip(sessions, rr_values):
-    if rr == max_rr: c = "#1b4034"  # RR più lungo = più spazio → verde
+    if rr == max_rr: c = "#1b4034"  # longer RR = more room → green
     elif rr == min_rr: c = "#a3320c"
     else: c = "#9b6b00"
     cells.append(cell_perc(f"{rr:.0f} ms", c, bold=True))
 rows_perc.append(cells)
 
-# riga 3c: HR totale percepita come "battiti" (N + PVC) — quello che senti dentro
-cells = [cell_perc("Battiti totali percepiti (/min)")]
+# row 3c: total HR perceived as "beats" (N + PVC) — what you feel inside
+cells = [cell_perc("Total perceived beats (/min)")]
 totals = [(s["n_norm"]+s["n_pvc"])*60/s["clean_s"] if s["clean_s"] else 0
           for s in sessions]
 max_t = max(totals); min_t = min(totals)
@@ -1532,8 +1532,8 @@ for s, t in zip(sessions, totals):
     cells.append(cell_perc(f"{t:.1f} /min", c, bold=True))
 rows_perc.append(cells)
 
-# riga 4: % compensate (sulle classificabili)
-cells = [cell_perc("% compensate (percepibili)")]
+# row 4: % compensatory (of the classifiable ones)
+cells = [cell_perc("% compensatory (perceptible)")]
 pct_comps = []
 for s in sessions:
     n_class = len(s["interp"]) + len(s["comp"]) + len(s["incomp"])
@@ -1547,19 +1547,19 @@ for s, pct in zip(sessions, pct_comps):
     cells.append(cell_perc(f"{pct:.0f}%", c, bold=True))
 rows_perc.append(cells)
 
-# riga 5: tonfi/min stimati
-cells = [cell_perc("'Tonfi' percepiti (/min)")]
-tonfi = [len(s["comp"])/(s["clean_s"]/60) if s["clean_s"] else 0 for s in sessions]
-max_t = max(tonfi); min_t = min(tonfi)
-for s, t in zip(sessions, tonfi):
+# row 5: estimated thuds/min
+cells = [cell_perc("Felt 'thumps' (/min)")]
+felt_beats = [len(s["comp"])/(s["clean_s"]/60) if s["clean_s"] else 0 for s in sessions]
+max_t = max(felt_beats); min_t = min(felt_beats)
+for s, t in zip(sessions, felt_beats):
     if t == max_t: c = "#a3320c"
     elif t == min_t: c = "#1b4034"
     else: c = "#9b6b00"
     cells.append(cell_perc(f"{t:.1f} /min", c, bold=True))
 rows_perc.append(cells)
 
-# colore tinted colonne sessione
-COL_TINTS_END = COL_TINTS  # stessa palette adattiva
+# tinted color for session columns
+COL_TINTS_END = COL_TINTS  # same adaptive palette
 tbl_perc = Table(rows_perc, colWidths=[55*mm] + [38*mm]*len(sessions))
 tbl_perc_style = [
     ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#1b4034")),
@@ -1576,43 +1576,43 @@ tbl_perc_style = [
 for _ci in range(len(sessions)):
     tbl_perc_style.append(("BACKGROUND", (_ci+1, 1), (_ci+1, -1), COL_TINTS_END[_ci]))
 tbl_perc_style += [
-    # evidenzia la riga "tonfi/min" (ora indice 7 dopo l'aggiunta di SA + RR + totali)
+    # highlight the "thuds/min" row (now index 7 after adding SA + RR + totals)
     ("LINEBEFORE", (0,7), (0,7), 3, colors.HexColor("#33aa66")),
 ]
 tbl_perc.setStyle(TableStyle(tbl_perc_style))
 story.append(tbl_perc)
 story.append(Spacer(1, 6))
 story.append(Paragraph(
-    "Lettura: nella sessione 7 giu si è osservato il <b>maggior numero di PVC</b> "
-    "in assoluto (24.7/min, burden 32.2%), ma la <b>frequenza SA effettiva era la "
-    "più bassa</b> ({:.1f} BPM) — questa ha portato la quota di compensate (le "
-    "percepibili) al minimo (29%). Risultato: <b>solo 6.3 tonfi/min percepiti</b>, "
-    "contro 9.3 del 6 giu e 8.3 del 5 giu — nonostante il 7 giu avesse "
-    "oggettivamente più ectopie. Le sensazioni soggettive ('oggi le sento di più / "
-    "di meno') non sono un proxy affidabile del numero di PVC reali.".format(min(sa_eff)),
+    "Reading: in the Jun 7 session the <b>largest number of PVC</b> "
+    "overall was observed (24.7/min, burden 32.2%), but the <b>effective SA rate was the "
+    "lowest</b> ({:.1f} BPM) — this brought the share of compensatory ones (the "
+    "perceptible ones) to a minimum (29%). Result: <b>only 6.3 thumps/min perceived</b>, "
+    "versus 9.3 on Jun 6 and 8.3 on Jun 5 — even though Jun 7 objectively had "
+    "more ectopics. Subjective sensations ('today I feel them more / "
+    "less') are not a reliable proxy for the number of real PVC.".format(min(sa_eff)),
     NORMAL))
 story.append(Spacer(1, 4))
 story.append(Paragraph(
-    "<i>Nota sulla misurazione della HR: la 'frequenza SA effettiva' è la vera "
-    "frequenza del pacemaker (60000/median RR_NN su coppie N-N consecutive dopo "
-    "esclusione rumore). Corrisponde a ciò che si misura al polso, perché le PVC "
-    "hanno gittata ridotta e tipicamente non generano un'onda pulsatile palpabile. "
-    "I 'battiti totali percepiti' includono invece anche le PVC e sono ciò che si "
-    "avverte come palpitazione interna. Il 'numero di tonfi' è la stima delle PVC "
-    "che fanno sentire il colpo (le compensate, perché la pausa lascia "
-    "iper-riempire il ventricolo e il battito successivo è ipercontrattile).</i>",
+    "<i>Note on measuring HR: the 'effective SA rate' is the true "
+    "pacemaker rate (60000/median RR_NN over consecutive N-N pairs after "
+    "noise exclusion). It corresponds to what is measured at the wrist, because PVC "
+    "have a reduced output and typically do not generate a palpable pulse wave. "
+    "The 'total perceived beats', by contrast, also include the PVC and are what is "
+    "felt as an internal palpitation. The 'number of thumps' is the estimate of the PVC "
+    "that produce the felt beat (the compensatory ones, because the pause lets "
+    "the ventricle over-fill and the next beat is hypercontractile).</i>",
     SMALL))
 
 story.append(Spacer(1, 12))
 story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#888")))
 story.append(Spacer(1, 6))
 story.append(Paragraph(
-    "<i>Disclaimer: report da setup DIY (singolo derivato precordiale AD8232 + Pi "
-    "Pico W, sampling 250 Hz). Non equivale a un Holter clinico: l'analisi della morfologia "
-    "fine (P, ST), la classificazione multifocale precisa e la diagnosi di aritmie "
-    "complesse richiedono almeno 3 derivazioni e banda passante più ampia. Documento "
-    "indicativo, non sostituisce valutazione medica.</i>", SMALL))
+    "<i>Disclaimer: report from a DIY setup (single precordial lead AD8232 + Pi "
+    "Pico W, 250 Hz sampling). It is not equivalent to a clinical Holter: analysis of fine "
+    "morphology (P, ST), precise multifocal classification, and the diagnosis of "
+    "complex arrhythmias require at least 3 leads and a wider passband. An indicative "
+    "document, it does not replace medical evaluation.</i>", SMALL))
 
 doc.build(story)
-print(f"\nPDF salvato: {out_path}")
+print(f"\nPDF saved: {out_path}")
 print(f"  size: {os.path.getsize(out_path)//1024} KB")

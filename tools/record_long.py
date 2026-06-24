@@ -1,7 +1,7 @@
 """
-Registra 30 secondi di ECG raw a 250 Hz nominali.
-Salva CSV con time_ms del Pico (real, derivato da ticks_us) + raw + volt.
-Cosi possiamo verificare il sample rate reale del Pico.
+Records 30 seconds of raw ECG at a nominal 250 Hz.
+Saves CSV with the Pico's time_ms (real, derived from ticks_us) + raw + volt.
+This way we can verify the Pico's actual sample rate.
 """
 from machine import ADC, Pin
 import time

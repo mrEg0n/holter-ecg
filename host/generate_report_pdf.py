@@ -1,13 +1,13 @@
 """
-Genera un report PDF professionale da una sessione ECG registrata.
+Generate a professional PDF report from a recorded ECG session.
 
-Layout multi-pagina:
-  - Cover con sintesi numerica
-  - Tracce ECG complete (strip chart stile holter)
-  - Analisi RR e coupling
-  - Pattern temporali
-  - HRV pre-PVC e Poincaré
-  - Conclusioni e limiti tecnici
+Multi-page layout:
+  - Cover with numeric summary
+  - Full ECG traces (holter-style strip chart)
+  - RR and coupling analysis
+  - Temporal patterns
+  - Pre-PVC HRV and Poincaré
+  - Conclusions and technical limitations
 
 Usage:
     python3 generate_report_pdf.py logs/ecg_YYYYMMDD_HHMMSS.csv
@@ -43,7 +43,7 @@ if PATH is None:
 
 SAMPLE_HZ = 250
 STRIP_ROW_SECONDS = 60
-STRIP_ROWS_PER_PAGE = 5  # ⇒ 5 minuti per pagina
+STRIP_ROWS_PER_PAGE = 5  # ⇒ 5 minutes per page
 
 t_s, vr, vf = [], [], []
 with open(PATH) as f:
@@ -75,29 +75,29 @@ if os.path.exists(peaks_path):
             except (KeyError, ValueError):
                 continue
 
-# ---- ri-classificazione col criterio di produzione corrente ----
-# Il server (host/server.py) classifica PVC se:
-#   (rebound >= 0.40 OPPURE width >= 95 ms) E ampiezza >= 0.70 V.
-# I peaks CSV storici possono essere stati scritti col vecchio criterio (senza
-# la soglia di ampiezza): riclassifichiamo qui così il report riflette sempre la
-# logica attuale ed evidenzia i falsi positivi che la soglia ampiezza rimuove.
+# ---- re-classification with the current production criterion ----
+# The server (host/server.py) classifies a beat as PVC if:
+#   (rebound >= 0.40 OR width >= 95 ms) AND amplitude >= 0.70 V.
+# Historical peaks CSVs may have been written with the old criterion (without
+# the amplitude threshold): we reclassify here so the report always reflects the
+# current logic and highlights the false positives that the amplitude threshold removes.
 REBOUND_RATIO_PVC = 0.40
 PVC_WIDTH_MS      = 95.0
 PVC_MIN_AMP_V     = 0.70
-# Rebound minimo: una PVC vera ha SEMPRE qualche grado di iperpolarizzazione
-# post-QRS (rebound > 0.05). Se rebound = 0 e la classificazione si appoggia solo
-# al criterio width, è quasi certamente un artefatto largo (motion, baseline
-# shift) che ha bypassato la soglia width senza essere un vero complesso ectopico.
+# Minimum rebound: a true PVC ALWAYS has some degree of post-QRS
+# hyperpolarization (rebound > 0.05). If rebound = 0 and the classification rests only
+# on the width criterion, it is almost certainly a wide artifact (motion, baseline
+# shift) that bypassed the width threshold without being a true ectopic complex.
 PVC_MIN_REBOUND   = 0.05
-# Plausibilità morfologica: un QRS umano ha width fisiologica tra ~40 e 220 ms.
-# Sotto 40 ms = spike artefatto (electrode pop / picco di rumore stretto che ha
-# crossato la soglia ampiezza). Sopra 220 ms = baseline shift / motion artifact
-# (es. respiro profondo, urto sull'elettrodo) che il detector ha interpretato
-# come complesso largo. Entrambi vengono declassati a "normal" e tracciati.
+# Morphological plausibility: a human QRS has physiological width between ~40 and 220 ms.
+# Below 40 ms = artifact spike (electrode pop / narrow noise peak that
+# crossed the amplitude threshold). Above 220 ms = baseline shift / motion artifact
+# (e.g. deep breath, knock on the electrode) that the detector interpreted
+# as a wide complex. Both are downgraded to "normal" and tracked.
 PVC_W_MIN_MS      = 40.0
 PVC_W_MAX_MS      = 220.0
-removed_fp = []   # battiti declassati pvc -> normal dalla soglia di ampiezza
-removed_implausible = []  # battiti declassati per width fuori range fisiologico
+removed_fp = []   # beats downgraded pvc -> normal by the amplitude threshold
+removed_implausible = []  # beats downgraded for width outside the physiological range
 for p in peaks:
     shape_pvc = (p["reb"] >= REBOUND_RATIO_PVC or p["w"] >= PVC_WIDTH_MS)
     plausible_w = PVC_W_MIN_MS <= p["w"] <= PVC_W_MAX_MS
@@ -109,30 +109,30 @@ for p in peaks:
     p["cls"] = "pvc" if (shape_pvc and p["amp"] >= PVC_MIN_AMP_V
                           and plausible_w and has_rebound) else "normal"
 
-# ---- pulizia: rimuovi gli spike di rumore (non sono battiti) ----
-# Larghezza <= 16 ms (4 campioni @250 Hz) è sub-fisiologica: sono artefatti /
-# electrode-pop, non QRS reali. Si tolgono del tutto dalla serie (non solo
-# declassati) così non inquinano conteggi, RR e morfologia. Restano comunque
-# elencati in removed_fp per la sezione esplicativa.
+# ---- cleanup: remove noise spikes (they are not beats) ----
+# Width <= 16 ms (4 samples @250 Hz) is sub-physiological: these are artifacts /
+# electrode-pop, not real QRS. They are removed entirely from the series (not just
+# downgraded) so they do not pollute counts, RR and morphology. They remain
+# listed in removed_fp for the explanatory section.
 n_spike_removed = sum(1 for p in peaks if p["w"] <= 16 and p["amp"] < PVC_MIN_AMP_V)
 peaks = [p for p in peaks if not (p["w"] <= 16 and p["amp"] < PVC_MIN_AMP_V)]
 
-# ---- esclusione di intervalli temporali contaminati (rumore, elettrodo staccato) ----
-# Tre fonti di esclusioni (in ordine di priorità):
-#   1) env var EXCLUDE_INTERVALS="s1-e1,s2-e2,..." (override esplicito)
-#   2) file exclusions/exclusions_<base>.json (creato da host/mark_exclusions.py)
-#   3) nessuna esclusione
-# I picchi nei tratti esclusi sono rimossi e il tempo viene sottratto dalla durata
-# utile per non gonfiare i rate.
+# ---- exclusion of contaminated time intervals (noise, detached electrode) ----
+# Three sources of exclusions (in priority order):
+#   1) env var EXCLUDE_INTERVALS="s1-e1,s2-e2,..." (explicit override)
+#   2) file exclusions/exclusions_<base>.json (created by host/mark_exclusions.py)
+#   3) no exclusions
+# Peaks in the excluded segments are removed and the time is subtracted from the
+# useful duration so the rates are not inflated.
 EXCLUDED_INTERVALS = []
 _excl_env = os.environ.get("EXCLUDE_INTERVALS", "").strip()
 if _excl_env:
     for chunk in _excl_env.split(","):
         a, b = chunk.split("-")
         EXCLUDED_INTERVALS.append((float(a), float(b)))
-    print(f"[excl] {len(EXCLUDED_INTERVALS)} intervalli da EXCLUDE_INTERVALS env var")
+    print(f"[excl] {len(EXCLUDED_INTERVALS)} intervals from EXCLUDE_INTERVALS env var")
 else:
-    # fallback al file JSON dell'editor manuale
+    # fallback to the JSON file from the manual editor
     import json as _json
     _ses_id = os.path.basename(PATH).replace("ecg_", "").replace(".csv", "")
     _excl_path = os.path.join("exclusions", f"exclusions_{_ses_id}.json")
@@ -141,9 +141,9 @@ else:
             with open(_excl_path) as _f:
                 _ej = _json.load(_f)
             EXCLUDED_INTERVALS = [(d["start"], d["end"]) for d in _ej.get("intervals", [])]
-            print(f"[excl] {len(EXCLUDED_INTERVALS)} intervalli da {_excl_path}")
+            print(f"[excl] {len(EXCLUDED_INTERVALS)} intervals from {_excl_path}")
         except Exception as _e:
-            print(f"[excl] errore lettura {_excl_path}: {_e}")
+            print(f"[excl] error reading {_excl_path}: {_e}")
 if EXCLUDED_INTERVALS:
     def _in_excl(tv):
         return any(s <= tv <= e for s, e in EXCLUDED_INTERVALS)
@@ -157,7 +157,7 @@ else:
 
 ses_id = os.path.basename(PATH).replace("ecg_", "").replace(".csv", "")
 total_s_raw = float(t[-1] - t[0]) if N else 0
-total_s = total_s_raw - excl_seconds  # durata utile dopo esclusioni
+total_s = total_s_raw - excl_seconds  # useful duration after exclusions
 total_min = total_s / 60.0
 fs_real = N / total_s_raw if total_s_raw else SAMPLE_HZ
 norm = [p for p in peaks if p["cls"] == "normal"]
@@ -173,11 +173,11 @@ for i in range(len(peaks)):
     peaks[i]["rr_next"] = (peaks[i+1]["t"] - peaks[i]["t"]) if i < len(peaks)-1 else None
 sinus_rr  = [peaks[i]["rr_prev"] for i in range(1, len(peaks))
              if peaks[i]["cls"] == "normal" and peaks[i-1]["cls"] == "normal"]
-# ---- pulizia: coupling contaminato da battito sinusale non rilevato ----
-# Un coupling vero è PREMATURO (più corto del RR sinusale). Se l'rr_prev di una
-# PVC supera ~0.9x il RR sinusale mediano, quasi sempre è perché un battito
-# sinusale è stato perso nel gap (falso "late-coupled"): l'intervallo NON è un
-# vero coupling, quindi lo escludiamo da coupling/tachogramma.
+# ---- cleanup: coupling contaminated by an undetected sinus beat ----
+# A true coupling is PREMATURE (shorter than the sinus RR). If the rr_prev of a
+# PVC exceeds ~0.9x the median sinus RR, it is almost always because a sinus
+# beat was missed in the gap (false "late-coupled"): the interval is NOT a
+# true coupling, so we exclude it from coupling/tachogram.
 _sinus_median_rr = statistics.median(sinus_rr) if sinus_rr else 0.0
 COUPLING_MAX_FACTOR = 0.9
 n_coupling_excluded = 0
@@ -190,30 +190,30 @@ for p in peaks:
 coupling  = [p["rr_prev"] for p in peaks if p["cls"] == "pvc" and p["rr_prev"] is not None and not p["coupling_bad"]]
 compensatory = [p["rr_next"] for p in peaks if p["cls"] == "pvc" and p["rr_next"] is not None]
 
-# transizioni RR per categoria (per decomposizione tachogramma)
+# RR transitions by category (for tachogram decomposition)
 transitions = {"N→N": [], "N→PVC": [], "PVC→N": [], "PVC→PVC": []}
 for i_t in range(1, len(peaks)):
     if peaks[i_t]["rr_prev"] is None: continue
-    # salta gli rr_prev contaminati da un battito sinusale perso (vedi sopra)
+    # skip the rr_prev values contaminated by a missed sinus beat (see above)
     if peaks[i_t].get("coupling_bad"): continue
     rr_ms_t = peaks[i_t]["rr_prev"] * 1000
     prev_t = "PVC" if peaks[i_t-1]["cls"] == "pvc" else "N"
     cur_t  = "PVC" if peaks[i_t]["cls"]   == "pvc" else "N"
     transitions[f"{prev_t}→{cur_t}"].append((peaks[i_t]["t"]/60, rr_ms_t))
 
-# fascia "750ms" (700-800) decomposta
+# "750ms" band (700-800) decomposed
 band750_breakdown = {k: sum(1 for tm, rr in v if 700 <= rr <= 800) for k, v in transitions.items()}
-# fascia "1180ms" (1000-1500)
+# "1180ms" band (1000-1500)
 band1180_breakdown = {k: sum(1 for tm, rr in v if 1000 <= rr <= 1500) for k, v in transitions.items()}
 
-# ----- Analisi ampiezza dei battiti normali per contesto -----
-# Per ogni normale: classifica il contesto rispetto al PVC piu' vicino
-# - stable: prev e next sono normali (e non immediatamente adiacenti a PVC)
-# - pre_pvc: il battito SUCCESSIVO e' una PVC
-# - post_pvc: il battito PRECEDENTE era una PVC
-# - sandwich: pre PVC E post PVC (caso bigeminia stretta, raro)
+# ----- Amplitude analysis of normal beats by context -----
+# For each normal beat: classify the context relative to the nearest PVC
+# - stable: prev and next are normal (and not immediately adjacent to a PVC)
+# - pre_pvc: the NEXT beat is a PVC
+# - post_pvc: the PREVIOUS beat was a PVC
+# - sandwich: pre PVC AND post PVC (tight bigeminy case, rare)
 amp_groups = {"stable": [], "pre_pvc": [], "post_pvc": [], "sandwich": []}
-amp_rr_pairs = []  # (rr_prev_s, amp_V, group) per scatter Frank-Starling
+amp_rr_pairs = []  # (rr_prev_s, amp_V, group) for Frank-Starling scatter
 for i, p in enumerate(peaks):
     if p["cls"] != "normal": continue
     prev_pvc = (i > 0 and peaks[i-1]["cls"] == "pvc")
@@ -242,7 +242,7 @@ def grp_stats(vals):
 
 amp_stats = {k: grp_stats(v) for k, v in amp_groups.items()}
 
-# correlazione ampiezza vs RR precedente (Frank-Starling): rough Pearson
+# amplitude vs previous RR correlation (Frank-Starling): rough Pearson
 def pearson(xs, ys):
     if len(xs) < 3: return 0
     mx = statistics.mean(xs); my = statistics.mean(ys)
@@ -259,19 +259,19 @@ r_all_norm = pearson([rr for rr, a, g in amp_rr_pairs], [a for rr, a, g in amp_r
 iso_pvc = sum(1 for i, p in enumerate(peaks) if p["cls"] == "pvc"
               and (i == 0 or peaks[i-1]["cls"] != "pvc")
               and (i == len(peaks)-1 or peaks[i+1]["cls"] != "pvc"))
-# couplet = 2 PVC veramente consecutive (RR < 700ms). Senza vincolo temporale
-# i battiti normali persi fra due PVC le fanno apparire adiacenti nella lista.
+# couplet = 2 truly consecutive PVC (RR < 700ms). Without a temporal constraint
+# the normal beats missed between two PVC make them appear adjacent in the list.
 COUPLET_MAX_RR_S = 0.70
 couplets_n = 0
-couplet_indices = []  # coppie di indici (i, i+1) dei couplet veri
+couplet_indices = []  # index pairs (i, i+1) of the true couplets
 i = 0
 while i < len(peaks) - 1:
     if peaks[i]["cls"] == "pvc" and peaks[i+1]["cls"] == "pvc":
         rr = peaks[i+1]["t"] - peaks[i]["t"]
         if rr >= COUPLET_MAX_RR_S:
-            i += 1; continue  # gap troppo grande → non è couplet
+            i += 1; continue  # gap too large → not a couplet
         if i+2 < len(peaks) and peaks[i+2]["cls"] == "pvc":
-            i += 1; continue  # è una run, non un couplet
+            i += 1; continue  # it's a run, not a couplet
         couplets_n += 1
         couplet_indices.append((i, i+1))
         i += 2
@@ -321,12 +321,12 @@ if len(sinus_rr) >= LOOKBACK:
     for k in range(0, len(sinus_rr) - LOOKBACK + 1, LOOKBACK):
         baseline_stdevs.append(statistics.stdev(sinus_rr[k:k+LOOKBACK]))
 
-# ---- Classificazione PVC: interpolata vs compensatoria ----
-# Una PVC interpolata si infila fra due N senza resettare il nodo SA: la somma
-# (RR_pre + RR_post) ≈ 1× RR sinus (la PVC è "in più" nel ritmo). Una PVC con
-# pausa compensatoria PIENA ha somma ≈ 2× RR sinus (il nodo SA salta un battito).
-# Le interpolate sono favorite dalle bradicardie (più spazio diastolico) e sono
-# emodinamicamente più benigne (il cuore non perde gittata).
+# ---- PVC classification: interpolated vs compensatory ----
+# An interpolated PVC slots between two N beats without resetting the SA node: the sum
+# (RR_pre + RR_post) ≈ 1× RR sinus (the PVC is "extra" in the rhythm). A PVC with a
+# FULL compensatory pause has sum ≈ 2× RR sinus (the SA node skips a beat).
+# Interpolated ones are favored by bradycardia (more diastolic room) and are
+# hemodynamically more benign (the heart does not lose output).
 sinus_rr_for_class = [p["rr_prev"] for p in peaks
                        if p["cls"] == "normal" and p["rr_prev"] is not None
                        and 0.6 < p["rr_prev"] < 1.4]
@@ -334,7 +334,7 @@ RR_SINUS_MS = statistics.median(sinus_rr_for_class)*1000 if sinus_rr_for_class e
 
 interpolated_list = []
 compensated_list = []
-incomplete_list  = []   # tra i due (>1.3× e <1.85×)
+incomplete_list  = []   # between the two (>1.3× and <1.85×)
 for idx, p in enumerate(peaks):
     if p["cls"] != "pvc": continue
     if p["rr_prev"] is None or p["rr_next"] is None: continue
@@ -357,11 +357,11 @@ pct_interp = 100*len(interpolated_list)/max(1,n_class_total)
 pct_comp   = 100*len(compensated_list)/max(1,n_class_total)
 pct_incomp = 100*len(incomplete_list)/max(1,n_class_total)
 
-# ---- Screening fibrillazione atriale (su tutti gli N-N consecutivi) ----
-# Marker classici: irregolarità degli RR fra battiti sinusali.
-#   RMSSD > 100 ms   pNN50 > 40%   CV RR > 15-20%   entropia ~max   bimodalità persa
-# Da solo nessuno è diagnostico (servirebbero 12 derivazioni), ma il quadro
-# complessivo permette di flaggare un'eventuale ritmo "irregolarmente irregolare".
+# ---- Atrial fibrillation screening (over all consecutive N-N) ----
+# Classic markers: RR irregularity between sinus beats.
+#   RMSSD > 100 ms   pNN50 > 40%   CV RR > 15-20%   entropy ~max   bimodality lost
+# None is diagnostic on its own (12 leads would be needed), but the overall
+# picture lets us flag a possible "irregularly irregular" rhythm.
 af_nn_ms = []
 for i_nn in range(1, len(peaks)):
     if peaks[i_nn]["cls"] == "normal" and peaks[i_nn-1]["cls"] == "normal":
@@ -381,7 +381,7 @@ if len(af_nn_ms) >= 30:
     af["rmssd_ms"] = (sum(d*d for d in diffs) / len(diffs))**0.5
     af["pnn50"]    = 100 * sum(1 for d in diffs if d > 50) / len(diffs)
     af["pnn20"]    = 100 * sum(1 for d in diffs if d > 20) / len(diffs)
-    # entropia di Shannon su istogramma 20 bin (rapporto col massimo teorico)
+    # Shannon entropy over a 20-bin histogram (ratio to the theoretical maximum)
     hist_af, edges_af = np.histogram(af_nn_ms, bins=20)
     p_af = hist_af[hist_af > 0] / sum(hist_af[hist_af > 0])
     H_af = float(-sum(p * np.log2(p) for p in p_af))
@@ -389,7 +389,7 @@ if len(af_nn_ms) >= 30:
     af["entropy"]     = H_af
     af["entropy_max"] = H_max_af
     af["entropy_ratio"] = H_af / H_max_af if H_max_af else 0
-    # bimodalità: cerca due picchi separati nell'istogramma
+    # bimodality: look for two separate peaks in the histogram
     smooth = np.convolve(hist_af, [1,1,1], mode="same")
     peaks_h = [k for k in range(1, len(smooth)-1)
                if smooth[k] > smooth[k-1] and smooth[k] > smooth[k+1]
@@ -397,7 +397,7 @@ if len(af_nn_ms) >= 30:
     af["histogram"] = hist_af
     af["hist_edges"] = edges_af
     af["n_peaks"]    = len(peaks_h)
-    # finestre 30 battiti con CV alto
+    # 30-beat windows with high CV
     WIN_AF = 30
     flagged = 0; total = 0
     for k in range(0, len(af_nn_ms) - WIN_AF, 10):
@@ -413,23 +413,23 @@ if len(af_nn_ms) >= 30:
     if af["rmssd_ms"] > 100:        score += 1
     if af["pnn50"] > 40:            score += 1
     if af["entropy_ratio"] > 0.85:  score += 1
-    if af["n_peaks"] <= 1 and af["cv_pct"] > 15: score += 1  # unimodale e ampia = AF; bimodale = no
+    if af["n_peaks"] <= 1 and af["cv_pct"] > 15: score += 1  # unimodal and wide = AF; bimodal = no
     af["score"] = score
     if score == 0:
-        af["verdict"] = "Ritmo sinusale regolare. Nessun marker di fibrillazione atriale."
+        af["verdict"] = "Regular sinus rhythm. No markers of atrial fibrillation."
     elif score == 1:
-        af["verdict"] = ("Markers HRV elevati ma con struttura conservata. "
-                         "Pattern compatibile con bradicardia + RSA + ectopia frequente; "
-                         "non suggestivo di fibrillazione atriale.")
+        af["verdict"] = ("Elevated HRV markers but with preserved structure. "
+                         "Pattern compatible with bradycardia + RSA + frequent ectopy; "
+                         "not suggestive of atrial fibrillation.")
     elif score == 2:
-        af["verdict"] = ("Markers HRV intermedi. Sospetto basso ma non escluso; "
-                         "raccomandato controllo con ECG 12 derivazioni se sintomi presenti.")
+        af["verdict"] = ("Intermediate HRV markers. Low suspicion but not excluded; "
+                         "a 12-lead ECG check is recommended if symptoms are present.")
     else:
-        af["verdict"] = ("Markers HRV elevati con perdita di struttura: ritmo "
-                         "irregolarmente irregolare. Compatibile con sospetto AF; "
-                         "raccomandato controllo cardiologico.")
+        af["verdict"] = ("Elevated HRV markers with loss of structure: an "
+                         "irregularly irregular rhythm. Compatible with suspected AF; "
+                         "a cardiology check is recommended.")
 else:
-    af["verdict"] = "Pochi N-N consecutivi: screening non eseguibile (bigeminia troppo densa o segnale degradato)."
+    af["verdict"] = "Few consecutive N-N: screening not feasible (bigeminy too dense or degraded signal)."
 
 WINDOW = 60
 windows = []
@@ -440,7 +440,7 @@ while peaks and peaks[0]["t"] + i_w*WINDOW < peaks[-1]["t"]:
     in_w = [p for p in peaks if ws <= p["t"] < we]
     nn = sum(1 for p in in_w if p["cls"] == "normal")
     np_ = sum(1 for p in in_w if p["cls"] == "pvc")
-    # HR SA effettiva nel minuto: median(60/RR_NN) su coppie N-N consecutive
+    # effective SA HR in the minute: median(60/RR_NN) over consecutive N-N pairs
     rr_nn = []
     for j in range(1, len(in_w)):
         if in_w[j]["cls"] == "normal" and in_w[j-1]["cls"] == "normal":
@@ -503,12 +503,12 @@ def fig_to_bytes(fig):
     return buf
 
 def fit_image(buf, max_w_mm=170.0, max_h_mm=245.0, max_px=1500):
-    """Crea un Image flowable garantito più piccolo del frame stampabile.
-    Scala alla larghezza utile preservando l'aspect ratio reale del PNG e, se
-    necessario, riduce i pixel nativi: ReportLab 4.x può ignorare width/height
-    espliciti quando la dimensione naturale del PNG supera il frame, causando
-    LayoutError 'image too large'. Capando dimensioni native e flowable sotto
-    al frame (frame utile A4 ≈ 174×267 mm) il problema sparisce alla radice."""
+    """Create an Image flowable guaranteed to be smaller than the printable frame.
+    Scale to the usable width preserving the real aspect ratio of the PNG and, if
+    necessary, reduce the native pixels: ReportLab 4.x may ignore explicit
+    width/height when the natural size of the PNG exceeds the frame, causing a
+    LayoutError 'image too large'. By capping native and flowable dimensions below
+    the frame (usable A4 frame ≈ 174×267 mm) the problem disappears at the root."""
     buf.seek(0)
     pil = PILImage.open(buf)
     pw, ph = pil.size
@@ -530,8 +530,8 @@ def fit_image(buf, max_w_mm=170.0, max_h_mm=245.0, max_px=1500):
 
 def make_event_strip(center_t, win_s=6.0, highlight=None, title=None,
                      figsize=(8.0, 2.2)):
-    """Strip di una singola finestra di win_s secondi centrata su un evento.
-    highlight: lista di t (s) di battiti da cerchiare in arancione."""
+    """Strip of a single window of win_s seconds centered on an event.
+    highlight: list of t (s) of beats to circle in orange."""
     rs = max(0.0, center_t - win_s / 2.0); re = rs + win_s
     mask = (t >= rs) & (t < re)
     fig, ax = plt.subplots(figsize=figsize)
@@ -558,8 +558,8 @@ def make_event_strip(center_t, win_s=6.0, highlight=None, title=None,
     return fig_to_bytes(fig)
 
 def make_interpolated_strip(p_center, win_s=9.0, title=None):
-    """Strip didattica che mostra una PVC con le sue RR_pre / RR_post annotate
-    e la somma vs 2x RR sinus (per distinguere interpolata vs compensatoria)."""
+    """Didactic strip showing a PVC with its RR_pre / RR_post annotated
+    and the sum vs 2x RR sinus (to distinguish interpolated vs compensatory)."""
     c0 = p_center["t"]
     mask = (t >= c0 - win_s/2.0) & (t <= c0 + win_s/2.0)
     fig, ax = plt.subplots(figsize=(8.5, 2.6))
@@ -583,14 +583,14 @@ def make_interpolated_strip(p_center, win_s=9.0, title=None):
                 color="#7ad9ff", fontsize=9, ha="center", fontweight="bold")
     ax.annotate(f"RR_post={rr_n_ms:.0f}ms", xy=(rr_n_ms/2000.0, -0.95),
                 color="#ffe169", fontsize=9, ha="center", fontweight="bold")
-    styled_ax(ax, title, "t (s) rispetto alla PVC", "ECG filtrato (V)")
+    styled_ax(ax, title, "t (s) relative to the PVC", "Filtered ECG (V)")
     plt.tight_layout()
     return fig_to_bytes(fig)
 
 def make_example_style_strip(center_t, win_s=6.0, title=None):
-    """Strip nello STESSO stile della traccia esemplificativa di cima:
-    overlay rosso sul QRS delle PVC (±120 ms) + triangolo rosso, triangoli
-    verdi sui sinusali, styled_ax. Nessun cerchio arancione."""
+    """Strip in the SAME style as the example trace at the top:
+    red overlay on the QRS of the PVC (±120 ms) + red triangle, green
+    triangles on the sinus beats, styled_ax. No orange circle."""
     c0 = center_t
     mask = (t >= c0 - win_s / 2.0) & (t <= c0 + win_s / 2.0)
     fig, ax = plt.subplots(figsize=(8.5, 2.8))
@@ -609,14 +609,14 @@ def make_example_style_strip(center_t, win_s=6.0, title=None):
         else:
             ax.scatter(p["t"] - c0, min(1.4, p["amp"] + 0.18), s=18, marker="v",
                        color=GREEN, edgecolors="white", linewidths=0.3, zorder=4)
-    styled_ax(ax, title, "t (s) rispetto al centro del couplet", "ECG filtrato (V)")
+    styled_ax(ax, title, "t (s) relative to the couplet center", "Filtered ECG (V)")
     plt.tight_layout()
     return fig_to_bytes(fig)
 
 def make_strip_page_image(t0, t1, rows_per_page=STRIP_ROWS_PER_PAGE,
                           row_s=STRIP_ROW_SECONDS):
-    """Plot di una pagina di strip-chart: N righe da row_s secondi.
-    t0..t1 sono i secondi assoluti del primo e ultimo punto della pagina."""
+    """Plot of one strip-chart page: N rows of row_s seconds.
+    t0..t1 are the absolute seconds of the first and last point of the page."""
     fig, axes = plt.subplots(rows_per_page, 1, figsize=(7.5, 9.5))
     fig.patch.set_facecolor(DARK_BG)
     if rows_per_page == 1: axes = [axes]
@@ -659,37 +659,37 @@ def make_strip_page_image(t0, t1, rows_per_page=STRIP_ROWS_PER_PAGE,
                     transform=ax.transAxes, ha="right", va="top",
                     fontsize=7, color=MUTED,
                     bbox=dict(facecolor=DARK_BG, edgecolor="none", pad=2, alpha=0.7))
-    axes[-1].set_xlabel("secondi dall'inizio della riga", color=MUTED, fontsize=8)
+    axes[-1].set_xlabel("seconds from the start of the row", color=MUTED, fontsize=8)
     plt.tight_layout(h_pad=0.4)
     return fig_to_bytes(fig)
 
 # ---- generate all plot images ----
-print("genero plots...")
+print("generating plots...")
 
-# (A) ECG example: 8 secondi con una PVC "pulita" rappresentativa.
-# Criteri: dopo il primo minuto (no warm-up), sandwich N-PVC-N (entrambi i battiti
-# adiacenti normali), lontana ≥2s da qualunque intervallo escluso. Tra i candidati,
-# scegliamo quella con ampiezza mediana (più rappresentativa, non outlier).
+# (A) ECG example: 8 seconds with a representative "clean" PVC.
+# Criteria: after the first minute (no warm-up), N-PVC-N sandwich (both adjacent
+# beats normal), at least 2s away from any excluded interval. Among the candidates,
+# we pick the one with median amplitude (more representative, not an outlier).
 ecg_example_img = None
 if pvc and N:
     def _far_from_excluded(t_s, margin=2.0):
         return all(not (s-margin <= t_s <= e+margin) for s, e in EXCLUDED_INTERVALS)
-    # candidati: PVC sandwich N-PVC-N (con RR_prev e RR_next definiti)
+    # candidates: N-PVC-N sandwich PVC (with RR_prev and RR_next defined)
     pvc_idx = [i for i, p in enumerate(peaks) if p["cls"] == "pvc"]
     candidates = []
     for i in pvc_idx:
         p = peaks[i]
-        if p["t"] < 60: continue  # skip primo minuto
+        if p["t"] < 60: continue  # skip first minute
         if i == 0 or i == len(peaks)-1: continue
         if peaks[i-1]["cls"] != "normal" or peaks[i+1]["cls"] != "normal": continue
         if not _far_from_excluded(p["t"]): continue
         candidates.append(p)
     if candidates:
-        # ordina per ampiezza e prendi quella mediana
+        # sort by amplitude and take the median one
         candidates.sort(key=lambda q: q["amp"])
         chosen = candidates[len(candidates)//2]
     else:
-        # fallback: prima PVC dopo il primo minuto, oppure pvc[0]
+        # fallback: first PVC after the first minute, or pvc[0]
         chosen = next((p for p in pvc if p["t"] >= 60 and _far_from_excluded(p["t"])), pvc[0])
     p0 = chosen["t"]
     mask = (t >= p0-3) & (t <= p0+5)
@@ -707,12 +707,12 @@ if pvc and N:
         if p["cls"] == "normal" and p0-3 <= p["t"] <= p0+5:
             ax.scatter(p["t"]-p0, min(1.4, p["amp"]+0.18), s=18, marker="v",
                        color=GREEN, edgecolors="white", linewidths=0.3, zorder=4)
-    styled_ax(ax, f"Esempio rappresentativo: 8 s attorno a una PVC a {int(p0//60):02d}:{int(p0%60):02d}",
-              "t (s) rispetto alla PVC selezionata", "ECG filtrato (V)")
+    styled_ax(ax, f"Representative example: 8 s around a PVC at {int(p0//60):02d}:{int(p0%60):02d}",
+              "t (s) relative to the selected PVC", "Filtered ECG (V)")
     plt.tight_layout()
     ecg_example_img = fig_to_bytes(fig)
 
-# (B) Overview compressa
+# (B) Compressed overview
 overview_img = None
 if N:
     fig, ax = plt.subplots(figsize=(8.5, 2.5))
@@ -722,8 +722,8 @@ if N:
     if pvc:
         ax.scatter([p["t"]/60 for p in pvc], [1.55]*len(pvc), s=4, color=RED, marker="v")
     ax.set_ylim(-1.2, 1.8)
-    styled_ax(ax, f"Overview compresso ({total_min:.1f} min). Triangoli rossi = posizioni PVC.",
-              "Tempo (min)", "ECG filt (V)")
+    styled_ax(ax, f"Compressed overview ({total_min:.1f} min). Red triangles = PVC positions.",
+              "Time (min)", "ECG filt (V)")
     plt.tight_layout()
     overview_img = fig_to_bytes(fig)
 
@@ -736,8 +736,8 @@ if peaks:
         if p["rr_prev"] is None: continue
         c = RED if p["cls"] == "pvc" else GREEN
         ax.scatter(p["t"]/60, 1000*p["rr_prev"], c=c, s=5, alpha=0.7)
-    styled_ax(ax, "Tachogramma — intervallo RR per ogni battito nel tempo",
-              "Tempo (min)", "RR (ms)")
+    styled_ax(ax, "Tachogram — RR interval for each beat over time",
+              "Time (min)", "RR (ms)")
     plt.tight_layout()
     tacho_img = fig_to_bytes(fig)
 
@@ -755,8 +755,8 @@ if peaks:
                    c=colors_map[k], s=sizes_map[k], alpha=0.6, label=f"{k} (n={len(vv)})",
                    edgecolors="white" if k=="PVC→PVC" else "none", linewidths=0.4)
     ax.legend(facecolor="#222", labelcolor="white", edgecolor=GRID, fontsize=8, loc="upper right", ncol=2)
-    styled_ax(ax, "Tachogramma decomposto per tipo di transizione",
-              "Tempo (min)", "RR (ms)")
+    styled_ax(ax, "Tachogram decomposed by transition type",
+              "Time (min)", "RR (ms)")
     plt.tight_layout()
     tacho_decomp_img = fig_to_bytes(fig)
 
@@ -774,8 +774,8 @@ if coupling and sinus_rr:
     ax.axvline(coupling_median, color=RED, linestyle="--", alpha=0.8, linewidth=1.5,
                label=f"Coupling med {coupling_median:.0f}ms")
     ax.legend(facecolor="#222", labelcolor="white", edgecolor=GRID, fontsize=8, loc="upper right")
-    styled_ax(ax, "Distribuzione RR — bimodalità sinus vs coupling pre-PVC",
-              "RR (ms)", "Densità")
+    styled_ax(ax, "RR distribution — bimodality sinus vs pre-PVC coupling",
+              "RR (ms)", "Density")
     plt.tight_layout()
     hist_img = fig_to_bytes(fig)
 
@@ -787,14 +787,14 @@ if coupling:
     pvc_times_for_coupling = [p["t"]/60 for p in peaks if p["cls"] == "pvc" and p["rr_prev"] is not None and not p["coupling_bad"]]
     ax.scatter(pvc_times_for_coupling, [c*1000 for c in coupling], c=RED, s=8, alpha=0.7)
     ax.axhline(coupling_median, color=ORANGE, linestyle="--", linewidth=1.2,
-               label=f"Mediana {coupling_median:.0f}ms")
+               label=f"Median {coupling_median:.0f}ms")
     ax.fill_between([pvc_times_for_coupling[0], pvc_times_for_coupling[-1]],
                     coupling_median - coupling_std,
                     coupling_median + coupling_std,
                     color=ORANGE, alpha=0.1, label=f"±1σ ({coupling_std:.0f}ms)")
     ax.legend(facecolor="#222", labelcolor="white", edgecolor=GRID, fontsize=8)
-    styled_ax(ax, "Coupling interval nel tempo — stabilità del focolaio ectopico",
-              "Tempo (min)", "Coupling RR (ms)")
+    styled_ax(ax, "Coupling interval over time — ectopic focus stability",
+              "Time (min)", "Coupling RR (ms)")
     plt.tight_layout()
     coupling_stability_img = fig_to_bytes(fig)
 
@@ -809,13 +809,13 @@ if windows:
     ax.bar([x + 0.15 for x in ts_], [w["pvc"] for w in windows], width=0.3,
            color=RED, alpha=0.85, label="PVC")
     ax.legend(facecolor="#222", labelcolor="white", edgecolor=GRID, fontsize=8)
-    styled_ax(ax, "Battiti per minuto", "Tempo (min)", "N battiti/min")
+    styled_ax(ax, "Beats per minute", "Time (min)", "N beats/min")
     plt.tight_layout()
     counts_img = fig_to_bytes(fig)
 
-# (F2) Correlazione HR ↔ frequenza PVC nel tempo
-# Per ogni minuto della registrazione: HR SA effettiva + PVC rate + burden %.
-# Output: 2 plot (time-series dual-axis, scatter HR vs PVC con regressione).
+# (F2) HR ↔ PVC rate correlation over time
+# For each minute of the recording: effective SA HR + PVC rate + burden %.
+# Output: 2 plots (dual-axis time-series, HR vs PVC scatter with regression).
 hr_vs_pvc_ts_img = None
 hr_vs_pvc_scatter_img = None
 hr_pvc_correlation = None
@@ -832,10 +832,10 @@ if len(valid_w) >= 5:
     ax1.set_facecolor(DARK_BG)
     ax1.plot(ts_min, hrs, color=GREEN, lw=1.0, marker="o", ms=2,
              label="HR SA (BPM)")
-    ax1.set_ylabel("HR SA effettiva (BPM)", color=GREEN, fontsize=9)
+    ax1.set_ylabel("Effective SA HR (BPM)", color=GREEN, fontsize=9)
     ax1.tick_params(axis="y", colors=GREEN)
     ax1.tick_params(axis="x", colors="white")
-    ax1.set_xlabel("Tempo (min)", color="white", fontsize=9)
+    ax1.set_xlabel("Time (min)", color="white", fontsize=9)
     for sp in ax1.spines.values(): sp.set_color("#444")
     ax1.grid(alpha=0.18, color="#666")
     ax2 = ax1.twinx()
@@ -845,11 +845,11 @@ if len(valid_w) >= 5:
     ax2.set_ylabel("PVC/min", color=RED, fontsize=9)
     ax2.tick_params(axis="y", colors=RED)
     for sp in ax2.spines.values(): sp.set_color("#444")
-    ax1.set_title("HR SA effettiva e PVC rate minuto per minuto", color="white", fontsize=10)
+    ax1.set_title("Effective SA HR and PVC rate minute by minute", color="white", fontsize=10)
     plt.tight_layout()
     hr_vs_pvc_ts_img = fig_to_bytes(fig)
 
-    # scatter HR vs PVC rate con regressione + correlazione
+    # HR vs PVC rate scatter with regression + correlation
     r_pearson = pearson(hrs, pvc_min)
     slope, intercept = np.polyfit(hrs, pvc_min, 1)
     fig, ax = plt.subplots(figsize=(7.5, 5.0))
@@ -861,11 +861,11 @@ if len(valid_w) >= 5:
     ax.plot(xline, slope*xline + intercept, color=ORANGE, lw=2,
             label=f"y = {slope:.2f}·x + {intercept:.1f}")
     cbar = plt.colorbar(sc, ax=ax)
-    cbar.set_label("Tempo (min)", color="white", fontsize=8)
+    cbar.set_label("Time (min)", color="white", fontsize=8)
     cbar.ax.tick_params(colors="white", labelsize=7)
     ax.legend(facecolor="#222", labelcolor="white", edgecolor=GRID, fontsize=9, loc="upper left")
-    ax.set_xlabel("HR SA effettiva (BPM)", color="white")
-    ax.set_ylabel("PVC al minuto", color="white")
+    ax.set_xlabel("Effective SA HR (BPM)", color="white")
+    ax.set_ylabel("PVC per minute", color="white")
     ax.set_title(f"Scatter HR vs PVC/min — Pearson r = {r_pearson:.3f}",
                  color="white", fontsize=10)
     ax.tick_params(colors="white")
@@ -891,21 +891,21 @@ if pre_pvc_stdevs:
     if len(pvc_ts) >= len(pre_pvc_stdevs):
         pvc_ts = pvc_ts[-len(pre_pvc_stdevs):]
     ax.scatter(pvc_ts, [1000*s for s in pre_pvc_stdevs], c=RED, s=8, alpha=0.7,
-               label="Stdev RR (5 normali pre-PVC)")
+               label="Stdev RR (5 pre-PVC normal beats)")
     if baseline_stdev_mean:
         ax.axhline(baseline_stdev_mean, color=GREEN, linestyle="--", linewidth=1.5,
                    label=f"Baseline sinus ({baseline_stdev_mean:.0f}ms)")
     ax.legend(facecolor="#222", labelcolor="white", edgecolor=GRID, fontsize=8)
-    styled_ax(ax, "Variabilità RR nei 5 battiti normali prima di ogni PVC",
-              "Tempo (min)", "Stdev RR (ms)")
+    styled_ax(ax, "RR variability in the 5 normal beats before each PVC",
+              "Time (min)", "Stdev RR (ms)")
     plt.tight_layout()
     hrv_img = fig_to_bytes(fig)
 
-# (H0) AF screening — istogramma + tachogramma N-N
+# (H0) AF screening — histogram + N-N tachogram
 af_hist_img = None
 af_tacho_img = None
 if af.get("median_ms") is not None:
-    # istogramma
+    # histogram
     fig, ax = plt.subplots(figsize=(11, 3.6))
     edges = af["hist_edges"]
     centers = (edges[:-1] + edges[1:]) / 2
@@ -913,17 +913,17 @@ if af.get("median_ms") is not None:
     ax.bar(centers, af["histogram"], width=width*0.95,
            color="#33aa66", edgecolor="white", linewidth=0.3)
     ax.axvline(af["median_ms"], color=ORANGE, linestyle="--", linewidth=1.5,
-               label=f"Mediana {af['median_ms']:.0f}ms")
+               label=f"Median {af['median_ms']:.0f}ms")
     ax.legend(facecolor="#222", labelcolor="white", edgecolor=GRID, fontsize=8)
-    styled_ax(ax, ("Istogramma RR N-N (tutti i battiti sinusali consecutivi) — "
-                   f"{af['n_peaks']} picco/picchi rilevati"),
-              "RR (ms)", "N° intervalli")
+    styled_ax(ax, ("RR N-N histogram (all consecutive sinus beats) — "
+                   f"{af['n_peaks']} peak(s) detected"),
+              "RR (ms)", "N intervals")
     plt.tight_layout()
     af_hist_img = fig_to_bytes(fig)
 
-    # tachogramma RR nel tempo
+    # RR tachogram over time
     fig, ax = plt.subplots(figsize=(11, 3.0))
-    # ricostruisco timestamps degli N-N
+    # reconstruct the N-N timestamps
     t_nn, rr_nn_list = [], []
     for i_nn in range(1, len(peaks)):
         if peaks[i_nn]["cls"] == "normal" and peaks[i_nn-1]["cls"] == "normal":
@@ -933,10 +933,10 @@ if af.get("median_ms") is not None:
                 rr_nn_list.append(rr_nn)
     ax.scatter(t_nn, rr_nn_list, c="#33aa66", s=4, alpha=0.6)
     ax.axhline(af["median_ms"], color=ORANGE, linestyle="--", linewidth=1.0,
-               alpha=0.8, label=f"Mediana {af['median_ms']:.0f}ms")
+               alpha=0.8, label=f"Median {af['median_ms']:.0f}ms")
     ax.legend(facecolor="#222", labelcolor="white", edgecolor=GRID, fontsize=8)
-    styled_ax(ax, "Tachogramma RR N-N — andamento temporale (AF si presenterebbe come nuvola caotica senza struttura)",
-              "Tempo (min)", "RR (ms)")
+    styled_ax(ax, "RR N-N tachogram — time course (AF would appear as a chaotic cloud with no structure)",
+              "Time (min)", "RR (ms)")
     plt.tight_layout()
     af_tacho_img = fig_to_bytes(fig)
 
@@ -948,10 +948,10 @@ if len(sinus_rr) >= 2:
     xs = [1000*sinus_rr[i] for i in range(len(sinus_rr)-1)]
     ys = [1000*sinus_rr[i+1] for i in range(len(sinus_rr)-1)]
     ax.scatter(xs, ys, c=GREEN, s=6, alpha=0.4, label="Sinus N-N")
-    # PVC: RR_prev (coupling) vs RR_next (compensatoria)
+    # PVC: RR_prev (coupling) vs RR_next (compensatory)
     px = [1000*p["rr_prev"] for p in peaks if p["cls"]=="pvc" and p["rr_prev"] and p["rr_next"]]
     py = [1000*p["rr_next"] for p in peaks if p["cls"]=="pvc" and p["rr_prev"] and p["rr_next"]]
-    ax.scatter(px, py, c=RED, s=12, alpha=0.7, label="PVC (coupling, compensatoria)")
+    ax.scatter(px, py, c=RED, s=12, alpha=0.7, label="PVC (coupling, compensatory)")
     lim = max(max(xs+px+[1]), max(ys+py+[1])) * 1.05
     ax.set_xlim(0, lim); ax.set_ylim(0, lim)
     ax.plot([0, lim], [0, lim], color=MUTED, linestyle=":", linewidth=0.6, alpha=0.7)
@@ -962,7 +962,7 @@ if len(sinus_rr) >= 2:
     plt.tight_layout()
     poincare_img = fig_to_bytes(fig)
 
-# (A1) Amplitude — histogram per contesto
+# (A1) Amplitude — histogram by context
 amp_hist_img = None
 if any(amp_groups[k] for k in ["stable","pre_pvc","post_pvc"]):
     fig, ax = plt.subplots(figsize=(8.5, 3.2))
@@ -973,15 +973,15 @@ if any(amp_groups[k] for k in ["stable","pre_pvc","post_pvc"]):
                 density=True, edgecolor="white", linewidth=0.3)
     if amp_groups["pre_pvc"]:
         ax.hist(amp_groups["pre_pvc"], bins=30, alpha=0.85, color=ORANGE,
-                label=f"Pre-PVC (N prima ectopica) n={len(amp_groups['pre_pvc'])}",
+                label=f"Pre-PVC (N before ectopic) n={len(amp_groups['pre_pvc'])}",
                 density=True, edgecolor="white", linewidth=0.3)
     if amp_groups["post_pvc"]:
         ax.hist(amp_groups["post_pvc"], bins=30, alpha=0.75, color=BLUE,
-                label=f"Post-PVC (N dopo pausa) n={len(amp_groups['post_pvc'])}",
+                label=f"Post-PVC (N after pause) n={len(amp_groups['post_pvc'])}",
                 density=True, edgecolor="white", linewidth=0.3)
     ax.legend(facecolor="#222", labelcolor="white", edgecolor=GRID, fontsize=8)
-    styled_ax(ax, "Distribuzione ampiezze QRS dei battiti normali per contesto",
-              "Ampiezza picco (V)", "Densità")
+    styled_ax(ax, "QRS amplitude distribution of normal beats by context",
+              "Peak amplitude (V)", "Density")
     plt.tight_layout()
     amp_hist_img = fig_to_bytes(fig)
 
@@ -996,21 +996,21 @@ if amp_rr_pairs:
         if pts:
             ax.scatter([p[0] for p in pts], [p[1] for p in pts],
                        c=color, s=10, alpha=0.5, label=f"{g} (n={len(pts)})")
-    # linea di regressione globale
+    # global regression line
     if len(amp_rr_pairs) > 10:
         xs_all = np.array([p[0]*1000 for p in amp_rr_pairs])
         ys_all = np.array([p[1] for p in amp_rr_pairs])
         m, b = np.polyfit(xs_all, ys_all, 1)
         xx = np.linspace(xs_all.min(), xs_all.max(), 50)
         ax.plot(xx, m*xx + b, color="white", linewidth=1.2, linestyle="--", alpha=0.7,
-                label=f"trend globale (r={r_all_norm:.2f})")
+                label=f"global trend (r={r_all_norm:.2f})")
     ax.legend(facecolor="#222", labelcolor="white", edgecolor=GRID, fontsize=8)
-    styled_ax(ax, "Ampiezza QRS vs RR precedente — effetto Frank-Starling",
-              "RR precedente (ms)", "Ampiezza QRS (V)")
+    styled_ax(ax, "QRS amplitude vs preceding RR — Frank-Starling effect",
+              "Preceding RR (ms)", "QRS amplitude (V)")
     plt.tight_layout()
     amp_rr_img = fig_to_bytes(fig)
 
-# (Z) Zoom strip 9-11 min (analisi locale)
+# (Z) Zoom strip 9-11 min (local analysis)
 zoom_img = None
 ZOOM_T0, ZOOM_T1 = 9*60, 11*60   # 9-11 min
 zoom_mask = (t >= ZOOM_T0) & (t < ZOOM_T1)
@@ -1018,7 +1018,7 @@ zoom_peaks_local = [p for p in peaks if ZOOM_T0 <= p["t"] < ZOOM_T1]
 if zoom_mask.any():
     fig, axes = plt.subplots(4, 1, figsize=(8.5, 6.5))
     fig.patch.set_facecolor(DARK_BG)
-    SEG = 30  # 30 sec per riga = 4 righe coprono 2 minuti
+    SEG = 30  # 30 sec per row = 4 rows cover 2 minutes
     for row_idx, ax in enumerate(axes):
         rs = ZOOM_T0 + row_idx * SEG
         re = rs + SEG
@@ -1052,8 +1052,8 @@ if zoom_mask.any():
         ax.text(0.995, 0.94, f"{rn}N · {rp}PVC", transform=ax.transAxes,
                 ha="right", va="top", fontsize=7, color=MUTED,
                 bbox=dict(facecolor=DARK_BG, edgecolor="none", pad=2, alpha=0.7))
-    axes[-1].set_xlabel("secondi nella riga", color=MUTED, fontsize=8)
-    axes[0].set_title("Zoom strip-chart 09:00 → 11:00 (4 righe da 30s)",
+    axes[-1].set_xlabel("seconds within the row", color=MUTED, fontsize=8)
+    axes[0].set_title("Zoom strip-chart 09:00 → 11:00 (4 rows of 30s)",
                       color="white", fontsize=10, pad=10)
     plt.tight_layout(h_pad=0.4)
     zoom_img = fig_to_bytes(fig)
@@ -1067,24 +1067,24 @@ for page_idx in range(n_strip_pages):
     img = make_strip_page_image(t0, t1)
     strip_imgs.append((img, t0, min(t1, total_s)))
 
-print(f"  {len(strip_imgs)} pagine di strip-chart")
-print(f"  {1 + len(strip_imgs) + 5} pagine totali stimate")
+print(f"  {len(strip_imgs)} strip-chart pages")
+print(f"  {1 + len(strip_imgs) + 5} estimated total pages")
 
-# (Z1) Esempi di couplet — stesso vincolo del conteggio (RR < COUPLET_MAX_RR_S).
-# Senza il vincolo temporale si finivano per mostrare coppie con un N saltato in
-# mezzo, che NON sono couplet veri.
+# (Z1) Couplet examples — same constraint as the count (RR < COUPLET_MAX_RR_S).
+# Without the temporal constraint we ended up showing pairs with an N skipped in
+# the middle, which are NOT true couplets.
 couplet_imgs = []
 for (i, j) in couplet_indices[:4]:
     ctr = (peaks[i]["t"] + peaks[j]["t"]) / 2.0
     rr_ms = (peaks[j]["t"] - peaks[i]["t"]) * 1000
     couplet_imgs.append(make_example_style_strip(
         ctr, win_s=6.0,
-        title=(f"Couplet a {int(ctr//60):02d}:{int(ctr%60):02d} — "
-               f"due PVC consecutive a {rr_ms:.0f}ms (overlay rosso)")))
+        title=(f"Couplet at {int(ctr//60):02d}:{int(ctr%60):02d} — "
+               f"two consecutive PVC at {rr_ms:.0f}ms (red overlay)")))
 
-# (Z2) Esempi rappresentativi dei battiti riclassificati dalla soglia di ampiezza.
-# Si escludono gli spike di rumore (w<=20ms, larghezza impossibile per un QRS):
-# come esempi servono i battiti piccoli VERI, vicini alla soglia (più istruttivi).
+# (Z2) Representative examples of beats reclassified by the amplitude threshold.
+# Noise spikes are excluded (w<=20ms, impossible width for a QRS):
+# as examples we want the REAL small beats, near the threshold (more instructive).
 n_fp_spike = sum(1 for q in removed_fp if q["w"] <= 20)
 repr_fp = [q for q in removed_fp if q["w"] > 28]
 fp_imgs = []
@@ -1092,21 +1092,21 @@ for p in sorted(repr_fp, key=lambda q: -q["amp"])[:3]:
     fp_imgs.append(make_event_strip(
         p["t"], win_s=5.0, highlight=[p["t"]],
         title=(f"{int(p['t']//60):02d}:{int(p['t']%60):02d} — amp {p['amp']:.2f} V "
-               f"(reb {p['reb']:.2f}, w {p['w']:.0f} ms): sotto soglia → normale")))
-print(f"  {len(couplet_imgs)} esempi couplet, {len(fp_imgs)} esempi falsi positivi")
+               f"(reb {p['reb']:.2f}, w {p['w']:.0f} ms): below threshold → normal")))
+print(f"  {len(couplet_imgs)} couplet examples, {len(fp_imgs)} false-positive examples")
 
-# (Z3) Esempi di PVC apparentemente "tardive" = battito sinusale non rilevato nel gap.
-# Sono i coupling esclusi dalle statistiche: li mostriamo comunque per trasparenza.
+# (Z3) Examples of apparently "late" PVC = sinus beat undetected in the gap.
+# These are the couplings excluded from the statistics: we show them anyway for transparency.
 latecoupled = [p for p in peaks if p.get("coupling_bad")]
 lc_imgs = []
 for p in latecoupled[:2]:
     lc_imgs.append(make_event_strip(
         p["t"], win_s=3.6, highlight=[p["t"]],
         title=(f"{int(p['t']//60):02d}:{int(p['t']%60):02d} — RR_prev {p['rr_prev']*1000:.0f} ms "
-               f"(coupling tipico ~{coupling_median:.0f} ms): QRS sinusale non marcato nel gap")))
-print(f"  {len(lc_imgs)} esempi PVC late-coupled (artefatto)")
+               f"(typical coupling ~{coupling_median:.0f} ms): sinus QRS not marked in the gap")))
+print(f"  {len(lc_imgs)} late-coupled PVC examples (artifact)")
 
-# (Z4) Esempi di PVC interpolate vs pausa compensatoria (didattico)
+# (Z4) Examples of interpolated PVC vs compensatory pause (didactic)
 def _pick_spread(lst, n=2, min_gap_s=60):
     out, last = [], -1e9
     for p in sorted(lst, key=lambda q: q["t"]):
@@ -1119,12 +1119,12 @@ interp_imgs = []
 interp_picked = _pick_spread(interpolated_list, n=5, min_gap_s=60)
 for idx_ex, p in enumerate(interp_picked):
     s_ms = p["sum_pre_post_ms"]
-    # ritrovo il numero globale (1..N) nella lista completa ordinata
+    # find the global number (1..N) in the full sorted list
     n_global = next((i+1 for i, q in enumerate(sorted(interpolated_list, key=lambda x: x["t"]))
                      if q is p), idx_ex+1)
     interp_imgs.append(make_interpolated_strip(
         p, win_s=8.0,
-        title=(f"#{n_global} INTERPOLATA — {int(p['t']//60):02d}:{int(p['t']%60):02d}   "
+        title=(f"#{n_global} INTERPOLATED — {int(p['t']//60):02d}:{int(p['t']%60):02d}   "
                f"Σ = {s_ms:.0f} ms ({s_ms/RR_SINUS_MS:.2f}× RR sinus)")))
 comp_imgs = []
 comp_picked = _pick_spread(compensated_list, n=5, min_gap_s=60)
@@ -1134,23 +1134,23 @@ for idx_ex, p in enumerate(comp_picked):
                      if q is p), idx_ex+1)
     comp_imgs.append(make_interpolated_strip(
         p, win_s=8.0,
-        title=(f"#{n_global} PAUSA COMPENSATORIA — {int(p['t']//60):02d}:{int(p['t']%60):02d}   "
+        title=(f"#{n_global} COMPENSATORY PAUSE — {int(p['t']//60):02d}:{int(p['t']%60):02d}   "
                f"Σ = {s_ms:.0f} ms ({s_ms/RR_SINUS_MS:.2f}× RR sinus)")))
-print(f"  {len(interp_imgs)} esempi interpolate, {len(comp_imgs)} esempi compensatorie")
+print(f"  {len(interp_imgs)} interpolated examples, {len(comp_imgs)} compensatory examples")
 
-# (Z5) GRID completa: tutte le PVC interpolate, una pagina alla volta.
-# Stesso layout dell'export verificato (12 strip/pagina, marcatori arancione/azzurro/giallo).
+# (Z5) Full GRID: all interpolated PVC, one page at a time.
+# Same layout as the verified export (12 strips/page, orange/blue/yellow markers).
 def _build_interpolated_grid_pages(items, RR_S, rows=6, cols=2, win_s=6.0):
-    """Restituisce una lista di immagini PNG (bytes), una per pagina di grid."""
+    """Return a list of PNG images (bytes), one per grid page."""
     per_page = rows * cols
     n_pages = (len(items) + per_page - 1) // per_page
     items_sorted = sorted(items, key=lambda q: q["t"])
     pages = []
     for page_idx in range(n_pages):
         fig, axes = plt.subplots(rows, cols, figsize=(8.27, 11.69), facecolor=DARK_BG)
-        fig.suptitle(f"PVC interpolate — pagina {page_idx+1}/{n_pages}   "
-                     f"RR sinus mediano {RR_S:.0f}ms   "
-                     f"[ ◯ arancione=PVC analizzata · ━azzurro=RR_pre · ━giallo=RR_post · ┄rosso=2×RR atteso ]",
+        fig.suptitle(f"Interpolated PVC — page {page_idx+1}/{n_pages}   "
+                     f"median sinus RR {RR_S:.0f}ms   "
+                     f"[ ◯ orange=analyzed PVC · ━light blue=RR_pre · ━yellow=RR_post · ┄red=expected 2×RR ]",
                      color="white", fontsize=7.5, y=0.997)
         for k in range(per_page):
             idx = page_idx*per_page + k
@@ -1173,7 +1173,7 @@ def _build_interpolated_grid_pages(items, RR_S, rows=6, cols=2, win_s=6.0):
                         ax.plot(t[wm] - c0, vf[wm], color=RED, lw=1.0)
                     else:
                         ax.plot(dt, 0.85, "v", color=GREEN, ms=3)
-            # PVC centrale evidenziata
+            # central PVC highlighted
             ax.scatter(0, p["amp"], s=240, marker="o", facecolors="none",
                        edgecolors="#ffa64d", linewidths=1.8, zorder=10)
             # RR_pre / RR_post
@@ -1189,11 +1189,11 @@ def _build_interpolated_grid_pages(items, RR_S, rows=6, cols=2, win_s=6.0):
             ax.plot([rrn, rrn], [y_post-0.05, y_post+0.05], color="#ffe169", lw=1.5)
             ax.text(rrn/2, y_post-0.15, f"{rrn*1000:.0f}", color="#ffe169",
                     fontsize=6, ha="center", fontweight="bold")
-            # linea 2× RR atteso
+            # expected 2× RR line
             comp_x = -rrp + 2*RR_S/1000.0
             if -win_s/2 < comp_x < win_s/2:
                 ax.axvline(comp_x, color="#ff4d6d", lw=0.8, ls="--", alpha=0.6)
-            # numero
+            # number
             ax.text(0.02, 0.97, f"#{idx+1}", transform=ax.transAxes,
                     color="#ffa64d", fontsize=11, fontweight="bold",
                     va="top", ha="left")
@@ -1209,9 +1209,9 @@ def _build_interpolated_grid_pages(items, RR_S, rows=6, cols=2, win_s=6.0):
         pages.append(fig_to_bytes(fig))
     return pages
 
-print(f"  generando grid completo {len(interpolated_list)} interpolate...")
+print(f"  generating full grid of {len(interpolated_list)} interpolated...")
 interp_grid_pages = _build_interpolated_grid_pages(interpolated_list, RR_SINUS_MS)
-print(f"  {len(interp_grid_pages)} pagine grid")
+print(f"  {len(interp_grid_pages)} grid pages")
 
 # ------------------ PDF assembly ------------------
 out_path = PATH.replace(os.sep + "ecg_", os.sep + "report_").replace(".csv", ".pdf")
@@ -1275,11 +1275,11 @@ story = []
 now = datetime.now().strftime("%Y-%m-%d %H:%M")
 
 # ---- PAGE 1 — COVER ----
-story.append(Paragraph("Report sessione holter", H1))
+story.append(Paragraph("Holter session report", H1))
 story.append(Paragraph(
-    f"<font color='#777'>Sessione <font name='Courier'>{ses_id}</font> · "
-    f"Durata <b>{total_min:.1f} min</b> · "
-    f"Sample rate {fs_real:.2f} Hz · Generato il {now}</font>",
+    f"<font color='#777'>Session <font name='Courier'>{ses_id}</font> · "
+    f"Duration <b>{total_min:.1f} min</b> · "
+    f"Sample rate {fs_real:.2f} Hz · Generated on {now}</font>",
     NORMAL
 ))
 story.append(Spacer(1, 6))
@@ -1289,10 +1289,10 @@ story.append(Spacer(1, 14))
 # Metric cards row
 ecg_total_bpm = 60 * n_total / total_s if total_s else 0
 cards = Table([[
-    metric_card("ECG total", f"{ecg_total_bpm:.0f}", "BPM elettrico", "#27ae60"),
-    metric_card("Sinus only", f"{sinus_bpm:.0f}", "BPM normali", "#2980b9"),
+    metric_card("ECG total", f"{ecg_total_bpm:.0f}", "electrical BPM", "#27ae60"),
+    metric_card("Sinus only", f"{sinus_bpm:.0f}", "normal BPM", "#2980b9"),
     metric_card("PVC rate", f"{pvc_rate:.1f}", "/min", "#c0392b"),
-    metric_card("PVC burden", f"{burden:.1f}", "% del totale", "#e67e22"),
+    metric_card("PVC burden", f"{burden:.1f}", "% of total", "#e67e22"),
 ]], colWidths=[44*mm]*4)
 cards.setStyle(TableStyle([("VALIGN", (0,0), (-1,-1), "MIDDLE"),
                            ("LEFTPADDING", (0,0), (-1,-1), 0),
@@ -1302,44 +1302,44 @@ story.append(Spacer(1, 14))
 
 # Brief summary
 summary_text = (
-    f"La registrazione di <b>{total_min:.1f} minuti</b> contiene <b>{n_total}</b> battiti, "
-    f"di cui <b>{len(norm)}</b> sinusali ({sinus_bpm:.0f} BPM medi) e <b>{len(pvc)}</b> "
-    f"classificati come battiti ectopici ventricolari (PVC). "
-    f"Il <b>PVC burden</b> è del <b>{burden:.1f}%</b>: una percentuale "
-    f"significativa di battiti ectopici è una caratteristica nota del paziente "
-    f"in carico al cardiologo. "
-    f"L'analisi successiva mostra che si tratta di un focolaio ectopico "
-    f"<b>monomorfo e temporalmente stabile</b> "
-    f"(coupling interval mediano {coupling_median:.0f} ms ± {coupling_std:.0f} ms, "
-    f"prematurità del {prematurity:.0f}% rispetto al ciclo sinusale di "
+    f"The <b>{total_min:.1f}-minute</b> recording contains <b>{n_total}</b> beats, "
+    f"of which <b>{len(norm)}</b> are sinus ({sinus_bpm:.0f} mean BPM) and <b>{len(pvc)}</b> "
+    f"classified as ventricular ectopic beats (PVC). "
+    f"The <b>PVC burden</b> is <b>{burden:.1f}%</b>: a significant "
+    f"percentage of ectopic beats is a known characteristic of the patient "
+    f"under the cardiologist's care. "
+    f"The subsequent analysis shows this is a "
+    f"<b>monomorphic and temporally stable</b> ectopic focus "
+    f"(median coupling interval {coupling_median:.0f} ms ± {coupling_std:.0f} ms, "
+    f"prematurity of {prematurity:.0f}% relative to the sinus cycle of "
     f"{sinus_median_ms:.0f} ms)."
 )
-story.append(Paragraph("Sintesi esecutiva", H2))
+story.append(Paragraph("Executive summary", H2))
 story.append(Paragraph(summary_text, NORMAL))
 story.append(Spacer(1, 10))
 
 # Example ECG
 if ecg_example_img:
-    story.append(Paragraph("Esempio rappresentativo", H3))
+    story.append(Paragraph("Representative example", H3))
     story.append(Paragraph(
-        "Otto secondi della registrazione centrati sulla prima PVC. La linea verde mostra "
-        "i battiti sinusali; il segmento e il triangolo rossi evidenziano il QRS della PVC e "
-        "la finestra di ±120 ms su cui viene misurata l'iperpolarizzazione di rebound — la "
-        "caratteristica fisiologica che il detector usa per classificarla.",
+        "Eight seconds of the recording centered on the first PVC. The green line shows "
+        "the sinus beats; the red segment and triangle highlight the PVC's QRS and "
+        "the ±120 ms window over which the rebound hyperpolarization is measured — the "
+        "physiological feature the detector uses to classify it.",
         NORMAL))
     story.append(Image(ecg_example_img, width=174*mm, height=58*mm))
 
-# Esempi di couplet subito sotto la traccia esemplificativa, stesso stile/colore
+# Couplet examples right below the example trace, same style/color
 if couplet_imgs:
     story.append(Spacer(1, 8))
     story.append(Paragraph(
-        "Couplet" if couplets_n == 1 else f"Couplet (tutti i {couplets_n})", H3))
+        "Couplet" if couplets_n == 1 else f"Couplets (all {couplets_n})", H3))
     story.append(Paragraph(
-        f"<b>Couplet</b>: due PVC consecutive senza battito sinusale interposto. In tutta "
-        f"la sessione se ne contano <b>{couplets_n}</b> — nessun triplet o run più lungo. "
-        f"Stesso stile della traccia sopra: overlay rosso sul QRS delle due PVC, triangoli "
-        f"verdi sui sinusali."
-        + ("" if couplets_n > len(couplet_imgs) else " Eccoli tutti:"),
+        f"<b>Couplet</b>: two consecutive PVC with no sinus beat in between. Across the whole "
+        f"session there are <b>{couplets_n}</b> — no triplets or longer runs. "
+        f"Same style as the trace above: red overlay on the QRS of the two PVC, green "
+        f"triangles on the sinus beats."
+        + ("" if couplets_n > len(couplet_imgs) else " Here they all are:"),
         NORMAL))
     for im in couplet_imgs:
         story.append(Image(im, width=174*mm, height=58*mm))
@@ -1347,80 +1347,80 @@ if couplet_imgs:
 story.append(PageBreak())
 
 # ---- PAGE 2 — METHODOLOGY + DETAILED METRICS ----
-story.append(Paragraph("Metodologia", H2))
+story.append(Paragraph("Methodology", H2))
 story.append(Paragraph(
-    "<b>Hardware.</b> Frontend analogico AD8232 (Analog Devices) configurato in derivazione "
-    "Einthoven I (RA, LA, RL come riferimento), uscita campionata dall'ADC 12-bit del Pi Pico 2 W "
-    "a 250 Hz. Sistema alimentato da cella LiPo (3.7 V) e completamente floating rispetto alla rete "
-    "elettrica durante la registrazione.",
+    "<b>Hardware.</b> AD8232 (Analog Devices) analog front-end configured in Einthoven I "
+    "lead (RA, LA, RL as reference), output sampled by the 12-bit ADC of the Pi Pico 2 W "
+    "at 250 Hz. The system is powered by a LiPo cell (3.7 V) and completely floating with respect "
+    "to mains power during the recording.",
     NORMAL))
 story.append(Paragraph(
-    "<b>Trasporto e archiviazione.</b> Il Pico invia ogni campione via TCP/WiFi al server "
-    "(Python/Flask) che effettua filtraggio in tempo reale e logging contemporaneo su CSV. "
-    "Risoluzione temporale: 4 ms per sample. Durata registrazione corrente: "
-    f"{total_s:.1f} s ({fs_real:.2f} Hz reali).",
+    "<b>Transport and storage.</b> The Pico sends each sample over TCP/WiFi to the server "
+    "(Python/Flask), which performs real-time filtering and simultaneous logging to CSV. "
+    "Temporal resolution: 4 ms per sample. Duration of the current recording: "
+    f"{total_s:.1f} s ({fs_real:.2f} Hz actual).",
     NORMAL))
 story.append(Paragraph(
-    "<b>Filtraggio.</b> Cascata di due filtri IIR del primo ordine: high-pass a 0.3 Hz (rimuove "
-    "deriva di baseline e DC) seguito da low-pass a 25 Hz (attenua mains 50 Hz ed EMG). "
-    "La banda passante 0.3–25 Hz preserva la morfologia QRS e l'undershoot post-QRS che caratterizza "
-    "le PVC.",
+    "<b>Filtering.</b> Cascade of two first-order IIR filters: a high-pass at 0.3 Hz (removes "
+    "baseline drift and DC) followed by a low-pass at 25 Hz (attenuates 50 Hz mains and EMG). "
+    "The 0.3–25 Hz passband preserves the QRS morphology and the post-QRS undershoot that characterizes "
+    "PVCs.",
     NORMAL))
 story.append(Paragraph(
-    "<b>Detection dei battiti.</b> Macchina a stati a 4 stati (idle, width, detect, post). "
-    "Il segnale entra in fase di tracking quando supera 0.10 V; viene confermato come QRS se "
-    "supera anche una soglia adattiva (mediana ampiezze recenti × 0.45, minimo 0.30 V). "
-    "Nei 200 ms successivi al picco viene misurato il trough — la deflessione negativa post-QRS.",
+    "<b>Beat detection.</b> A 4-state machine (idle, width, detect, post). "
+    "The signal enters the tracking phase when it exceeds 0.10 V; it is confirmed as a QRS if "
+    "it also exceeds an adaptive threshold (median of recent amplitudes × 0.45, minimum 0.30 V). "
+    "In the 200 ms following the peak the trough — the negative post-QRS deflection — is measured.",
     NORMAL))
 story.append(Paragraph(
-    "<b>Classificazione PVC.</b> Un battito è classificato come PVC se ha morfologia ectopica "
-    "— rapporto |trough|/peak ≥ 0.40 (iperpolarizzazione pronunciata) OPPURE larghezza QRS ≥ 95 ms "
-    f"— <b>E</b> ampiezza ≥ {PVC_MIN_AMP_V:.2f} V. Il requisito di ampiezza evita di etichettare "
-    "come PVC i piccoli battiti sinusali con onda S fisiologica. Refractory period di 300 ms.",
+    "<b>PVC classification.</b> A beat is classified as a PVC if it has ectopic morphology "
+    "— |trough|/peak ratio ≥ 0.40 (pronounced hyperpolarization) OR QRS width ≥ 95 ms "
+    f"— <b>AND</b> amplitude ≥ {PVC_MIN_AMP_V:.2f} V. The amplitude requirement avoids labeling "
+    "small sinus beats with a physiological S wave as PVCs. Refractory period of 300 ms.",
     NORMAL))
 story.append(Paragraph(
-    f"<b>Pulizia dati.</b> Prima delle analisi la serie viene ripulita: "
-    f"(1) rimossi <b>{n_spike_removed}</b> spike di rumore con larghezza ≤ 16 ms "
-    f"(sub-fisiologica per un QRS reale, tipici electrode-pop/artefatti di movimento); "
-    f"(2) esclusi <b>{n_coupling_excluded}</b> intervalli di coupling non prematuri "
-    f"(rr_prev &gt; {COUPLING_MAX_FACTOR:.0%} del RR sinusale mediano): non sono veri coupling "
-    f"ma PVC il cui battito sinusale precedente non è stato rilevato nel gap "
-    f"(falsi “late-coupled”), e contaminerebbero le statistiche di coupling e il "
-    f"tachogramma. Conteggi, RR, coupling e morfologia qui riportati usano la serie pulita.",
+    f"<b>Data cleaning.</b> Before the analyses the series is cleaned: "
+    f"(1) <b>{n_spike_removed}</b> noise spikes with width ≤ 16 ms were removed "
+    f"(sub-physiological for a real QRS, typical electrode-pop/motion artifacts); "
+    f"(2) <b>{n_coupling_excluded}</b> non-premature coupling intervals were excluded "
+    f"(rr_prev &gt; {COUPLING_MAX_FACTOR:.0%} of the median sinus RR): these are not true couplings "
+    f"but PVCs whose preceding sinus beat was not detected in the gap "
+    f"(false “late-coupled”), and would contaminate the coupling statistics and the "
+    f"tachogram. The counts, RR, coupling and morphology reported here use the cleaned series.",
     MUTED_P))
 
-story.append(Paragraph("Metriche dettagliate", H2))
+story.append(Paragraph("Detailed metrics", H2))
 story.append(kv_table([
-    ["Durata registrazione",            f"{total_s:.1f} s  ({total_min:.2f} min)"],
-    ["Sample rate misurato",            f"{fs_real:.2f} Hz"],
-    ["Campioni totali",                 f"{N:,}"],
-    ["Battiti rilevati",                f"{n_total:,}"],
-    ["Battiti sinusali",                f"{len(norm):,}  ({100*len(norm)/max(1,n_total):.1f}%)"],
-    ["Battiti PVC",                     f"{len(pvc):,}  ({100*len(pvc)/max(1,n_total):.1f}%)"],
-    ["BPM totale (tutti i battiti)",    f"{ecg_total_bpm:.1f}"],
-    ["BPM sinusale",                    f"{sinus_bpm:.1f}"],
+    ["Recording duration",              f"{total_s:.1f} s  ({total_min:.2f} min)"],
+    ["Measured sample rate",            f"{fs_real:.2f} Hz"],
+    ["Total samples",                   f"{N:,}"],
+    ["Beats detected",                  f"{n_total:,}"],
+    ["Sinus beats",                     f"{len(norm):,}  ({100*len(norm)/max(1,n_total):.1f}%)"],
+    ["PVC beats",                       f"{len(pvc):,}  ({100*len(pvc)/max(1,n_total):.1f}%)"],
+    ["Total BPM (all beats)",           f"{ecg_total_bpm:.1f}"],
+    ["Sinus BPM",                       f"{sinus_bpm:.1f}"],
     ["PVC rate",                        f"{pvc_rate:.2f} /min"],
     ["PVC burden",                      f"{burden:.1f} %"],
-    ["RR sinusale mediano",             f"{sinus_median_ms:.1f} ms"],
-    ["RR sinusale medio",               f"{sinus_mean_ms:.1f} ms"],
-    ["Deviazione std RR sinusale (SDNN)", f"{sinus_std_ms:.1f} ms"],
+    ["Median sinus RR",                 f"{sinus_median_ms:.1f} ms"],
+    ["Mean sinus RR",                   f"{sinus_mean_ms:.1f} ms"],
+    ["Sinus RR std dev (SDNN)",         f"{sinus_std_ms:.1f} ms"],
     ["RMSSD",                           f"{sinus_rmssd_ms:.1f} ms"],
-    ["Coupling pre-PVC mediano",        f"{coupling_median:.1f} ms"],
+    ["Median pre-PVC coupling",         f"{coupling_median:.1f} ms"],
     ["Coupling std",                    f"{coupling_std:.1f} ms"],
     ["Coupling IQR",                    f"{coupling_iqr:.1f} ms"],
-    ["Prematurità",                     f"{prematurity:.1f} % più precoce del sinus"],
-    ["RR post-PVC mediano (compensatoria)", f"{compensatory_median:.1f} ms"],
+    ["Prematurity",                     f"{prematurity:.1f} % earlier than the sinus"],
+    ["Median post-PVC RR (compensatory)", f"{compensatory_median:.1f} ms"],
 ]))
 
 story.append(PageBreak())
 
 # ---- OVERVIEW + TACHOGRAM ----
-story.append(Paragraph("Overview e tachogramma", H2))
+story.append(Paragraph("Overview and tachogram", H2))
 story.append(Paragraph(
-    "Vista d'insieme della registrazione e degli intervalli RR per ogni battito. "
-    "Il tachogramma evidenzia la bimodalità del segnale: i battiti sinusali (verdi) "
-    "stanno su un livello orizzontale stabile, mentre i coupling pre-PVC (rossi) "
-    "formano un cluster molto più basso e ben distinto.",
+    "An overall view of the recording and of the RR intervals for each beat. "
+    "The tachogram highlights the bimodality of the signal: the sinus beats (green) "
+    "sit on a stable horizontal level, while the pre-PVC couplings (red) "
+    "form a much lower, clearly distinct cluster.",
     NORMAL))
 if overview_img:
     story.append(Image(overview_img, width=174*mm, height=53*mm))
@@ -1431,20 +1431,20 @@ if tacho_img:
 story.append(PageBreak())
 
 # ---- COUPLING ANALYSIS ----
-story.append(Paragraph("Analisi del coupling interval", H2))
+story.append(Paragraph("Coupling interval analysis", H2))
 story.append(Paragraph(
-    "Il coupling interval è il tempo tra un battito sinusale e la PVC che lo segue. "
-    "Quando è <b>costante</b> nel tempo è la firma di un focolaio ectopico singolo e "
-    "monomorfo (sempre la stessa zona di miocardio anomalo che scarica con la stessa "
-    "latenza dopo ogni stimolazione). Coupling variabile suggerirebbe sorgenti multiple "
-    "o meccanismi più complessi.",
+    "The coupling interval is the time between a sinus beat and the PVC that follows it. "
+    "When it is <b>constant</b> over time it is the signature of a single, "
+    "monomorphic ectopic focus (always the same area of abnormal myocardium firing with the same "
+    "latency after each stimulation). A variable coupling would suggest multiple sources "
+    "or more complex mechanisms.",
     NORMAL))
 story.append(Spacer(1, 4))
 story.append(Paragraph(
-    f"In questa sessione il coupling è <b>{coupling_median:.0f} ± {coupling_std:.0f} ms</b> "
-    f"(IQR {coupling_iqr:.0f} ms), pari al <b>{100-prematurity:.0f}%</b> del ciclo sinusale "
-    f"({sinus_median_ms:.0f} ms). La deviazione standard è il <b>{100*coupling_std/coupling_median:.1f}%</b> "
-    f"del valore mediano — variazione molto contenuta, pattern altamente ripetibile.",
+    f"In this session the coupling is <b>{coupling_median:.0f} ± {coupling_std:.0f} ms</b> "
+    f"(IQR {coupling_iqr:.0f} ms), equal to <b>{100-prematurity:.0f}%</b> of the sinus cycle "
+    f"({sinus_median_ms:.0f} ms). The standard deviation is <b>{100*coupling_std/coupling_median:.1f}%</b> "
+    f"of the median value — very limited variation, a highly repeatable pattern.",
     NORMAL))
 if hist_img:
     story.append(Spacer(1, 6))
@@ -1455,17 +1455,17 @@ if coupling_stability_img:
 
 if n_coupling_excluded:
     story.append(Spacer(1, 10))
-    story.append(Paragraph("PVC apparentemente tardive (escluse dal coupling)", H3))
+    story.append(Paragraph("Apparently late PVC (excluded from the coupling)", H3))
     story.append(Paragraph(
-        f"<b>{n_coupling_excluded} PVC</b> presentano un RR precedente molto lungo "
-        f"(&gt; {COUPLING_MAX_FACTOR:.0%} del RR sinusale mediano), ben oltre il coupling "
-        f"tipico (~{coupling_median:.0f} ms). Non sono però vere PVC \"end-diastolic\": "
-        f"hanno la stessa morfologia di tutte le altre, ma il <b>battito sinusale che le "
-        f"precede non è stato rilevato</b> dal detector (ampiezza sotto soglia), quindi "
-        f"l'RR misurato somma un intervallo sinusale mancante + il coupling reale. Per "
-        f"questo sono escluse dalle statistiche di coupling e dal tachogramma. Negli "
-        f"esempi sotto si vede il QRS sinusale non marcato nel gap, prima della PVC "
-        f"cerchiata:",
+        f"<b>{n_coupling_excluded} PVC</b> have a very long preceding RR "
+        f"(&gt; {COUPLING_MAX_FACTOR:.0%} of the median sinus RR), well beyond the typical "
+        f"coupling (~{coupling_median:.0f} ms). However, they are not true \"end-diastolic\" PVC: "
+        f"they have the same morphology as all the others, but the <b>sinus beat that "
+        f"precedes them was not detected</b> by the detector (amplitude below threshold), so "
+        f"the measured RR sums a missing sinus interval + the real coupling. For "
+        f"this reason they are excluded from the coupling statistics and from the tachogram. In the "
+        f"examples below you can see the sinus QRS not marked in the gap, before the circled "
+        f"PVC:",
         NORMAL))
     for im in lc_imgs:
         story.append(Spacer(1, 6))
@@ -1474,30 +1474,30 @@ if n_coupling_excluded:
 story.append(PageBreak())
 
 # ---- PATTERNS ----
-story.append(Paragraph("Pattern temporali delle PVC", H2))
+story.append(Paragraph("Temporal patterns of the PVCs", H2))
 story.append(Paragraph(
-    "Le PVC possono organizzarsi in pattern ripetitivi caratteristici. "
-    "<b>Bigeminia</b>: alternanza fissa N–PVC–N–PVC. "
-    "<b>Trigeminia</b>: pattern N–N–PVC ripetuto. "
-    "<b>Couplet</b>: due PVC consecutive senza battiti normali in mezzo. "
-    "<b>Triplet</b>: tre o più PVC consecutive (si parla di salve / runs di tachicardia "
-    "ventricolare non sostenuta se >3 e <30 s).",
+    "PVCs can organize into characteristic repetitive patterns. "
+    "<b>Bigeminy</b>: fixed N–PVC–N–PVC alternation. "
+    "<b>Trigeminy</b>: a repeated N–N–PVC pattern. "
+    "<b>Couplet</b>: two consecutive PVC with no normal beats in between. "
+    "<b>Triplet</b>: three or more consecutive PVC (referred to as salvos / runs of "
+    "non-sustained ventricular tachycardia if >3 and <30 s).",
     NORMAL))
 story.append(Spacer(1, 6))
 
 pat_tbl = Table([
     [Paragraph("<b>Pattern</b>", NORMAL), Paragraph("<b>Count</b>", NORMAL),
-     Paragraph("<b>Interpretazione</b>", NORMAL)],
-    ["PVC isolate (N–PVC–N)", f"{iso_pvc}",
-     "Forma più comune; il sistema cardiaco ritorna a ritmo sinusale subito dopo l'ectopia."],
-    ["Couplet (2 PVC consecutive)", f"{couplets_n}",
-     "Due battiti ectopici di seguito. Meno frequenti delle isolate."],
-    ["Triplet / salve (3+)", "0",
-     "Nessun run ventricolare osservato nella sessione."],
-    ["Bigeminia (≥3 cicli)", f"{bigem}",
-     "Alternanza N-PVC-N-PVC, episodi brevi durante la registrazione."],
-    ["Trigeminia (≥3 cicli)", f"{trigem}",
-     "Pattern N-N-PVC ripetuto. Il più frequente dei pattern ritmici osservati."],
+     Paragraph("<b>Interpretation</b>", NORMAL)],
+    ["Isolated PVC (N–PVC–N)", f"{iso_pvc}",
+     "Most common form; the cardiac system returns to sinus rhythm immediately after the ectopy."],
+    ["Couplet (2 consecutive PVC)", f"{couplets_n}",
+     "Two ectopic beats in a row. Less frequent than the isolated ones."],
+    ["Triplet / salvos (3+)", "0",
+     "No ventricular run observed in the session."],
+    ["Bigeminy (≥3 cycles)", f"{bigem}",
+     "N-PVC-N-PVC alternation, brief episodes during the recording."],
+    ["Trigeminy (≥3 cycles)", f"{trigem}",
+     "Repeated N-N-PVC pattern. The most frequent of the rhythmic patterns observed."],
 ], colWidths=[42*mm, 18*mm, 114*mm])
 pat_tbl.setStyle(TableStyle([
     ("FONT", (0,0), (-1,-1), "Helvetica", 9),
@@ -1516,86 +1516,86 @@ story.append(pat_tbl)
 
 if counts_img:
     story.append(Spacer(1, 10))
-    story.append(Paragraph("Distribuzione battiti per minuto", H3))
+    story.append(Paragraph("Beat distribution per minute", H3))
     story.append(Image(counts_img, width=174*mm, height=58*mm))
 
 story.append(PageBreak())
 
 # ---- HR ↔ PVC RATE CORRELATION ----
 if hr_vs_pvc_ts_img and hr_vs_pvc_scatter_img and hr_pvc_correlation:
-    story.append(Paragraph("Correlazione HR ↔ frequenza PVC", H2))
+    story.append(Paragraph("HR ↔ PVC rate correlation", H2))
     corr = hr_pvc_correlation
     r = corr["r"]
-    # interpretazione del coefficiente
+    # interpretation of the coefficient
     if abs(r) < 0.1:
-        r_descr = "trascurabile"
+        r_descr = "negligible"
     elif abs(r) < 0.3:
-        r_descr = "debole"
+        r_descr = "weak"
     elif abs(r) < 0.5:
-        r_descr = "moderata"
+        r_descr = "moderate"
     elif abs(r) < 0.7:
-        r_descr = "forte"
+        r_descr = "strong"
     else:
-        r_descr = "molto forte"
-    direction = "diretta (HR ↑ → PVC ↑)" if r > 0 else "inversa (HR ↑ → PVC ↓)"
+        r_descr = "very strong"
+    direction = "direct (HR ↑ → PVC ↑)" if r > 0 else "inverse (HR ↑ → PVC ↓)"
     story.append(Paragraph(
-        f"Analisi della relazione tra frequenza basale del nodo SA (HR effettiva calcolata "
-        f"da median RR di coppie N-N consecutive) e numero di PVC nello stesso minuto. "
-        f"Su <b>{corr['n']} finestre da 60s</b> con almeno 20 battiti utili, il coefficiente "
-        f"di correlazione di Pearson è <b>r = {r:.3f}</b> (correlazione <b>{r_descr}</b>, "
-        f"direzione {direction}). Pendenza della retta: <b>{corr['slope']:+.2f} PVC/min per ogni BPM</b>. "
-        f"Range osservato: HR {corr['hr_min']:.0f}-{corr['hr_max']:.0f} BPM, "
+        f"Analysis of the relationship between the SA node's baseline rate (effective HR computed "
+        f"from the median RR of consecutive N-N pairs) and the number of PVC in the same minute. "
+        f"Over <b>{corr['n']} 60s windows</b> with at least 20 usable beats, the Pearson "
+        f"correlation coefficient is <b>r = {r:.3f}</b> (a <b>{r_descr}</b> correlation, "
+        f"{direction} direction). Line slope: <b>{corr['slope']:+.2f} PVC/min per BPM</b>. "
+        f"Observed range: HR {corr['hr_min']:.0f}-{corr['hr_max']:.0f} BPM, "
         f"PVC {corr['pvc_min']}-{corr['pvc_max']}/min.",
         NORMAL))
     story.append(Spacer(1, 6))
-    story.append(Paragraph("Time-series: HR SA e PVC rate minuto per minuto", H3))
+    story.append(Paragraph("Time-series: SA HR and PVC rate minute by minute", H3))
     story.append(Image(hr_vs_pvc_ts_img, width=174*mm, height=54*mm))
     story.append(Spacer(1, 10))
-    story.append(Paragraph("Scatter: HR vs PVC/min (colore = tempo dalla partenza)", H3))
+    story.append(Paragraph("Scatter: HR vs PVC/min (color = time from start)", H3))
     story.append(Image(hr_vs_pvc_scatter_img, width=128*mm, height=85*mm,
                        hAlign="CENTER"))
     story.append(Spacer(1, 6))
     if r > 0.3:
-        msg = ("Pattern compatibile con <b>aumento del PVC rate al crescere della frequenza "
-               "basale</b>. Coerente con: (a) iniziale fase di warm-up sedentario (HR bassa, "
-               "poche PVC) seguita da fasi più tonico-simpatiche (HR sale, focolaio più "
-               "eccitabile); (b) modulazione autonomica dell'ectopia (vagale ↓ + simpatico ↑ "
-               "→ più ectopia); (c) fattori metabolici intercorrenti (digestione, caffeina, "
-               "movimento). NB: questo è l'opposto del classico pattern 'esercizio-soppresso' "
-               "che si vede agli alti carichi aerobici (>120 BPM), dove le PVC scompaiono.")
+        msg = ("Pattern compatible with an <b>increase in PVC rate as the baseline rate "
+               "rises</b>. Consistent with: (a) an initial sedentary warm-up phase (low HR, "
+               "few PVC) followed by more sympathetically toned phases (HR rises, focus more "
+               "excitable); (b) autonomic modulation of the ectopy (vagal ↓ + sympathetic ↑ "
+               "→ more ectopy); (c) intercurrent metabolic factors (digestion, caffeine, "
+               "movement). NB: this is the opposite of the classic 'exercise-suppressed' pattern "
+               "seen at high aerobic loads (>120 BPM), where the PVCs disappear.")
     elif r < -0.3:
-        msg = ("Pattern compatibile con <b>diminuzione del PVC rate al crescere della frequenza "
-               "basale</b>. Coerente con il classico fenomeno delle PVC 'esercizio-soppresse': "
-               "il sistema simpatico più attivo accelera la conduzione, riduce le zone di "
-               "blocco unidirezionale, e sopprime il rientro / il focolaio ectopico. Marker "
-               "di benignità.")
+        msg = ("Pattern compatible with a <b>decrease in PVC rate as the baseline rate "
+               "rises</b>. Consistent with the classic phenomenon of 'exercise-suppressed' PVCs: "
+               "a more active sympathetic system speeds up conduction, reduces the zones of "
+               "unidirectional block, and suppresses reentry / the ectopic focus. A marker "
+               "of benignity.")
     else:
-        msg = ("Correlazione non significativa: la frequenza istantanea delle PVC non è "
-               "spiegata principalmente dalla HR basale in questa sessione. Altri fattori "
-               "(posizione, respirazione, stato vagale, fattori meccanici toracici) "
-               "probabilmente dominano.")
+        msg = ("Non-significant correlation: the instantaneous PVC rate is not "
+               "mainly explained by the baseline HR in this session. Other factors "
+               "(position, respiration, vagal state, mechanical thoracic factors) "
+               "probably dominate.")
     story.append(Paragraph(msg, NORMAL))
     story.append(PageBreak())
 
 # ---- TACHOGRAM DECOMPOSITION ----
-story.append(Paragraph("Decomposizione del tachogramma", H2))
+story.append(Paragraph("Tachogram decomposition", H2))
 story.append(Paragraph(
-    "A occhio nudo nel tachogramma si distinguono <b>tre bande di intervalli RR per "
-    "i battiti classificati come normali</b> (punti verdi): una fina attorno ai "
-    "750 ms, una grossa e densa attorno ai 900 ms, e una più sparsa centrata sui "
-    "1180 ms. Ciascuna corrisponde a un contesto fisiologico differente, riconoscibile "
-    "se si separano gli RR in base al <b>tipo di transizione</b> (cosa è il battito "
-    "corrente e cosa era il precedente).",
+    "With the naked eye, the tachogram shows <b>three bands of RR intervals for "
+    "the beats classified as normal</b> (green points): a thin one around "
+    "750 ms, a large and dense one around 900 ms, and a more scattered one centered on "
+    "1180 ms. Each corresponds to a different physiological context, recognizable "
+    "if the RR are separated by <b>transition type</b> (what the current beat "
+    "is and what the previous one was).",
     NORMAL))
 story.append(Spacer(1, 6))
 
-# tabella decomposizione transizioni
-decomp_rows = [["Transizione", "n", "Mediana", "Std", "Min–Max", "Interpretazione"]]
+# transition decomposition table
+decomp_rows = [["Transition", "n", "Median", "Std", "Min–Max", "Interpretation"]]
 trans_explain = {
-    "N→N":    "Sinus → sinus. Il ritmo cardiaco di base, tra due battiti normali consecutivi.",
-    "N→PVC":  "Sinus → PVC. Coupling interval: il timing del trigger ectopico.",
-    "PVC→N":  "PVC → sinus. La pausa post-ectopica, completa o interpolata.",
-    "PVC→PVC":"PVC → PVC. Due battiti ectopici consecutivi (couplet).",
+    "N→N":    "Sinus → sinus. The baseline heart rhythm, between two consecutive normal beats.",
+    "N→PVC":  "Sinus → PVC. Coupling interval: the timing of the ectopic trigger.",
+    "PVC→N":  "PVC → sinus. The post-ectopic pause, complete or interpolated.",
+    "PVC→PVC":"PVC → PVC. Two consecutive ectopic beats (couplet).",
 }
 for k in ["N→N", "N→PVC", "PVC→N", "PVC→PVC"]:
     vals = [x[1] for x in transitions[k]]
@@ -1629,65 +1629,65 @@ if tacho_decomp_img:
     story.append(Image(tacho_decomp_img, width=174*mm, height=68*mm))
 
 story.append(Spacer(1, 8))
-story.append(Paragraph("La banda dei 900 ms — sinus regolare", H3))
+story.append(Paragraph("The 900 ms band — regular sinus", H3))
 nn_vals = [x[1] for x in transitions["N→N"]]
 if nn_vals:
     nn_med = statistics.median(nn_vals); nn_std = statistics.stdev(nn_vals)
     story.append(Paragraph(
-        f"È il <b>ritmo sinusale di base</b>: {len(nn_vals)} intervalli, "
-        f"mediana {nn_med:.0f} ms ({60000/nn_med:.0f} BPM), deviazione standard "
-        f"{nn_std:.0f} ms. La larghezza della banda è la <b>variabilità "
-        f"fisiologica HRV</b> (componente respiratoria + tono autonomico). "
-        f"Più stretta è la banda, più regolare il sinus.",
+        f"This is the <b>baseline sinus rhythm</b>: {len(nn_vals)} intervals, "
+        f"median {nn_med:.0f} ms ({60000/nn_med:.0f} BPM), standard deviation "
+        f"{nn_std:.0f} ms. The width of the band is the <b>physiological "
+        f"HRV variability</b> (respiratory component + autonomic tone). "
+        f"The narrower the band, the more regular the sinus.",
         NORMAL))
 
-story.append(Paragraph("La banda dei 1180 ms — pause compensatorie", H3))
+story.append(Paragraph("The 1180 ms band — compensatory pauses", H3))
 pn_vals = [x[1] for x in transitions["PVC→N"]]
 if pn_vals:
     pn_med = statistics.median(pn_vals); pn_std = statistics.stdev(pn_vals)
     story.append(Paragraph(
-        f"È la <b>pausa post-PVC</b>: {len(pn_vals)} intervalli, mediana "
-        f"<b>{pn_med:.0f} ms ± {pn_std:.0f} ms</b>. La dispersione enorme "
-        f"(range {min(pn_vals):.0f}–{max(pn_vals):.0f} ms) <b>non è rumore</b>, è un dato "
-        f"clinicamente significativo: riflette il comportamento variabile del "
-        f"trigger ectopico rispetto al pacemaker sinusale.",
+        f"This is the <b>post-PVC pause</b>: {len(pn_vals)} intervals, median "
+        f"<b>{pn_med:.0f} ms ± {pn_std:.0f} ms</b>. The huge dispersion "
+        f"(range {min(pn_vals):.0f}–{max(pn_vals):.0f} ms) <b>is not noise</b>, it is a "
+        f"clinically meaningful datum: it reflects the variable behavior of the "
+        f"ectopic trigger relative to the sinus pacemaker.",
         NORMAL))
     story.append(Paragraph(
-        "<b>Pausa compensatoria completa</b> (verso 2000+ ms): il PVC ha "
-        "azzerato il sinus node, che riparte da capo con un ciclo intero di "
-        "ritardo. <b>PVC interpolato</b> (verso 600 ms): il sinus node è stato "
-        "ignorato dal trigger ectopico e continua il suo ritmo come se nulla "
-        "fosse — il battito normale successivo arriva al tempo previsto. "
-        "I casi intermedi (compenso parziale) riempiono il continuum.",
+        "<b>Full compensatory pause</b> (toward 2000+ ms): the PVC has "
+        "reset the sinus node, which restarts from scratch with a whole cycle of "
+        "delay. <b>Interpolated PVC</b> (toward 600 ms): the sinus node was "
+        "ignored by the ectopic trigger and continues its rhythm as if nothing "
+        "happened — the next normal beat arrives at the expected time. "
+        "The intermediate cases (partial compensation) fill the continuum.",
         NORMAL))
 
-story.append(Paragraph("La banda dei 750 ms — due meccanismi distinti", H3))
+story.append(Paragraph("The 750 ms band — two distinct mechanisms", H3))
 n_b750_nn = band750_breakdown.get("N→N", 0)
 n_b750_pn = band750_breakdown.get("PVC→N", 0)
 story.append(Paragraph(
-    f"Banda fine attorno ai 700–800 ms: <b>{n_b750_nn + n_b750_pn} osservazioni</b>. "
-    f"Decomposta: <b>{n_b750_nn} N→N</b> + <b>{n_b750_pn} PVC→N</b>. Sono due "
-    f"fenomeni fisiologicamente diversi sovrapposti.",
+    f"A thin band around 700–800 ms: <b>{n_b750_nn + n_b750_pn} observations</b>. "
+    f"Decomposed: <b>{n_b750_nn} N→N</b> + <b>{n_b750_pn} PVC→N</b>. These are two "
+    f"physiologically different phenomena superimposed.",
     NORMAL))
 story.append(Paragraph(
-    f"<b>(a) {n_b750_nn} N→N a ~750 ms</b>: fasi di <b>accelerazione sinusale</b> "
-    f"a ~80 BPM. Tipicamente associate a picchi di <b>aritmia sinusale "
-    f"respiratoria</b> (inspirazione profonda → ritiro vagale → HR temporaneamente "
-    f"più alto), sospiri spontanei, brevi attivazioni simpatiche.",
+    f"<b>(a) {n_b750_nn} N→N at ~750 ms</b>: phases of <b>sinus acceleration</b> "
+    f"at ~80 BPM. Typically associated with peaks of <b>respiratory sinus "
+    f"arrhythmia</b> (deep inspiration → vagal withdrawal → temporarily higher "
+    f"HR), spontaneous sighs, brief sympathetic activations.",
     NORMAL))
 story.append(Paragraph(
-    f"<b>(b) {n_b750_pn} PVC→N a ~750 ms</b>: <b>PVC interpolate</b> "
-    f"o quasi. Il battito ectopico si infila tra due sinusali senza disturbare "
-    f"il pacemaker. Variante tipicamente benigna, più frequente con bassa "
-    f"frequenza cardiaca basale (come nel caso di questa sessione).",
+    f"<b>(b) {n_b750_pn} PVC→N at ~750 ms</b>: <b>interpolated PVC</b> "
+    f"or nearly so. The ectopic beat slots between two sinus beats without disturbing "
+    f"the pacemaker. A typically benign variant, more frequent with a low "
+    f"baseline heart rate (as in the case of this session).",
     NORMAL))
 
 story.append(PageBreak())
 
-# ---- ZOOM 9-11 MIN (solo se c'è davvero un'oscillazione locale) ----
-# La sezione è condizionale: ha senso solo se la finestra 09:00-11:00 mostra
-# variabilità RR realmente elevata vs baseline. In molte sessioni (es. quella
-# pulita 150812) NON c'è oscillazione locale, quindi la sezione viene omessa.
+# ---- ZOOM 9-11 MIN (only if there really is a local oscillation) ----
+# The section is conditional: it only makes sense if the 09:00-11:00 window shows
+# genuinely elevated RR variability vs baseline. In many sessions (e.g. the
+# clean 150812 one) there is NO local oscillation, so the section is omitted.
 window_beats_zoom = [r for r in peaks if 9*60 <= r["t"] < 11*60]
 zoom_n = sum(1 for r in window_beats_zoom if r["cls"] == "normal")
 zoom_p = sum(1 for r in window_beats_zoom if r["cls"] == "pvc")
@@ -1697,46 +1697,46 @@ all_rrs_global = [p["rr_prev"]*1000 for p in peaks if p["rr_prev"]]
 baseline_std_global = statistics.stdev(all_rrs_global) if len(all_rrs_global) > 1 else 0
 show_zoom_section = bool(zoom_img) and len(window_beats_zoom) > 10 and zoom_std > 1.25 * baseline_std_global
 if show_zoom_section:
-    story.append(Paragraph("Analisi locale: oscillazioni tra 9 e 11 minuti", H2))
+    story.append(Paragraph("Local analysis: oscillations between 9 and 11 minutes", H2))
     story.append(Paragraph(
-        f"Nel tachogramma si nota un'oscillazione visiva marcata attorno al minuto 10. "
-        f"Nella finestra <b>09:00–11:00</b> ci sono <b>{len(window_beats_zoom)} "
-        f"battiti</b> ({zoom_n} normali, {zoom_p} PVC) con deviazione standard degli RR "
-        f"pari a <b>{zoom_std:.0f} ms</b>, contro un baseline di {baseline_std_global:.0f} ms "
-        f"per tutta la sessione.",
+        f"In the tachogram a marked visual oscillation is noticeable around minute 10. "
+        f"In the <b>09:00–11:00</b> window there are <b>{len(window_beats_zoom)} "
+        f"beats</b> ({zoom_n} normal, {zoom_p} PVC) with an RR standard deviation "
+        f"of <b>{zoom_std:.0f} ms</b>, against a baseline of {baseline_std_global:.0f} ms "
+        f"for the whole session.",
         NORMAL))
     story.append(Paragraph(
-        "Le \"oscillazioni\" sono il <b>rimbalzo verticale tipico delle zone con maggiore "
-        "burden di PVC</b>: ogni PVC produce un punto basso (coupling ~500 ms), il battito "
-        "normale subito dopo produce un punto alto (compensatoria ~1200 ms), il battito "
-        "normale stabile sta in mezzo (~900 ms). Quando il pattern di trigeminia è "
-        "particolarmente regolare per un intervallo, i punti rimbalzano fra questi tre "
-        "livelli in successione rapida, dando l'effetto visivo di un'onda quadra "
-        "verticale.",
+        "The \"oscillations\" are the <b>vertical bounce typical of zones with higher "
+        "PVC burden</b>: each PVC produces a low point (coupling ~500 ms), the "
+        "normal beat right after produces a high point (compensatory ~1200 ms), the stable "
+        "normal beat sits in between (~900 ms). When the trigeminy pattern is "
+        "particularly regular for an interval, the points bounce between these three "
+        "levels in rapid succession, giving the visual effect of a vertical square "
+        "wave.",
         NORMAL))
     story.append(Spacer(1, 8))
     story.append(Image(zoom_img, width=174*mm, height=140*mm))
     story.append(PageBreak())
 
 # ---- AMPLITUDE ANALYSIS ----
-story.append(Paragraph("Analisi dell'ampiezza dei battiti normali", H2))
+story.append(Paragraph("Amplitude analysis of the normal beats", H2))
 story.append(Paragraph(
-    "L'ampiezza del QRS di un battito normale dipende da più fattori: l'orientamento "
-    "del vettore elettrico cardiaco (fisso per la geometria del torace), il <b>volume "
-    "ventricolare al momento della depolarizzazione</b> (più sangue dentro = più "
-    "massa eccitata = QRS più ampio), il <b>tempo di riempimento</b> dal battito "
-    "precedente, e il <b>tono autonomico</b> (simpatico aumenta inotropismo e contrattilità). "
-    "Per indagare se l'insorgenza di una PVC è preannunciata da uno stato "
-    "particolare del sinus, classifichiamo i battiti normali in tre contesti.",
+    "The QRS amplitude of a normal beat depends on several factors: the orientation "
+    "of the cardiac electrical vector (fixed by the chest geometry), the <b>ventricular "
+    "volume at the moment of depolarization</b> (more blood inside = more "
+    "excited mass = wider QRS), the <b>filling time</b> from the previous "
+    "beat, and the <b>autonomic tone</b> (sympathetic increases inotropy and contractility). "
+    "To investigate whether the onset of a PVC is foreshadowed by a particular "
+    "state of the sinus, we classify the normal beats into three contexts.",
     NORMAL))
 story.append(Spacer(1, 6))
 
-amp_tbl_rows = [["Contesto", "n", "Media (V)", "Mediana (V)", "Std (V)", "Significato"]]
+amp_tbl_rows = [["Context", "n", "Mean (V)", "Median (V)", "Std (V)", "Meaning"]]
 ctx_descr = {
-    "stable":   "N sinusale circondato da altri normali — baseline.",
-    "pre_pvc":  "L'ultimo normale prima di una PVC — il \"sospetto\".",
-    "post_pvc": "Il normale dopo la pausa compensatoria — più riempimento.",
-    "sandwich": "Tra due PVC consecutive (bigeminia stretta) — raro.",
+    "stable":   "Sinus N surrounded by other normals — baseline.",
+    "pre_pvc":  "The last normal before a PVC — the \"suspect\".",
+    "post_pvc": "The normal after the compensatory pause — more filling.",
+    "sandwich": "Between two consecutive PVC (tight bigeminy) — rare.",
 }
 for k in ["stable", "pre_pvc", "post_pvc", "sandwich"]:
     s = amp_stats.get(k)
@@ -1763,7 +1763,7 @@ amp_tbl.setStyle(TableStyle([
 ]))
 story.append(amp_tbl)
 
-# delta comparativi
+# comparative deltas
 stable_med = amp_stats["stable"]["median"] if amp_stats["stable"] else 0
 pre_med    = amp_stats["pre_pvc"]["median"] if amp_stats["pre_pvc"] else 0
 post_med   = amp_stats["post_pvc"]["median"] if amp_stats["post_pvc"] else 0
@@ -1772,7 +1772,7 @@ post_delta = 100*(post_med - stable_med)/stable_med if stable_med else 0
 
 story.append(Spacer(1, 8))
 story.append(Paragraph(
-    f"<b>Confronto vs baseline stable</b>: "
+    f"<b>Comparison vs stable baseline</b>: "
     f"pre-PVC <b>{pre_delta:+.1f}%</b> ({pre_med:.3f} vs {stable_med:.3f} V), "
     f"post-PVC <b>{post_delta:+.1f}%</b> ({post_med:.3f} vs {stable_med:.3f} V).",
     NORMAL))
@@ -1782,84 +1782,84 @@ if amp_hist_img:
     story.append(Image(amp_hist_img, width=174*mm, height=66*mm))
 
 story.append(Spacer(1, 10))
-story.append(Paragraph("Effetto Frank-Starling — ampiezza vs intervallo precedente", H3))
+story.append(Paragraph("Frank-Starling effect — amplitude vs preceding interval", H3))
 story.append(Paragraph(
-    "La <b>legge di Frank-Starling</b> dice che più si riempie il ventricolo prima della "
-    "contrazione, più la contrazione successiva sarà potente. Tradotto in ECG: un RR "
-    "più lungo dovrebbe correlare con un QRS più ampio nel battito che lo segue. "
-    f"Sul nostro dataset, la correlazione di Pearson tra RR precedente e ampiezza del "
-    f"QRS che segue è <b>r = {r_all_norm:+.2f}</b> su tutti i normali e "
-    f"<b>r = {r_stable:+.2f}</b> sul solo gruppo stable. "
+    "The <b>Frank-Starling law</b> states that the more the ventricle fills before the "
+    "contraction, the more powerful the subsequent contraction will be. Translated into ECG terms: a longer "
+    "RR should correlate with a wider QRS in the beat that follows it. "
+    f"On our dataset, the Pearson correlation between the preceding RR and the amplitude of the "
+    f"QRS that follows is <b>r = {r_all_norm:+.2f}</b> over all normal beats and "
+    f"<b>r = {r_stable:+.2f}</b> over the stable group alone. "
     + (
-        "Correlazione modestamente positiva osservata: l'effetto Frank-Starling è "
-        "presente ma debole nella derivazione I (più visibile in derivazioni precordiali). "
+        "A modestly positive correlation is observed: the Frank-Starling effect is "
+        "present but weak in lead I (more visible in precordial leads). "
         if r_all_norm > 0.15 else
-        "Correlazione bassa: la derivazione I cattura solo una proiezione del vettore "
-        "cardiaco, e gli effetti di volume sono più visibili in derivazioni precordiali "
-        "(es. V5-V6) che qui non abbiamo. "
+        "A low correlation: lead I captures only one projection of the cardiac "
+        "vector, and volume effects are more visible in precordial leads "
+        "(e.g. V5-V6) that we do not have here. "
     )
-    + "Il post-PVC, che segue la pausa compensatoria più lunga, dovrebbe quindi avere "
-    "ampiezza leggermente superiore al baseline.",
+    + "The post-PVC beat, which follows the longer compensatory pause, should therefore have "
+    "a slightly higher amplitude than baseline.",
     NORMAL))
 if amp_rr_img:
     story.append(Spacer(1, 6))
     story.append(Image(amp_rr_img, width=174*mm, height=70*mm))
 
-# interpretazione finale
+# final interpretation
 story.append(Spacer(1, 10))
-story.append(Paragraph("Cosa significa per i triggers delle PVC", H3))
+story.append(Paragraph("What it means for the PVC triggers", H3))
 findings = []
 if abs(pre_delta) < 3:
     findings.append(
-        f"<b>L'ampiezza pre-PVC è essenzialmente uguale al baseline</b> ({pre_delta:+.1f}%). "
-        f"Il sinus che precede una PVC NON appare in uno stato meccanico/elettrico "
-        f"speciale rispetto al sinus normale. Questo suggerisce che il <b>trigger ectopico "
-        f"è autonomo</b> rispetto al ciclo sinusale immediatamente precedente — il "
-        f"focolaio si scarica per propri ritmi (ad esempio modulati dal tono autonomico "
-        f"o respiratorio globale), non perché c'è qualcosa di particolare nel battito "
-        f"appena prima."
+        f"<b>The pre-PVC amplitude is essentially equal to baseline</b> ({pre_delta:+.1f}%). "
+        f"The sinus beat preceding a PVC does NOT appear to be in a special mechanical/electrical "
+        f"state relative to the normal sinus. This suggests that the <b>ectopic trigger "
+        f"is autonomous</b> with respect to the immediately preceding sinus cycle — the "
+        f"focus fires on its own schedule (for example modulated by global autonomic "
+        f"or respiratory tone), not because there is anything particular about the beat "
+        f"just before."
     )
 elif pre_delta > 0:
     findings.append(
-        f"L'ampiezza pre-PVC è <b>più grande</b> del baseline ({pre_delta:+.1f}%). "
-        "Potrebbe suggerire un riempimento ventricolare leggermente maggiore o "
-        "un'attivazione simpatica nei secondi precedenti l'ectopia."
+        f"The pre-PVC amplitude is <b>larger</b> than baseline ({pre_delta:+.1f}%). "
+        "It could suggest a slightly greater ventricular filling or "
+        "a sympathetic activation in the seconds preceding the ectopy."
     )
 else:
     findings.append(
-        f"L'ampiezza pre-PVC è <b>più piccola</b> del baseline ({pre_delta:+.1f}%). "
-        "Suggerirebbe un riempimento ventricolare ridotto — possibile se l'ectopia "
-        "tende ad arrivare in fasi di tachicardia transitoria con minor preload."
+        f"The pre-PVC amplitude is <b>smaller</b> than baseline ({pre_delta:+.1f}%). "
+        "It would suggest reduced ventricular filling — possible if the ectopy "
+        "tends to arrive during phases of transient tachycardia with lower preload."
     )
 
 if post_delta > 5:
     findings.append(
-        f"<b>L'ampiezza post-PVC è significativamente maggiore</b> del baseline "
-        f"({post_delta:+.1f}%). Coerente con l'<b>effetto Frank-Starling</b>: dopo "
-        f"la pausa compensatoria il ventricolo ha avuto più tempo di riempirsi, lo "
-        f"stroke volume è maggiore, e il QRS è più ampio. È un fenomeno fisiologico "
-        f"atteso e che si misura clinicamente come \"post-extrasystolic potentiation\"."
+        f"<b>The post-PVC amplitude is significantly higher</b> than baseline "
+        f"({post_delta:+.1f}%). Consistent with the <b>Frank-Starling effect</b>: after "
+        f"the compensatory pause the ventricle had more time to fill, the "
+        f"stroke volume is greater, and the QRS is wider. It is an expected physiological "
+        f"phenomenon, measured clinically as \"post-extrasystolic potentiation\"."
     )
 elif post_delta > 0:
     findings.append(
-        f"L'ampiezza post-PVC è leggermente più grande del baseline ({post_delta:+.1f}%), "
-        f"compatibile con un piccolo effetto Frank-Starling — visibile in modo "
-        f"più marcato in derivazioni che proiettano meglio sul vettore principale "
-        f"di depolarizzazione."
+        f"The post-PVC amplitude is slightly larger than baseline ({post_delta:+.1f}%), "
+        f"compatible with a small Frank-Starling effect — visible more "
+        f"markedly in leads that project better onto the main "
+        f"depolarization vector."
     )
 else:
     findings.append(
-        f"L'ampiezza post-PVC è simile al baseline ({post_delta:+.1f}%); l'effetto "
-        f"Frank-Starling non è ben visibile in questa singola derivazione, ma è "
-        f"probabilmente presente a livello emodinamico."
+        f"The post-PVC amplitude is similar to baseline ({post_delta:+.1f}%); the "
+        f"Frank-Starling effect is not clearly visible in this single lead, but it is "
+        f"probably present hemodynamically."
     )
 
 findings.append(
-    "Conclusione: in base a queste osservazioni, le PVC <b>non sembrano essere "
-    "preannunciate da un'alterazione dell'ampiezza del battito sinusale precedente</b>. "
-    "Il trigger ectopico appare quindi modulato da fattori più \"sistemici\" "
-    "(tono autonomico, fase respiratoria) piuttosto che da una condizione "
-    "meccanica/elettrica del battito immediatamente precedente."
+    "Conclusion: based on these observations, the PVCs <b>do not appear to be "
+    "foreshadowed by a change in the amplitude of the preceding sinus beat</b>. "
+    "The ectopic trigger therefore appears to be modulated by more \"systemic\" factors "
+    "(autonomic tone, respiratory phase) rather than by a mechanical/electrical "
+    "condition of the immediately preceding beat."
 )
 
 for line in findings:
@@ -1869,31 +1869,31 @@ for line in findings:
 story.append(PageBreak())
 
 # ---- SCREENING FIBRILLAZIONE ATRIALE ----
-story.append(Paragraph("Screening fibrillazione atriale (rhythm analysis)", H2))
+story.append(Paragraph("Atrial fibrillation screening (rhythm analysis)", H2))
 story.append(Paragraph(
-    "Analisi di tutti gli intervalli <b>RR fra battiti sinusali consecutivi</b> (N-N) "
-    "sull'intera registrazione utile. La fibrillazione atriale produce un ritmo "
-    "<i>irregolarmente irregolare</i>: gli RR perdono ogni struttura, l'istogramma "
-    "diventa uniforme/caotico, RMSSD e pNN50 si impennano, l'entropia satura. "
-    "I quattro marker sotto (>100 ms RMSSD, >40% pNN50, entropia/max >0.85, "
-    "istogramma unimodale ampio) costituiscono uno <b>score 0-4</b>: il referto "
-    "non è diagnostico (servirebbero 12 derivazioni e banda passante più ampia per "
-    "valutare l'onda P), ma serve a flaggare automaticamente i pattern sospetti.",
+    "Analysis of all the <b>RR intervals between consecutive sinus beats</b> (N-N) "
+    "over the entire useful recording. Atrial fibrillation produces an "
+    "<i>irregularly irregular</i> rhythm: the RR lose all structure, the histogram "
+    "becomes uniform/chaotic, RMSSD and pNN50 surge, the entropy saturates. "
+    "The four markers below (>100 ms RMSSD, >40% pNN50, entropy/max >0.85, "
+    "wide unimodal histogram) make up a <b>0-4 score</b>: the report "
+    "is not diagnostic (12 leads and a wider passband would be needed to "
+    "assess the P wave), but it serves to automatically flag suspicious patterns.",
     NORMAL))
 if af.get("median_ms") is not None:
     story.append(Spacer(1, 8))
     af_rows = [
-        ["N-N consecutivi analizzati",     f"{af['nn_count']}"],
-        ["Mediana RR / BPM",                f"{af['median_ms']:.0f} ms ({60000/af['median_ms']:.1f} BPM)"],
+        ["Consecutive N-N analyzed",        f"{af['nn_count']}"],
+        ["Median RR / BPM",                 f"{af['median_ms']:.0f} ms ({60000/af['median_ms']:.1f} BPM)"],
         ["Std / CV",                        f"{af['std_ms']:.0f} ms / {af['cv_pct']:.1f}%"],
         ["Range",                           f"{af['min_ms']:.0f} – {af['max_ms']:.0f} ms"],
-        ["RMSSD (soglia AF >100 ms)",       f"<b>{af['rmssd_ms']:.0f} ms</b>"],
-        ["pNN50 (soglia AF >40%)",          f"<b>{af['pnn50']:.1f}%</b>"],
+        ["RMSSD (AF threshold >100 ms)",    f"<b>{af['rmssd_ms']:.0f} ms</b>"],
+        ["pNN50 (AF threshold >40%)",       f"<b>{af['pnn50']:.1f}%</b>"],
         ["pNN20",                           f"{af['pnn20']:.1f}%"],
-        ["Entropia / max (AF se >0.85)",    f"<b>{af['entropy']:.2f} / {af['entropy_max']:.2f} ({af['entropy_ratio']:.2f})</b>"],
-        ["Picchi nell'istogramma RR",       f"{af['n_peaks']} (1 = unimodale, ≥2 = struttura conservata)"],
-        ["Finestre 30-battiti con CV>15%", f"{af['windows_flagged']} / {af['windows_total']}"],
-        ["Score AF (0-4)",                  f"<b>{af['score']}/4</b>"],
+        ["Entropy / max (AF if >0.85)",     f"<b>{af['entropy']:.2f} / {af['entropy_max']:.2f} ({af['entropy_ratio']:.2f})</b>"],
+        ["Peaks in the RR histogram",       f"{af['n_peaks']} (1 = unimodal, ≥2 = structure preserved)"],
+        ["30-beat windows with CV>15%",     f"{af['windows_flagged']} / {af['windows_total']}"],
+        ["AF score (0-4)",                  f"<b>{af['score']}/4</b>"],
     ]
     story.append(kv_table([[Paragraph(k, NORMAL), Paragraph(v, NORMAL)] for k, v in af_rows],
                           col_widths=[80*mm, 90*mm]))
@@ -1904,50 +1904,50 @@ if af.get("median_ms") is not None:
         story.append(Spacer(1, 4))
         story.append(fit_image(af_tacho_img, max_w_mm=175, max_h_mm=60))
     story.append(Spacer(1, 8))
-    story.append(Paragraph(f"<b>Esito screening:</b> {af['verdict']}", NORMAL))
+    story.append(Paragraph(f"<b>Screening result:</b> {af['verdict']}", NORMAL))
 else:
     story.append(Paragraph(af['verdict'], NORMAL))
 story.append(PageBreak())
 
 # ---- PVC INTERPOLATE vs COMPENSATORIE ----
-story.append(Paragraph("PVC interpolate vs pausa compensatoria", H2))
+story.append(Paragraph("Interpolated PVC vs compensatory pause", H2))
 story.append(Paragraph(
-    "Ogni PVC sandwich-fra-due-N può essere classificata in base a quanto disturba "
-    "il ritmo sinusale, sommando l'intervallo che la precede e quello che la segue:",
+    "Each PVC sandwiched between two N beats can be classified by how much it disturbs "
+    "the sinus rhythm, summing the interval that precedes it and the one that follows it:",
     NORMAL))
 story.append(Spacer(1, 4))
 story.append(Paragraph(
-    "<b>• Interpolata</b> — somma ≈ 1× RR sinusale. La PVC si infila fra due N "
-    "senza resettare il nodo SA, che continua a scaricare al suo ritmo. Il battito "
-    "successivo arriva quasi subito, non c'è pausa. Favorite dalle bradicardie (più "
-    "spazio diastolico), <b>emodinamicamente più benigne</b>: il cuore non perde "
-    "gittata e il paziente tipicamente <b>non sente</b> il tonfo.",
+    "<b>• Interpolated</b> — sum ≈ 1× sinus RR. The PVC slots between two N beats "
+    "without resetting the SA node, which keeps firing at its own rhythm. The next beat "
+    "arrives almost immediately, there is no pause. Favored by bradycardia (more "
+    "diastolic room), <b>hemodynamically more benign</b>: the heart does not lose "
+    "output and the patient typically <b>does not feel</b> the thump.",
     NORMAL))
 story.append(Spacer(1, 4))
 story.append(Paragraph(
-    "<b>• Pausa compensatoria piena</b> — somma ≈ 2× RR sinusale. La PVC blocca la "
-    "conduzione retrograda al nodo SA, che salta un battito. Risultato: pausa "
-    "visibile, ripresa al ritmo normale. Più tipica delle frequenze più alte. È la "
-    "PVC che fa percepire il classico <b>'tonfo'</b> al petto.",
+    "<b>• Full compensatory pause</b> — sum ≈ 2× sinus RR. The PVC blocks "
+    "retrograde conduction to the SA node, which skips a beat. Result: a visible "
+    "pause, then resumption of the normal rhythm. More typical of higher rates. It is the "
+    "PVC that produces the classic <b>'thump'</b> in the chest.",
     NORMAL))
 story.append(Spacer(1, 4))
 story.append(Paragraph(
-    "<b>• Pausa incompleta</b> — somma fra 1.3× e 1.85× RR sinusale. Caso "
-    "intermedio: il nodo SA è parzialmente resettato, oppure è una PVC tardiva. "
-    "Meno informativa.",
+    "<b>• Incomplete pause</b> — sum between 1.3× and 1.85× sinus RR. An "
+    "intermediate case: the SA node is partially reset, or it is a late PVC. "
+    "Less informative.",
     NORMAL))
 story.append(Spacer(1, 8))
 
-# tabella conteggi
+# counts table
 class_rows = [
-    [Paragraph("<b>Tipo</b>", NORMAL), Paragraph("<b>Conteggio</b>", NORMAL),
-     Paragraph("<b>% sul totale classificato</b>", NORMAL)],
-    [Paragraph("Interpolate", NORMAL), Paragraph(f"{len(interpolated_list)}", NORMAL),
+    [Paragraph("<b>Type</b>", NORMAL), Paragraph("<b>Count</b>", NORMAL),
+     Paragraph("<b>% of total classified</b>", NORMAL)],
+    [Paragraph("Interpolated", NORMAL), Paragraph(f"{len(interpolated_list)}", NORMAL),
      Paragraph(f"{pct_interp:.1f}%", NORMAL)],
-    [Paragraph("Pausa compensatoria piena", NORMAL),
+    [Paragraph("Full compensatory pause", NORMAL),
      Paragraph(f"{len(compensated_list)}", NORMAL),
      Paragraph(f"{pct_comp:.1f}%", NORMAL)],
-    [Paragraph("Pausa incompleta", NORMAL),
+    [Paragraph("Incomplete pause", NORMAL),
      Paragraph(f"{len(incomplete_list)}", NORMAL),
      Paragraph(f"{pct_incomp:.1f}%", NORMAL)],
 ]
@@ -1965,33 +1965,33 @@ class_tbl.setStyle(TableStyle([
 ]))
 story.append(class_tbl)
 story.append(Spacer(1, 6))
-# interpretazione
+# interpretation
 if pct_interp >= 25:
-    interp_msg = (f"Le interpolate rappresentano una quota <b>elevata</b> "
-                  f"({pct_interp:.1f}%) — coerente con la bradicardia di base "
-                  f"({sinus_bpm:.0f} BPM): il lungo RR sinusale offre ampio "
-                  f"spazio per accogliere una PVC senza disturbare il ritmo. "
-                  f"Profilo emodinamicamente favorevole.")
+    interp_msg = (f"The interpolated ones represent a <b>high</b> share "
+                  f"({pct_interp:.1f}%) — consistent with the baseline bradycardia "
+                  f"({sinus_bpm:.0f} BPM): the long sinus RR offers ample "
+                  f"room to accommodate a PVC without disturbing the rhythm. "
+                  f"A hemodynamically favorable profile.")
 elif pct_interp >= 10:
-    interp_msg = (f"Le interpolate sono una <b>quota intermedia</b> "
-                  f"({pct_interp:.1f}%). Coesistono con un buon numero di "
-                  f"compensatorie classiche, pattern misto.")
+    interp_msg = (f"The interpolated ones are an <b>intermediate</b> share "
+                  f"({pct_interp:.1f}%). They coexist with a good number of "
+                  f"classic compensatory ones, a mixed pattern.")
 else:
-    interp_msg = (f"Le interpolate sono <b>rare</b> ({pct_interp:.1f}%): la "
-                  f"maggioranza delle PVC reseta il nodo SA con pausa "
-                  f"compensatoria completa.")
+    interp_msg = (f"The interpolated ones are <b>rare</b> ({pct_interp:.1f}%): the "
+                  f"majority of PVC reset the SA node with a full "
+                  f"compensatory pause.")
 story.append(Paragraph(interp_msg, NORMAL))
 story.append(Spacer(1, 6))
 story.append(Paragraph(
-    f"<i>Verifica: le {len(interpolated_list)} PVC interpolate sono state riviste "
-    f"visivamente una a una (grid PDF separato <b>all_interpolated.pdf</b>) e tutte "
-    f"confermate dal pattern visuale: il battito N successivo arriva ben prima "
-    f"della linea attesa di pausa compensatoria piena (2× RR sinus).</i>",
+    f"<i>Verification: the {len(interpolated_list)} interpolated PVC were reviewed "
+    f"visually one by one (separate grid PDF <b>all_interpolated.pdf</b>) and all "
+    f"confirmed by the visual pattern: the next N beat arrives well before "
+    f"the expected full compensatory pause line (2× RR sinus).</i>",
     NORMAL))
 story.append(Spacer(1, 12))
 
-# strip di esempio
-story.append(Paragraph("<b>Esempi reali dalla sessione (numerati come nel grid completo)</b>", H3))
+# example strip
+story.append(Paragraph("<b>Real examples from the session (numbered as in the full grid)</b>", H3))
 story.append(Spacer(1, 4))
 for im in interp_imgs:
     story.append(fit_image(im, max_w_mm=170, max_h_mm=55))
@@ -2000,36 +2000,36 @@ for im in comp_imgs:
     story.append(fit_image(im, max_w_mm=170, max_h_mm=55))
     story.append(Spacer(1, 4))
 
-# ---- STRIP CHART PAGES (ora alla fine, prima dell'appendice grid) ----
+# ---- STRIP CHART PAGES (now at the end, before the grid appendix) ----
 story.append(PageBreak())
-story.append(Paragraph("Tracce ECG complete", H2))
+story.append(Paragraph("Complete ECG traces", H2))
 story.append(Paragraph(
-    f"Visualizzazione integrale della registrazione, formato strip-chart stile holter. "
-    f"Ogni riga rappresenta <b>{STRIP_ROW_SECONDS} secondi</b> ({STRIP_ROW_SECONDS//60 if STRIP_ROW_SECONDS>=60 else 0} min). "
-    f"Il numero a sinistra di ogni riga indica il minuto:secondo di inizio. "
-    f"A destra il conteggio battiti normali (N) e PVC. "
-    f"I triangoli sopra il tracciato marcano la classificazione, l'overlay rosso evidenzia "
-    f"il QRS e l'iperpolarizzazione delle PVC.",
+    f"Full visualization of the recording, holter-style strip-chart format. "
+    f"Each row represents <b>{STRIP_ROW_SECONDS} seconds</b> ({STRIP_ROW_SECONDS//60 if STRIP_ROW_SECONDS>=60 else 0} min). "
+    f"The number to the left of each row indicates the start minute:second. "
+    f"On the right, the count of normal beats (N) and PVC. "
+    f"The triangles above the trace mark the classification, the red overlay highlights "
+    f"the QRS and the hyperpolarization of the PVCs.",
     NORMAL))
 story.append(Spacer(1, 6))
 for img, t0, t1 in strip_imgs:
     story.append(Image(img, width=174*mm, height=233*mm))
     story.append(PageBreak())
 
-# Grid completo di tutte le PVC interpolate (1 pagina A4 per grid page)
+# Full grid of all interpolated PVC (1 A4 page per grid page)
 if interp_grid_pages:
     story.append(PageBreak())
     story.append(Paragraph(
-        f"Appendice: tutte le {len(interpolated_list)} PVC interpolate, numerate",
+        f"Appendix: all {len(interpolated_list)} interpolated PVC, numbered",
         H2))
     story.append(Paragraph(
-        f"Ogni strip mostra una finestra di 6 secondi centrata sulla PVC analizzata "
-        f"(cerchio arancione). Le barre azzurra (RR_pre) e gialla (RR_post) "
-        f"mostrano gli intervalli con il battito N precedente/successivo. La linea "
-        f"rossa tratteggiata segna dove cadrebbe il battito N successivo se la pausa "
-        f"fosse compensatoria piena (2× RR sinus = {2*RR_SINUS_MS:.0f}ms): il fatto "
-        f"che il triangolo verde sia sempre <b>prima</b> di quella linea conferma "
-        f"l'interpolazione.",
+        f"Each strip shows a 6-second window centered on the analyzed PVC "
+        f"(orange circle). The light blue (RR_pre) and yellow (RR_post) bars "
+        f"show the intervals with the preceding/following N beat. The dashed "
+        f"red line marks where the next N beat would fall if the pause "
+        f"were a full compensatory one (2× RR sinus = {2*RR_SINUS_MS:.0f}ms): the fact "
+        f"that the green triangle is always <b>before</b> that line confirms "
+        f"the interpolation.",
         NORMAL))
     for grid_im in interp_grid_pages:
         story.append(PageBreak())
@@ -2038,25 +2038,25 @@ if interp_grid_pages:
 story.append(PageBreak())
 
 # ---- HRV PRE-PVC + POINCARE ----
-story.append(Paragraph("HRV e modulazione autonomica pre-PVC", H2))
+story.append(Paragraph("HRV and pre-PVC autonomic modulation", H2))
 story.append(Paragraph(
-    "Si analizzano i <b>5 battiti normali immediatamente precedenti</b> a ciascuna PVC. "
-    "Calcolando la deviazione standard degli intervalli RR in queste finestre e confrontandola "
-    "con il baseline sinusale stabile, si valuta se il ritmo sinusale è più irregolare nei "
-    "secondi che precedono un'ectopia (compatibile con modulazione autonomica/vagale).",
+    "The <b>5 normal beats immediately preceding</b> each PVC are analyzed. "
+    "By computing the standard deviation of the RR intervals in these windows and comparing it "
+    "with the stable sinus baseline, we assess whether the sinus rhythm is more irregular in the "
+    "seconds preceding an ectopy (compatible with autonomic/vagal modulation).",
     NORMAL))
 story.append(Spacer(1, 4))
 story.append(Paragraph(
-    f"Stdev RR pre-PVC media: <b>{pre_pvc_stdev_mean:.1f} ms</b>. "
-    f"Stdev baseline sinusale: <b>{baseline_stdev_mean:.1f} ms</b>. "
+    f"Mean pre-PVC RR stdev: <b>{pre_pvc_stdev_mean:.1f} ms</b>. "
+    f"Sinus baseline stdev: <b>{baseline_stdev_mean:.1f} ms</b>. "
     f"Delta: <b>{hrv_delta_pct:+.1f}%</b>. "
     + (
-        "Differenza piccola ma sistematica su centinaia di osservazioni: il ritmo "
-        "sinusale è leggermente più variabile prima di ogni PVC. Compatibile con un "
-        "trigger ectopico modulato dal tono vagale / fase respiratoria."
+        "A small but systematic difference over hundreds of observations: the sinus "
+        "rhythm is slightly more variable before each PVC. Compatible with an "
+        "ectopic trigger modulated by vagal tone / respiratory phase."
         if hrv_delta_pct > 5 else
-        "La variabilità non differisce sostanzialmente dal baseline; il trigger ectopico "
-        "appare relativamente indipendente dalla variabilità sinusale a breve termine."
+        "The variability does not substantially differ from baseline; the ectopic trigger "
+        "appears relatively independent of short-term sinus variability."
     ),
     NORMAL))
 if hrv_img:
@@ -2066,11 +2066,11 @@ if hrv_img:
 story.append(Spacer(1, 10))
 story.append(Paragraph("Poincaré plot", H2))
 story.append(Paragraph(
-    "Ogni punto rappresenta una coppia di intervalli consecutivi (RRₙ, RRₙ₊₁). "
-    "Nei battiti sinusali (verde) ci si aspetta un cluster compatto attorno alla bisettrice "
-    "(RRₙ ≈ RRₙ₊₁): più stretto è il cluster trasversalmente, minore è la variabilità battito-battito. "
-    "Le PVC (rosso) plottano <b>coupling vs RR successivo</b> e cadono fuori dal cluster sinusale "
-    "in una zona caratteristica: RRₙ molto corto (coupling), RRₙ₊₁ lungo (pausa compensatoria).",
+    "Each point represents a pair of consecutive intervals (RRₙ, RRₙ₊₁). "
+    "For the sinus beats (green) a compact cluster around the diagonal is expected "
+    "(RRₙ ≈ RRₙ₊₁): the narrower the cluster transversally, the lower the beat-to-beat variability. "
+    "The PVCs (red) plot <b>coupling vs following RR</b> and fall outside the sinus cluster "
+    "in a characteristic zone: a very short RRₙ (coupling), a long RRₙ₊₁ (compensatory pause).",
     NORMAL))
 if poincare_img:
     story.append(Spacer(1, 6))
@@ -2080,23 +2080,23 @@ if poincare_img:
 story.append(PageBreak())
 
 # ---- FALSE-POSITIVE EXAMPLES ----
-# (Gli esempi di couplet sono ora in cima, sotto la traccia esemplificativa.)
+# (The couplet examples are now at the top, below the example trace.)
 if fp_imgs:
-    story.append(Paragraph("Esempi morfologici", H2))
-    story.append(Paragraph("Battiti riclassificati dalla soglia di ampiezza", H3))
+    story.append(Paragraph("Morphological examples", H2))
+    story.append(Paragraph("Beats reclassified by the amplitude threshold", H3))
     story.append(Paragraph(
-        f"Il solo criterio di forma (rebound profondo o QRS largo) sovrastimava come "
-        f"PVC <b>{len(removed_fp)} battiti</b> "
-        f"(ampiezza {min(q['amp'] for q in removed_fp):.2f}–"
-        f"{max(q['amp'] for q in removed_fp):.2f} V); il requisito di ampiezza ≥ "
-        f"{PVC_MIN_AMP_V:.2f} V li riporta alla classificazione corretta. La "
-        f"<b>maggioranza ({len(removed_fp)-n_fp_spike})</b> sono <b>battiti sinusali "
-        f"normali</b> piccoli e veri: QRS stretto ma fisiologico, con onda S che "
-        f"superava la soglia di forma pur non essendo ectopica. Una minoranza "
-        f"(<b>{n_fp_spike}</b>) sono invece <b>spike di rumore</b> in tratti rumorosi, "
-        f"di larghezza ≤16 ms — impossibile per un QRS reale — quindi nemmeno veri "
-        f"battiti. In entrambi i casi la soglia li toglie correttamente dal conteggio "
-        f"PVC. Esempi rappresentativi (battito reale piccolo, cerchiato in arancione):",
+        f"The shape criterion alone (deep rebound or wide QRS) overestimated as "
+        f"PVC <b>{len(removed_fp)} beats</b> "
+        f"(amplitude {min(q['amp'] for q in removed_fp):.2f}–"
+        f"{max(q['amp'] for q in removed_fp):.2f} V); the amplitude requirement ≥ "
+        f"{PVC_MIN_AMP_V:.2f} V brings them back to the correct classification. The "
+        f"<b>majority ({len(removed_fp)-n_fp_spike})</b> are <b>small, real normal "
+        f"sinus beats</b>: a narrow but physiological QRS, with an S wave that "
+        f"exceeded the shape threshold despite not being ectopic. A minority "
+        f"(<b>{n_fp_spike}</b>) are instead <b>noise spikes</b> in noisy stretches, "
+        f"with width ≤16 ms — impossible for a real QRS — and therefore not even real "
+        f"beats. In both cases the threshold correctly removes them from the "
+        f"PVC count. Representative examples (small real beat, circled in orange):",
         NORMAL))
     for im in fp_imgs:
         story.append(Spacer(1, 6))
@@ -2106,63 +2106,63 @@ if fp_imgs:
     story.append(PageBreak())
 
 # ---- CONCLUSIONS + LIMITS ----
-story.append(Paragraph("Conclusioni descrittive", H2))
+story.append(Paragraph("Descriptive conclusions", H2))
 concl = [
-    f"<b>Focolaio ectopico monomorfo e stabile</b>. Il coupling interval ha mediana "
-    f"{coupling_median:.0f} ms e deviazione standard {coupling_std:.0f} ms "
-    f"({100*coupling_std/max(1,coupling_median):.1f}% del mediano). La dispersione è molto "
-    f"bassa, indicando un'unica sorgente ectopica che scarica con timing molto consistente.",
+    f"<b>Monomorphic and stable ectopic focus</b>. The coupling interval has a median "
+    f"of {coupling_median:.0f} ms and a standard deviation of {coupling_std:.0f} ms "
+    f"({100*coupling_std/max(1,coupling_median):.1f}% of the median). The dispersion is very "
+    f"low, indicating a single ectopic source firing with very consistent timing.",
 
-    f"<b>PVC prevalentemente isolate</b>. {iso_pvc} delle {len(pvc)} PVC totali "
-    f"({100*iso_pvc/max(1,len(pvc)):.0f}%) sono isolate (preceduta e seguita da battito normale). "
-    f"Solo {couplets_n} couplet, nessun triplet. Nessun run di tachicardia ventricolare osservato.",
+    f"<b>Predominantly isolated PVC</b>. {iso_pvc} of the {len(pvc)} total PVC "
+    f"({100*iso_pvc/max(1,len(pvc)):.0f}%) are isolated (preceded and followed by a normal beat). "
+    f"Only {couplets_n} couplets, no triplets. No ventricular tachycardia run observed.",
 
-    f"<b>Pattern ritmico dominante: trigeminia</b>. {trigem} run di trigeminia "
-    f"(N-N-PVC ripetuto ≥3 cicli) contro {bigem} run di bigeminia "
-    f"(N-PVC alternato ≥3 cicli).",
+    f"<b>Dominant rhythmic pattern: trigeminy</b>. {trigem} trigeminy runs "
+    f"(repeated N-N-PVC ≥3 cycles) versus {bigem} bigeminy runs "
+    f"(alternating N-PVC ≥3 cycles).",
 
-    f"<b>Burden temporalmente uniforme</b>. La frequenza PVC/min resta costante intorno "
-    f"a {pvc_rate:.0f}/min per tutta la durata della registrazione, senza accumuli o "
-    f"quiescenze importanti.",
+    f"<b>Temporally uniform burden</b>. The PVC/min rate stays constant around "
+    f"{pvc_rate:.0f}/min for the whole duration of the recording, with no major clustering "
+    f"or quiescence.",
 
-    f"<b>Modulazione autonomica lieve ma sistematica</b>. La variabilità RR nei 5 battiti "
-    f"sinusali immediatamente precedenti una PVC è del {hrv_delta_pct:+.0f}% rispetto al "
-    f"baseline. Il segnale è piccolo ma osservabile su centinaia di osservazioni.",
+    f"<b>Mild but systematic autonomic modulation</b>. The RR variability in the 5 "
+    f"sinus beats immediately preceding a PVC is {hrv_delta_pct:+.0f}% relative to "
+    f"baseline. The signal is small but observable over hundreds of observations.",
 
-    f"<b>Pulse deficit teorico</b>. Tipicamente le PVC non producono polso periferico "
-    f"apprezzabile per via dello stroke volume ridotto. Atteso un <b>deficit di "
-    f"~{100*len(pvc)/n_total:.0f}%</b> tra frequenza ECG e frequenza al polso radiale "
-    f"(quanto rilevabile da un Garmin/Apple Watch). Compatibile con osservazioni "
-    f"empiriche dell'utente.",
+    f"<b>Theoretical pulse deficit</b>. PVCs typically do not produce an appreciable "
+    f"peripheral pulse because of the reduced stroke volume. A <b>deficit of "
+    f"~{100*len(pvc)/n_total:.0f}%</b> is expected between the ECG rate and the radial pulse rate "
+    f"(as detectable by a Garmin/Apple Watch). Compatible with the user's empirical "
+    f"observations.",
 ]
 for c in concl:
     story.append(Paragraph("• " + c, NORMAL))
     story.append(Spacer(1, 4))
 
 story.append(Spacer(1, 12))
-story.append(Paragraph("Limiti tecnici", H2))
+story.append(Paragraph("Technical limitations", H2))
 lims = [
-    "<b>Singola derivazione (Einthoven I)</b>. Impossibile localizzare il focolaio "
-    "ectopico nei tre piani anatomici o distinguere PVC da altre forme di ectopia "
-    "che richiedano vista multi-lead.",
+    "<b>Single lead (Einthoven I)</b>. Impossible to localize the ectopic "
+    "focus in the three anatomical planes or to distinguish PVC from other forms of ectopy "
+    "that require a multi-lead view.",
 
-    "<b>Detector basato su rebound e larghezza</b>. Robusto per la morfologia "
-    "attuale del paziente, ma potrebbe perdere PVC con polarità invertita o "
-    "morfologia atipica. Non esegue rilevazione di onde P.",
+    "<b>Detector based on rebound and width</b>. Robust for the patient's "
+    "current morphology, but it could miss PVC with inverted polarity or "
+    "atypical morphology. It does not perform P-wave detection.",
 
-    "<b>Durata limitata</b>. Una registrazione di "
-    f"{total_min:.1f} min cattura un campione del comportamento elettrico ma "
-    "non permette inferenza su trend circadiani, effetti post-prandiali, "
-    "risposta a sforzo, sonno.",
+    "<b>Limited duration</b>. A recording of "
+    f"{total_min:.1f} min captures a sample of the electrical behavior but "
+    "does not allow inference about circadian trends, post-prandial effects, "
+    "exertion response, or sleep.",
 
-    "<b>Assenza di segnale di respiro sincronizzato</b>. L'ipotesi di modulazione "
-    "respiratoria del trigger ectopico (suggerita dall'osservazione +HRV pre-PVC) "
-    "non è verificabile formalmente senza un sensore di respiro (es. accelerometro "
-    "Z sul torace) sincronizzato con l'ECG.",
+    "<b>No synchronized respiration signal</b>. The hypothesis of respiratory "
+    "modulation of the ectopic trigger (suggested by the +HRV pre-PVC observation) "
+    "is not formally verifiable without a respiration sensor (e.g. a Z-axis "
+    "accelerometer on the chest) synchronized with the ECG.",
 
-    "<b>Detector non validato clinicamente</b>. Le soglie sono state tarate "
-    "empiricamente sui dati di questo singolo soggetto e non hanno passato "
-    "validazione contro un gold standard come l'holter clinico professionale.",
+    "<b>Detector not clinically validated</b>. The thresholds were tuned "
+    "empirically on this single subject's data and have not passed "
+    "validation against a gold standard such as a professional clinical holter.",
 ]
 for l in lims:
     story.append(Paragraph("• " + l, NORMAL))
@@ -2173,11 +2173,11 @@ story.append(HRFlowable(width="100%", thickness=0.3, color=colors.HexColor("#ccc
 story.append(Spacer(1, 6))
 story.append(Paragraph(
     f"<font color='#888' size=8>"
-    f"Sorgente: <font name='Courier'>{os.path.basename(PATH)}</font>. "
-    f"Pipeline: Pi Pico 2 W (ADC 12-bit 250 Hz) → WiFi/TCP → server Python (Flask/SSE) → "
-    f"filtro IIR 0.3–25 Hz → detector FSM 4 stati → classificazione rebound/width. "
+    f"Source: <font name='Courier'>{os.path.basename(PATH)}</font>. "
+    f"Pipeline: Pi Pico 2 W (12-bit ADC 250 Hz) → WiFi/TCP → Python server (Flask/SSE) → "
+    f"IIR filter 0.3–25 Hz → 4-state FSM detector → rebound/width classification. "
     f"Repository: <font name='Courier'>github.com/mrEg0n/holter-ecg</font>. "
-    f"Generato il {now} da host/generate_report_pdf.py."
+    f"Generated on {now} by host/generate_report_pdf.py."
     f"</font>",
     NORMAL
 ))
@@ -2185,5 +2185,5 @@ story.append(Paragraph(
 # build
 print("rendering PDF...")
 doc.build(story)
-print(f"PDF salvato: {out_path}")
+print(f"PDF saved: {out_path}")
 print(f"  size: {os.path.getsize(out_path)//1024} KB")

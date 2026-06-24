@@ -1,16 +1,16 @@
 """
-Estrae da  reports/holter_dashboard.html  i pezzi "automatici" del report
-(le 18 figure e le 5 tabelle) e li scrive come file che il documento LaTeX
-include. Cosi il testo lo lavori a mano in  reports/holter_report.tex , mentre
-figure e tabelle si rigenerano da sole quando rifai le registrazioni:
+Extracts the "automatic" parts of the report (the 18 figures and the 5 tables)
+from  reports/holter_dashboard.html  and writes them as files that the LaTeX
+document includes. This way you edit the prose by hand in  reports/holter_report.tex ,
+while figures and tables regenerate themselves whenever you redo the recordings:
 
-    python3 host/dashboard.py        # ricalcola tutto -> HTML (con le figure)
+    python3 host/dashboard.py        # recompute everything -> HTML (with figures)
     python3 host/export_latex.py     # HTML -> reports/figs/*.png + tables.tex
 
 Output:
-    reports/figs/NN_slug.png   una per figura, nell'ordine del report
-    reports/tables.tex         \newcommand per ogni tabella + macro coi numeri
-                               aggregati (\cumPVC, \pauseValley, ...)
+    reports/figs/NN_slug.png   one per figure, in report order
+    reports/tables.tex         \newcommand for each table + macros with the
+                               aggregate numbers (\cumPVC, \pauseValley, ...)
 """
 import base64
 import html
@@ -31,9 +31,9 @@ def slugify(alt):
 
 
 def extract_figures(doc):
-    """Salva ogni <img base64> come PNG. Ritorna [(idx, filename, alt), ...]."""
+    """Save each <img base64> as a PNG. Returns [(idx, filename, alt), ...]."""
     os.makedirs(FIG_DIR, exist_ok=True)
-    # pulizia vecchie figure
+    # clean up old figures
     for f in os.listdir(FIG_DIR):
         if f.endswith(".png"):
             os.remove(os.path.join(FIG_DIR, f))
@@ -50,10 +50,10 @@ def extract_figures(doc):
     return out
 
 
-# ---- parsing tabelle -------------------------------------------------------
+# ---- table parsing ---------------------------------------------------------
 class TableGrabber(HTMLParser):
-    """Raccoglie ogni <table> come lista di righe; ogni riga lista di celle
-    (testo + flag header). Conserva l'ordine di comparsa nel documento."""
+    """Collects each <table> as a list of rows; each row a list of cells
+    (text + header flag). Preserves the order of appearance in the document."""
     def __init__(self):
         super().__init__()
         self.tables = []
@@ -93,7 +93,7 @@ TEX_ESC = {"&": r"\&", "%": r"\%", "$": r"\$", "#": r"\#", "_": r"\_",
            "{": r"\{", "}": r"\}", "~": r"\textasciitilde{}",
            "^": r"\textasciicircum{}"}
 
-# unicode -> LaTeX, cosi il documento compila anche con pdflatex puro
+# unicode -> LaTeX, so the document compiles even with plain pdflatex
 UNI = {
     "—": "---", "–": "--", "−": r"$-$", "·": r"$\cdot$",
     "×": r"$\times$", "≈": r"$\approx$", "±": r"$\pm$",
@@ -115,11 +115,11 @@ def tex_escape(s):
 
 
 def table_to_latex(rows, macro, caption, col_align=None):
-    """Genera \newcommand{<macro>}{ ... tabular booktabs ... }. Le tabelle
-    larghe (>=7 colonne) vengono scalate a \textwidth con \resizebox."""
+    """Generates \newcommand{<macro>}{ ... tabular booktabs ... }. Wide tables
+    (>=7 columns) are scaled to \textwidth with \resizebox."""
     ncol = max(len(r) for r in rows)
     if col_align is None:
-        # prima colonna a sinistra, le altre a destra (numeri)
+        # first column left-aligned, the rest right-aligned (numbers)
         col_align = "l" + "r" * (ncol - 1)
     wide = ncol >= 7
     inner = [f"\\begin{{tabular}}{{{col_align}}}", r"\toprule"]
@@ -151,8 +151,8 @@ def table_to_latex(rows, macro, caption, col_align=None):
 
 
 def extract_scalars(doc):
-    """Pesca i numeri aggregati dal report (stat-grid + frasi chiave) e li
-    restituisce come dict di macro LaTeX -> valore stringa."""
+    """Pulls the aggregate numbers from the report (stat-grid + key phrases) and
+    returns them as a dict of LaTeX macro -> string value."""
     m = {}
     # stat-grid: <span class="v">VAL</span> ... <span class="l">LABEL</span>
     grid = re.findall(
@@ -184,50 +184,50 @@ def main():
         doc = f.read()
 
     figs = extract_figures(doc)
-    print(f"Figure salvate in {FIG_DIR}/ :")
+    print(f"Figures saved in {FIG_DIR}/ :")
     for i, fname, alt in figs:
         print(f"  {fname:42s}  <- {alt}")
 
     g = TableGrabber()
     g.feed(doc)
     tables = g.tables
-    print(f"\nTabelle trovate: {len(tables)}")
+    print(f"\nTables found: {len(tables)}")
     for i, t in enumerate(tables):
-        head = " | ".join(c for c, _ in t[0]) if t else "(vuota)"
+        head = " | ".join(c for c, _ in t[0]) if t else "(empty)"
         print(f"  [{i}] righe={len(t):2d}  header: {head[:90]}")
 
-    # Mappa per indice d'ordine -> (macro, caption). Adatta se cambia l'ordine.
+    # Map from order index -> (macro, caption). Adjust if the order changes.
     plan = [
-        (r"\tableSessions",  "Sessioni registrate."),
-        (r"\tableOutlier",   "Correlazione media N per sessione."),
-        (r"\tableCross",     "Dinamica del ritmo e del burden tra sessioni."),
-        (r"\tableSummary",   "Riassunto per sessione (metriche x sessioni)."),
-        (r"\tableResp",      "Fase respiratoria e accoppiamento delle PVC."),
+        (r"\tableSessions",  "Recorded sessions."),
+        (r"\tableOutlier",   "Mean-N correlation per session."),
+        (r"\tableCross",     "Cross-session rhythm and burden dynamics."),
+        (r"\tableSummary",   "Per-session summary (metrics x sessions)."),
+        (r"\tableResp",      "Respiratory phase and PVC coupling."),
     ]
     blocks = []
     for idx, (macro, cap) in enumerate(plan):
         if idx < len(tables):
             blocks.append(table_to_latex(tables[idx], macro, cap))
         else:
-            blocks.append(f"\\newcommand{{{macro}}}{{\\emph{{(tabella mancante)}}}}")
+            blocks.append(f"\\newcommand{{{macro}}}{{\\emph{{(table missing)}}}}")
 
     scalars = extract_scalars(doc)
-    print("\nNumeri aggregati:")
+    print("\nAggregate numbers:")
     for k, v in scalars.items():
         print(f"  {k:14s} = {v}")
 
     os.makedirs("reports", exist_ok=True)
     with open(TABLES_TEX, "w", encoding="utf-8") as f:
-        f.write("% Generato da host/export_latex.py - NON modificare a mano.\n")
-        f.write("% Numeri + tabelle si rigenerano dai dati; il testo sta in holter_report.tex\n\n")
-        f.write("% --- numeri aggregati (snapshot dei dati correnti) ---\n")
+        f.write("% Generated by host/export_latex.py - do not edit by hand.\n")
+        f.write("% Numbers + tables regenerate from the data; the prose lives in holter_report.tex\n\n")
+        f.write("% --- aggregate numbers (snapshot of the current data) ---\n")
         for k, v in scalars.items():
             f.write(f"\\newcommand{{{k}}}{{{tex_escape(v)}}}\n")
-        f.write("\n% --- tabelle ---\n")
+        f.write("\n% --- tables ---\n")
         f.write("\n\n".join(blocks))
         f.write("\n")
-    print(f"\n✓ Scritto {TABLES_TEX}")
-    print(f"  Figure: {len(figs)}  ·  tabelle: {len(plan)}  ·  macro numeri: {len(scalars)}")
+    print(f"\n✓ Wrote {TABLES_TEX}")
+    print(f"  Figures: {len(figs)}  ·  tables: {len(plan)}  ·  number macros: {len(scalars)}")
 
 
 if __name__ == "__main__":

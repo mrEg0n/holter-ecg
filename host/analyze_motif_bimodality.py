@@ -1,12 +1,12 @@
 """
-Due verifiche puntuali chieste:
-  1) Il "local rhythm motif" dominante dei couplet e' sparso su piu' registrazioni
-     o viene quasi tutto da UNA sessione?
-  2) Il coupling della sessione 2026-06-05 14:59 sembra bimodale a occhio ma il
-     check single-focus NON l'ha segnalata. Perche'? E' davvero bimodale?
+Two specific checks requested:
+  1) Is the dominant "local rhythm motif" of the couplets spread across multiple
+     recordings, or does almost all of it come from ONE session?
+  2) The coupling of session 2026-06-05 14:59 looks bimodal by eye but the
+     single-focus check did NOT flag it. Why? Is it really bimodal?
 
-Riusa le stesse funzioni di host/dashboard.py (nessuna ricodifica della pipeline).
-Eseguire dalla root del repo:  python3 host/analyze_motif_bimodality.py
+Reuses the same functions from host/dashboard.py (no reimplementation of the pipeline).
+Run from the repo root:  python3 host/analyze_motif_bimodality.py
 """
 import glob
 import os
@@ -14,11 +14,11 @@ from collections import Counter, defaultdict
 
 import numpy as np
 
-import dashboard as D   # host/ e' la cwd-relative? no: lo importiamo come modulo
+import dashboard as D   # is host/ cwd-relative? no: we import it as a module
 
 
 def build_sessions():
-    """Replica il filtro/carico di main() ma tiene solo cio' che serve:
+    """Replicates the filter/load of main() but keeps only what is needed:
     label, coupling_ms, ecg_path, couplets."""
     ecg_files = sorted(glob.glob("logs/ecg_*.csv"))
     ecg_files = [f for f in ecg_files
@@ -56,9 +56,9 @@ def build_sessions():
 
 def q1_motif_by_session(sessions):
     print("\n" + "=" * 70)
-    print("Q1  Local rhythm motif: sparso tra registrazioni o da una sessione?")
+    print("Q1  Local rhythm motif: spread across recordings or from a single session?")
     print("=" * 70)
-    # motivo -> Counter per sessione
+    # motif -> Counter per session
     motif_sess = defaultdict(Counter)
     motif_tot = Counter()
     for s in sessions:
@@ -67,7 +67,7 @@ def q1_motif_by_session(sessions):
             motif_sess[m][s["label"]] += 1
             motif_tot[m] += 1
     n_coup = sum(motif_tot.values())
-    print(f"\nTotale couplet: {n_coup}  ·  motivi distinti: {len(motif_tot)}")
+    print(f"\nTotal couplets: {n_coup}  ·  distinct motifs: {len(motif_tot)}")
 
     for motif, tot in motif_tot.most_common(6):
         by = motif_sess[motif]
@@ -75,31 +75,31 @@ def q1_motif_by_session(sessions):
         top_lab, top_n = by.most_common(1)[0]
         share = 100 * top_n / tot
         print(f"\n  motif  {motif}")
-        print(f"    occorrenze: {tot}  ·  presente in {n_sess}/{len(sessions)} sessioni"
-              f"  ·  sessione dominante: {top_lab} ({top_n}, {share:.0f}%)")
+        print(f"    occurrences: {tot}  ·  present in {n_sess}/{len(sessions)} sessions"
+              f"  ·  dominant session: {top_lab} ({top_n}, {share:.0f}%)")
         for lab, n in by.most_common():
             bar = "#" * n
             print(f"      {lab:>16}  {n:2d}  {bar}")
 
-    # focus sul motivo dominante
+    # focus on the dominant motif
     dom, dom_n = motif_tot.most_common(1)[0]
     by = motif_sess[dom]
     n_sess = len(by)
     conc = 100 * by.most_common(1)[0][1] / dom_n
-    print("\n  --> VERDETTO Q1:")
+    print("\n  --> Q1 VERDICT:")
     if n_sess == 1:
-        print(f"      Il motivo dominante ({dom_n} couplet) viene da UNA SOLA sessione "
+        print(f"      The dominant motif ({dom_n} couplets) comes from a SINGLE session "
               f"({by.most_common(1)[0][0]}).")
     elif conc >= 70:
-        print(f"      Il motivo dominante e' CONCENTRATO: {conc:.0f}% da "
-              f"{by.most_common(1)[0][0]} (presente comunque in {n_sess} sessioni).")
+        print(f"      The dominant motif is CONCENTRATED: {conc:.0f}% from "
+              f"{by.most_common(1)[0][0]} (still present in {n_sess} sessions).")
     else:
-        print(f"      Il motivo dominante e' DISTRIBUITO su {n_sess} sessioni "
-              f"(max {conc:.0f}% da una sola). E' un pattern trans-registrazione.")
+        print(f"      The dominant motif is DISTRIBUTED across {n_sess} sessions "
+              f"(max {conc:.0f}% from a single one). It is a cross-recording pattern.")
 
 
 def kde_peaks(x, lo=250, hi=750, n=400, prom_frac=0.05):
-    """Conta i picchi della KDE (indizio visivo di bimodalita')."""
+    """Counts the peaks of the KDE (visual hint of bimodality)."""
     from scipy.stats import gaussian_kde
     x = np.asarray(x, float)
     x = x[(x > 200) & (x < 800)]
@@ -108,7 +108,7 @@ def kde_peaks(x, lo=250, hi=750, n=400, prom_frac=0.05):
     kde = gaussian_kde(x)
     grid = np.linspace(lo, hi, n)
     d = kde(grid)
-    # picchi interni con prominenza minima
+    # internal peaks with minimum prominence
     peaks = []
     thr = d.max() * prom_frac
     for i in range(1, n - 1):
@@ -119,31 +119,31 @@ def kde_peaks(x, lo=250, hi=750, n=400, prom_frac=0.05):
 
 def q2_bimodality(sessions):
     print("\n" + "=" * 70)
-    print("Q2  06-05 14:59 sembra bimodale ma non e' stata segnalata. Verifica.")
+    print("Q2  06-05 14:59 looks bimodal but was not flagged. Verify.")
     print("=" * 70)
     targets = ["2026-06-05 14:59", "2026-06-05 18:29", "2026-06-06 15:08"]
     by_label = {s["label"]: s for s in sessions}
     for lab in targets:
         s = by_label.get(lab)
         if s is None:
-            print(f"\n  {lab}: NON trovata"); continue
+            print(f"\n  {lab}: NOT found"); continue
         c = s["coupling_ms"]
         c = c[(c > 200) & (c < 800)]
         mod = D.coupling_modality(c)
         npk, _, _ = kde_peaks(c)
         flagged = "18:29" in lab or "15:08" in lab
-        print(f"\n  {lab}   (n={len(c)})   {'[FLAGGED bimodale]' if flagged else '[non flaggata]'}")
+        print(f"\n  {lab}   (n={len(c)})   {'[FLAGGED bimodal]' if flagged else '[not flagged]'}")
         print(f"    median={np.median(c):.0f} ms   KDE peaks={npk}")
         if mod["ok"]:
             mu = mod["mu"]
-            print(f"    GMM dBIC(1vs2)={mod['dbic']:+.1f}  (>0 favorisce 2 comp)")
-            print(f"    GMM 2 medie: {mu[0]:.0f} / {mu[1]:.0f} ms  "
-                  f"(distanza {mu[1]-mu[0]:.0f} ms)")
-            print(f"    valle interna reale (criterio attuale): {mod['bimodal']}"
+            print(f"    GMM dBIC(1vs2)={mod['dbic']:+.1f}  (>0 favors 2 comp)")
+            print(f"    GMM 2 means: {mu[0]:.0f} / {mu[1]:.0f} ms  "
+                  f"(distance {mu[1]-mu[0]:.0f} ms)")
+            print(f"    real internal valley (current criterion): {mod['bimodal']}"
                   + (f"  @ {mod['valley']:.0f} ms" if mod["valley"] else ""))
         else:
-            print("    GMM: dati insufficienti")
-        # se i due modi GMM esistono, prova lo split morfologico a meta' strada
+            print("    GMM: insufficient data")
+        # if the two GMM modes exist, try the morphological split at the midpoint
         if mod["ok"] and mod["mu"]:
             valley = mod["valley"] if mod["valley"] else float(np.mean(mod["mu"]))
             morph = D.coupling_focus_morph(s["ecg_path"], valley)
@@ -151,19 +151,19 @@ def q2_bimodality(sessions):
                 print(f"    split @ {valley:.0f} ms -> n_lo={morph['n_lo']} n_hi={morph['n_hi']}"
                       f"  QRS template r={morph['corr']:.3f}  "
                       f"(w {morph['w_lo']:.0f}/{morph['w_hi']:.0f} ms)")
-                print(f"      -> {'STESSO focolaio (r alto)' if morph['corr']>0.97 else 'morfologia DIVERSA, da guardare'}")
+                print(f"      -> {'SAME focus (high r)' if morph['corr']>0.97 else 'DIFFERENT morphology, worth a look'}")
 
-    print("\n  --> Nota: il criterio attuale flagga 'bimodale' solo se la mixture-2")
-    print("      ha una VALLE INTERNA reale E dBIC>0. Se 14:59 ha KDE a 2 picchi ma")
-    print("      il GMM non trova valle interna, e' 'spalla'/asimmetria, non due modi")
-    print("      separati. I numeri qui sopra dicono in quale dei due casi siamo.")
+    print("\n  --> Note: the current criterion flags 'bimodal' only if the mixture-2")
+    print("      has a real INTERNAL VALLEY AND dBIC>0. If 14:59 has a 2-peak KDE but")
+    print("      the GMM finds no internal valley, it is a 'shoulder'/asymmetry, not two")
+    print("      separate modes. The numbers above say which of the two cases we are in.")
 
 
 def main():
-    print("Carico le sessioni (stessa pipeline di dashboard.py)...")
+    print("Loading the sessions (same pipeline as dashboard.py)...")
     sessions = build_sessions()
     if not sessions:
-        print("Nessuna sessione."); return
+        print("No sessions."); return
     q1_motif_by_session(sessions)
     q2_bimodality(sessions)
 

@@ -1,6 +1,6 @@
 """
-Registra 5 secondi di ECG a 250 Hz dal Pico 2 W.
-Stampa tutti i campioni come CSV su seriale: time_ms,raw,volt
+Records 5 seconds of ECG at 250 Hz from the Pico 2 W.
+Prints all samples as CSV over serial: time_ms,raw,volt
 """
 from machine import ADC, Pin
 import time
@@ -18,7 +18,7 @@ print("# t_ms,raw,volt")
 t_start = time.ticks_us()
 t_next = t_start
 for i in range(N_SAMPLES):
-    # busy-wait per timing preciso
+    # busy-wait for precise timing
     while time.ticks_diff(time.ticks_us(), t_next) < 0:
         pass
     t_next = time.ticks_add(t_next, PERIOD_US)

@@ -1,7 +1,7 @@
 """
-Lettura grezza ADC0 (GP26) dal Pico 2 W.
-Polla 50 campioni a 10 Hz, stampa raw + voltage.
-Test di sanity check senza elettrodi sul corpo.
+Raw read of ADC0 (GP26) from the Pico 2 W.
+Polls 50 samples at 10 Hz, prints raw + voltage.
+Sanity-check test without electrodes on the body.
 """
 from machine import ADC, Pin
 import time
@@ -9,7 +9,7 @@ import time
 adc = ADC(Pin(26))  # ADC0 / GP26
 
 VREF = 3.3  # 3.3V reference
-SCALE = 65535  # MicroPython espone ADC come 16-bit (0..65535)
+SCALE = 65535  # MicroPython exposes ADC as 16-bit (0..65535)
 
 print("--- AD8232 raw read test ---")
 print("sample | raw   | volt")

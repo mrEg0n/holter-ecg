@@ -1,7 +1,7 @@
 """
-Detector v3: dual-threshold + REBOUND (iperpolarizzazione post-QRS).
-State machine: IDLE -> WIDTH -> DETECT -> POST(200ms misuro trough) -> IDLE.
-PVC se rebound_ratio = |trough|/peak >= 0.40, OPPURE width >= 95ms.
+Detector v3: dual-threshold + REBOUND (post-QRS hyperpolarization).
+State machine: IDLE -> WIDTH -> DETECT -> POST(200ms measure trough) -> IDLE.
+PVC if rebound_ratio = |trough|/peak >= 0.40, OR width >= 95ms.
 """
 import math
 import statistics
@@ -106,7 +106,7 @@ for n, v in enumerate(v_f):
     elif fsm == STATE_DETECT:
         if v > peak_amp: peak_amp = v; peak_n = n
         if v < WIDTH_THR:
-            # fine del corpo del QRS; ora monitoro il rebound
+            # end of the QRS body; now monitor the rebound
             pending_width_ms = (n - width_start) * 1000.0 / SAMPLE_HZ
             pending_start = width_start
             pending_peak_n = peak_n
@@ -119,10 +119,10 @@ for n, v in enumerate(v_f):
         if v < post_trough:
             post_trough = v
         post_counter += 1
-        # finalizza dopo POST_PEAK_SAMPLES o se un nuovo QRS sta partendo (oltre refractory)
+        # finalize after POST_PEAK_SAMPLES or if a new QRS is starting (beyond refractory)
         new_qrs_starting = (v > WIDTH_THR and post_counter > REFRACTORY_SAMPLES)
         if post_counter >= POST_PEAK_SAMPLES or new_qrs_starting:
-            # accept se fuori refractory dal precedente
+            # accept if outside refractory from the previous one
             if last_peak_sample is None or (pending_peak_n - last_peak_sample) > REFRACTORY_SAMPLES:
                 cls, ratio = finalize_pending(pending_peak_n, pending_peak_amp,
                                               pending_width_ms, post_trough)
@@ -130,7 +130,7 @@ for n, v in enumerate(v_f):
                 peaks.append((pending_peak_n, pending_peak_amp, pending_width_ms,
                               post_trough, ratio, cls))
                 last_peak_sample = pending_peak_n
-            # se un nuovo QRS e' gia' iniziato, transita direttamente
+            # if a new QRS has already started, transition directly
             if new_qrs_starting:
                 fsm = STATE_WIDTH
                 width_start = n
@@ -149,21 +149,21 @@ ratios_pvc    = [r for _,_,_,_,r,c in peaks if c == "pvc"]
 rrs = [(peaks[i][0]-peaks[i-1][0])/SAMPLE_HZ for i in range(1, len(peaks))]
 
 print(f"\n=== DETECTION (rebound + width) ===")
-print(f"battiti totali: {n_total}  (normali: {n_normal}, PVC: {n_pvc})")
-print(f"BPM totale:   {n_total/t[-1]*60:.1f}")
-print(f"BPM sinusale: {n_normal/t[-1]*60:.1f}")
+print(f"total beats: {n_total}  (normal: {n_normal}, PVC: {n_pvc})")
+print(f"total BPM:    {n_total/t[-1]*60:.1f}")
+print(f"sinus BPM:    {n_normal/t[-1]*60:.1f}")
 print(f"PVC rate:     {n_pvc/t[-1]*60:.1f}/min")
 print(f"PVC burden:   {100*n_pvc/n_total if n_total else 0:.1f}%")
 if widths_normal:
-    print(f"\nwidth normali: med {statistics.median(widths_normal):.0f}ms, range {min(widths_normal):.0f}-{max(widths_normal):.0f}")
+    print(f"\nnormal width: med {statistics.median(widths_normal):.0f}ms, range {min(widths_normal):.0f}-{max(widths_normal):.0f}")
 if widths_pvc:
-    print(f"width PVC:     med {statistics.median(widths_pvc):.0f}ms, range {min(widths_pvc):.0f}-{max(widths_pvc):.0f}")
+    print(f"PVC width:    med {statistics.median(widths_pvc):.0f}ms, range {min(widths_pvc):.0f}-{max(widths_pvc):.0f}")
 if ratios_normal:
-    print(f"\nrebound ratio normali: med {statistics.median(ratios_normal):.2f}, range {min(ratios_normal):.2f}-{max(ratios_normal):.2f}")
+    print(f"\nnormal rebound ratio: med {statistics.median(ratios_normal):.2f}, range {min(ratios_normal):.2f}-{max(ratios_normal):.2f}")
 if ratios_pvc:
-    print(f"rebound ratio PVC:     med {statistics.median(ratios_pvc):.2f}, range {min(ratios_pvc):.2f}-{max(ratios_pvc):.2f}")
+    print(f"PVC rebound ratio:    med {statistics.median(ratios_pvc):.2f}, range {min(ratios_pvc):.2f}-{max(ratios_pvc):.2f}")
 if rrs:
-    print(f"\nRR mediana: {statistics.median(rrs)*1000:.0f}ms ({60/statistics.median(rrs):.0f} BPM)")
+    print(f"\nmedian RR: {statistics.median(rrs)*1000:.0f}ms ({60/statistics.median(rrs):.0f} BPM)")
 
 print(f"\n=== ALL PEAKS ===")
 print(f"{'#':3s} {'t(s)':>6s} {'amp':>6s} {'width':>6s} {'trough':>7s} {'reb':>5s} {'class':>7s}")
@@ -201,7 +201,7 @@ ax1.axhline(detect_threshold(), color='#f39c12', linestyle='--', linewidth=0.8, 
 ax1.legend(loc='upper right', facecolor='#222222', edgecolor='#444444', labelcolor='#ffffff')
 ax1.set_xlabel("Time (s)", color='#aaaaaa')
 ax1.set_ylabel("Filtered (V)", color='#aaaaaa')
-ax1.set_title(f"PVC = rebound>=0.40 OR width>=95ms — {n_normal} normali, {n_pvc} PVC",
+ax1.set_title(f"PVC = rebound>=0.40 OR width>=95ms — {n_normal} normal, {n_pvc} PVC",
               color='#ffffff')
 ax1.grid(True, alpha=0.2, color='#444444'); ax1.tick_params(colors='#aaaaaa')
 for ax in axes:

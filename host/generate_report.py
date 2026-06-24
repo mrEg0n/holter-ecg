@@ -1,10 +1,10 @@
 """
-Genera un report HTML autonomo con grafici embedded da una sessione registrata.
+Generate a self-contained HTML report with embedded charts from a recorded session.
 
 Usage:
     python3 generate_report.py logs/ecg_YYYYMMDD_HHMMSS.csv
 
-Output: logs/report_YYYYMMDD_HHMMSS.html (apri in browser, opzionale stampa in PDF)
+Output: logs/report_YYYYMMDD_HHMMSS.html (open in a browser, optionally print to PDF)
 """
 import base64
 import csv
@@ -168,10 +168,10 @@ def styled_ax(ax, title=None):
     for sp in ax.spines.values(): sp.set_color("#444")
     if title: ax.set_title(title, color="#fff")
 
-# PLOT 1 — esempio di traccia: 6 secondi con almeno una PVC
+# PLOT 1 — example trace: 6 seconds with at least one PVC
 ecg_example_b64 = ""
 if pvc and N:
-    # cerca primo PVC e fa un crop ±3s
+    # find the first PVC and crop ±3s around it
     p0 = pvc[0]["t"]
     mask = (t >= p0-3) & (t <= p0+3)
     fig, ax = plt.subplots(figsize=(11, 3))
@@ -183,30 +183,30 @@ if pvc and N:
             pt = p["t"] - p0
             wm = (t >= p["t"]-0.12) & (t <= p["t"]+0.12)
             ax.plot(t[wm]-p0, vf[wm], linewidth=2.0, color="#e74c3c")
-    ax.set_xlabel("t (s relativo al primo PVC)", color="#aaa")
-    ax.set_ylabel("ECG filtrato (V)", color="#aaa")
-    styled_ax(ax, "Esempio: 6 secondi con QRS normali (verde) e una PVC (rosso)")
+    ax.set_xlabel("t (s relative to the first PVC)", color="#aaa")
+    ax.set_ylabel("Filtered ECG (V)", color="#aaa")
+    styled_ax(ax, "Example: 6 seconds with normal QRS (green) and one PVC (red)")
     plt.tight_layout()
     ecg_example_b64 = fig_to_b64(fig)
 
-# PLOT 2 — overview intera sessione (downsampled)
+# PLOT 2 — overview of the whole session (downsampled)
 overview_b64 = ""
 if N:
     fig, ax = plt.subplots(figsize=(12, 3))
     fig.patch.set_facecolor("#1e1e1e")
-    step = max(1, N // 50000)  # ~50k punti max
+    step = max(1, N // 50000)  # ~50k points max
     ax.plot(t[::step]/60, vf[::step], linewidth=0.3, color="#2ecc71", alpha=0.8)
     # PVC dots
     if pvc:
         ax.scatter([p["t"]/60 for p in pvc], [1.4]*len(pvc), s=4, color="#e74c3c", marker="v")
-    ax.set_xlabel("Tempo (min)", color="#aaa")
+    ax.set_xlabel("Time (min)", color="#aaa")
     ax.set_ylabel("ECG filt (V)", color="#aaa")
     ax.set_ylim(-1.4, 1.6)
-    styled_ax(ax, f"Overview {total_min:.1f} min — triangoli rossi sopra = posizioni PVC")
+    styled_ax(ax, f"Overview {total_min:.1f} min — red triangles above = PVC positions")
     plt.tight_layout()
     overview_b64 = fig_to_b64(fig)
 
-# PLOT 3 — tachogramma
+# PLOT 3 — tachogram
 tacho_b64 = ""
 if peaks:
     fig, ax = plt.subplots(figsize=(11, 4))
@@ -215,9 +215,9 @@ if peaks:
         if p["rr_prev"] is None: continue
         c = "#e74c3c" if p["cls"] == "pvc" else "#2ecc71"
         ax.scatter(p["t"]/60, 1000*p["rr_prev"], c=c, s=6, alpha=0.75)
-    ax.set_xlabel("Tempo (min)", color="#aaa")
+    ax.set_xlabel("Time (min)", color="#aaa")
     ax.set_ylabel("RR (ms)", color="#aaa")
-    styled_ax(ax, "Tachogramma — RR dei battiti nel tempo (verde = sinus, rosso = pre-PVC coupling)")
+    styled_ax(ax, "Tachogram — beat RR over time (green = sinus, red = pre-PVC coupling)")
     plt.tight_layout()
     tacho_b64 = fig_to_b64(fig)
 
@@ -231,9 +231,9 @@ if coupling and sinus_rr:
     ax.hist([r*1000 for r in coupling], bins=40, alpha=0.8, color="#e74c3c",
             label=f"Pre-PVC coupling (n={len(coupling)})", density=True)
     ax.set_xlabel("RR (ms)", color="#aaa")
-    ax.set_ylabel("Densità", color="#aaa")
+    ax.set_ylabel("Density", color="#aaa")
     ax.legend(facecolor="#222", labelcolor="#fff", edgecolor="#444")
-    styled_ax(ax, "Distribuzione RR — sinus vs coupling pre-PVC")
+    styled_ax(ax, "RR distribution — sinus vs pre-PVC coupling")
     plt.tight_layout()
     hist_b64 = fig_to_b64(fig)
 
@@ -245,10 +245,10 @@ if windows:
     ts = [w["t"]/60 for w in windows]
     ax.plot(ts, [w["pvc"] for w in windows], color="#e74c3c", marker="o", label="PVC/min")
     ax.plot(ts, [w["norm"] for w in windows], color="#2ecc71", marker="o", label="Sinus/min", alpha=0.6)
-    ax.set_xlabel("Tempo (min)", color="#aaa")
-    ax.set_ylabel("Battiti per minuto", color="#aaa")
+    ax.set_xlabel("Time (min)", color="#aaa")
+    ax.set_ylabel("Beats per minute", color="#aaa")
     ax.legend(facecolor="#222", labelcolor="#fff", edgecolor="#444")
-    styled_ax(ax, "Distribuzione battiti nel tempo (finestre da 60s)")
+    styled_ax(ax, "Beat distribution over time (60s windows)")
     plt.tight_layout()
     counts_b64 = fig_to_b64(fig)
 
@@ -261,15 +261,15 @@ if pre_pvc_stdevs:
     if len(pvc_ts) >= len(pre_pvc_stdevs):
         pvc_ts = pvc_ts[-len(pre_pvc_stdevs):]
     ax.scatter(pvc_ts, [1000*s for s in pre_pvc_stdevs], c="#e74c3c", s=10, alpha=0.7,
-               label="Stdev RR nei 5 N pre-PVC")
+               label="Stdev RR in the 5 pre-PVC N beats")
     if baseline_stdevs:
         baseline_mean = 1000 * statistics.mean(baseline_stdevs)
         ax.axhline(baseline_mean, color="#2ecc71", linestyle="--", alpha=0.7,
                    label=f"Baseline sinus stdev ({baseline_mean:.0f}ms)")
-    ax.set_xlabel("Tempo (min)", color="#aaa")
+    ax.set_xlabel("Time (min)", color="#aaa")
     ax.set_ylabel("Stdev RR (ms)", color="#aaa")
     ax.legend(facecolor="#222", labelcolor="#fff", edgecolor="#444")
-    styled_ax(ax, "HRV nei 5 battiti normali prima di ogni PVC")
+    styled_ax(ax, "HRV in the 5 normal beats before each PVC")
     plt.tight_layout()
     hrv_b64 = fig_to_b64(fig)
 
@@ -288,9 +288,9 @@ ts_pretty = ses_id  # format YYYYMMDD_HHMMSS
 now = datetime.now().strftime("%Y-%m-%d %H:%M")
 
 html = f"""<!DOCTYPE html>
-<html lang="it"><head>
+<html lang="en"><head>
 <meta charset="utf-8">
-<title>Report sessione holter — {ts_pretty}</title>
+<title>Holter session report — {ts_pretty}</title>
 <style>
   :root {{
     --bg: #1e1e1e; --panel: #2a2a2a; --fg: #eee; --muted: #888;
@@ -327,136 +327,136 @@ html = f"""<!DOCTYPE html>
 </style>
 </head><body>
 
-<h1>Report sessione holter</h1>
+<h1>Holter session report</h1>
 <div class="meta">
-  Sessione <code>{ts_pretty}</code> · Durata <b>{total_min:.1f} min</b>
-  ({total_s:.0f}s, fs={fs_real:.2f}Hz) · Generato il {now}
+  Session <code>{ts_pretty}</code> · Duration <b>{total_min:.1f} min</b>
+  ({total_s:.0f}s, fs={fs_real:.2f}Hz) · Generated on {now}
 </div>
 
 <div class="disclaimer">
-  <b>Uso esclusivamente didattico.</b> Questo report è il risultato di un dispositivo
-  hobbistico (Pi Pico W + AD8232) e di pattern recognition implementati a fini educativi.
-  Non è uno strumento medico e non sostituisce in alcun modo l'interpretazione del cardiologo
-  curante. Eventuali sintomi vanno valutati clinicamente.
+  <b>For educational use only.</b> This report is the result of a hobbyist device
+  (Pi Pico W + AD8232) and pattern recognition implemented for educational purposes.
+  It is not a medical device and in no way replaces the interpretation of the treating
+  cardiologist. Any symptoms should be evaluated clinically.
 </div>
 
-<h2>1. Sintesi numerica</h2>
+<h2>1. Numeric summary</h2>
 <div class="cards">
   <div class="card"><div class="label">ECG total</div>
-    <div class="val green num">{60*n_total/total_s:.0f}</div><div class="u">BPM totale</div></div>
+    <div class="val green num">{60*n_total/total_s:.0f}</div><div class="u">total BPM</div></div>
   <div class="card"><div class="label">Sinus only</div>
-    <div class="val blue num">{sinus_bpm:.0f}</div><div class="u">BPM ritmo sinusale</div></div>
+    <div class="val blue num">{sinus_bpm:.0f}</div><div class="u">sinus rhythm BPM</div></div>
   <div class="card"><div class="label">PVC rate</div>
     <div class="val red num">{pvc_rate:.1f}</div><div class="u">/min</div></div>
   <div class="card"><div class="label">PVC burden</div>
-    <div class="val orange num">{burden:.1f}</div><div class="u">% del totale</div></div>
+    <div class="val orange num">{burden:.1f}</div><div class="u">% of total</div></div>
 </div>
 
 <table>
-<tr><th>Metrica</th><th>Valore</th></tr>
-<tr><td>Battiti registrati</td><td class="num">{n_total}</td></tr>
-<tr><td>Battiti normali (sinusali)</td><td class="num">{len(norm)}</td></tr>
-<tr><td>Battiti ectopici classificati PVC</td><td class="num">{len(pvc)}</td></tr>
-<tr><td>RR sinusale (N→N) mediano</td><td class="num">{sinus_median_ms:.0f} ms ({60000/sinus_median_ms if sinus_median_ms else 0:.0f} BPM)</td></tr>
-<tr><td>Deviazione standard RR sinusale</td><td class="num">{sinus_std_ms:.0f} ms</td></tr>
-<tr><td>Coupling interval mediano (N→PVC)</td><td class="num">{coupling_median:.0f} ms</td></tr>
-<tr><td>Deviazione standard coupling</td><td class="num">{coupling_std:.0f} ms</td></tr>
-<tr><td>Prematurità della PVC</td><td class="num">{prematurity:.0f} % più precoce del ritmo sinusale</td></tr>
+<tr><th>Metric</th><th>Value</th></tr>
+<tr><td>Beats recorded</td><td class="num">{n_total}</td></tr>
+<tr><td>Normal (sinus) beats</td><td class="num">{len(norm)}</td></tr>
+<tr><td>Ectopic beats classified as PVC</td><td class="num">{len(pvc)}</td></tr>
+<tr><td>Median sinus RR (N→N)</td><td class="num">{sinus_median_ms:.0f} ms ({60000/sinus_median_ms if sinus_median_ms else 0:.0f} BPM)</td></tr>
+<tr><td>Sinus RR standard deviation</td><td class="num">{sinus_std_ms:.0f} ms</td></tr>
+<tr><td>Median coupling interval (N→PVC)</td><td class="num">{coupling_median:.0f} ms</td></tr>
+<tr><td>Coupling standard deviation</td><td class="num">{coupling_std:.0f} ms</td></tr>
+<tr><td>PVC prematurity</td><td class="num">{prematurity:.0f} % earlier than the sinus rhythm</td></tr>
 </table>
 
-<h2>2. Esempio di traccia</h2>
-<p>Una finestra di ~6 secondi centrata sulla prima PVC della sessione.
-La linea verde è il segnale ECG filtrato; il segmento rosso evidenzia il QRS della PVC
-e la sua iperpolarizzazione di rebound (~120 ms post-picco).</p>
+<h2>2. Trace example</h2>
+<p>A ~6 second window centered on the first PVC of the session.
+The green line is the filtered ECG signal; the red segment highlights the PVC's QRS
+and its rebound hyperpolarization (~120 ms post-peak).</p>
 <img src="data:image/png;base64,{ecg_example_b64}" alt="ecg_example">
 
-<h2>3. Overview dell'intera sessione</h2>
-<p>Vista compressa di tutta la registrazione. Ogni triangolo rosso in alto è la
-posizione di una PVC. La distribuzione è uniforme nel tempo, segno di un focolaio
-ectopico stabile.</p>
+<h2>3. Overview of the whole session</h2>
+<p>Compressed view of the entire recording. Each red triangle at the top is the
+position of a PVC. The distribution is uniform over time, a sign of a stable
+ectopic focus.</p>
 <img src="data:image/png;base64,{overview_b64}" alt="overview">
 
-<h2>4. Pattern temporali</h2>
+<h2>4. Temporal patterns</h2>
 <table>
-<tr><th>Tipo di pattern</th><th>Count</th></tr>
-<tr><td>PVC isolate (N–PVC–N)</td><td class="num">{iso_pvc}</td></tr>
-<tr><td>Couplet (2 PVC consecutive)</td><td class="num">{couplets_n}</td></tr>
-<tr><td>Run di <b>bigeminia</b> (N-PVC alternati, ≥3 cicli)</td><td class="num">{bigem}</td></tr>
-<tr><td>Run di <b>trigeminia</b> (N-N-PVC ripetuto, ≥3 cicli)</td><td class="num">{trigem}</td></tr>
+<tr><th>Pattern type</th><th>Count</th></tr>
+<tr><td>Isolated PVC (N–PVC–N)</td><td class="num">{iso_pvc}</td></tr>
+<tr><td>Couplet (2 consecutive PVC)</td><td class="num">{couplets_n}</td></tr>
+<tr><td>Runs of <b>bigeminy</b> (alternating N-PVC, ≥3 cycles)</td><td class="num">{bigem}</td></tr>
+<tr><td>Runs of <b>trigeminy</b> (repeated N-N-PVC, ≥3 cycles)</td><td class="num">{trigem}</td></tr>
 </table>
-<p><b>Lettura:</b> la stragrande maggioranza delle PVC è <b>isolata</b>, intervallata
-da gruppi di battiti normali. Quando si manifesta un pattern ritmico ricorrente è
-più spesso <b>trigeminia</b> ({trigem} run) che bigeminia ({bigem} run). I couplet
-(2 PVC consecutive) sono praticamente assenti ({couplets_n}). Niente triplet o run
-ventricolari più lunghi.</p>
+<p><b>Reading:</b> the vast majority of PVCs are <b>isolated</b>, interspersed
+with groups of normal beats. When a recurring rhythmic pattern appears it is
+more often <b>trigeminy</b> ({trigem} runs) than bigeminy ({bigem} runs). Couplets
+(2 consecutive PVC) are practically absent ({couplets_n}). No triplets or longer
+ventricular runs.</p>
 
-<h2>5. Tachogramma</h2>
-<p>Per ciascun battito si mostra il suo intervallo RR rispetto al battito precedente.
-I due cluster orizzontali sono ben separati: in alto i battiti sinusali a ~{sinus_median_ms:.0f}ms,
-in basso i coupling pre-PVC a ~{coupling_median:.0f}ms.</p>
+<h2>5. Tachogram</h2>
+<p>For each beat its RR interval relative to the preceding beat is shown.
+The two horizontal clusters are well separated: at the top the sinus beats at ~{sinus_median_ms:.0f}ms,
+at the bottom the pre-PVC couplings at ~{coupling_median:.0f}ms.</p>
 <img src="data:image/png;base64,{tacho_b64}" alt="tacho">
 
-<h2>6. Distribuzione degli RR — sinus vs coupling</h2>
-<p>Distribuzione bimodale netta. Le PVC arrivano sistematicamente al ~{100-prematurity:.0f}%
-del ciclo sinusale (prematurità del {prematurity:.0f}%). Questa <b>stabilità del coupling
-interval</b> è la firma cardinale di un <b>focolaio ectopico monomorfo</b>: il "trigger" si
-scarica sempre dallo stesso punto del miocardio con la stessa latenza dopo un battito normale.</p>
+<h2>6. RR distribution — sinus vs coupling</h2>
+<p>A clear bimodal distribution. The PVCs systematically arrive at ~{100-prematurity:.0f}%
+of the sinus cycle (prematurity of {prematurity:.0f}%). This <b>coupling interval
+stability</b> is the cardinal signature of a <b>monomorphic ectopic focus</b>: the "trigger"
+always fires from the same point of the myocardium with the same latency after a normal beat.</p>
 <img src="data:image/png;base64,{hist_b64}" alt="hist">
 
-<h2>7. Variabilità nel tempo</h2>
-<p>Conteggio di battiti normali e PVC in finestre di 60 secondi.</p>
+<h2>7. Variability over time</h2>
+<p>Count of normal beats and PVCs in 60-second windows.</p>
 <img src="data:image/png;base64,{counts_b64}" alt="counts">
 
-<h2>8. Variabilità del ritmo sinusale prima delle PVC</h2>
-<p>Per ogni PVC sono stati misurati i 5 battiti normali immediatamente precedenti, calcolando
-la deviazione standard dei loro intervalli RR. Il valore <b>medio è {pre_pvc_stdev_mean:.0f} ms</b>,
-da confrontare con la <b>baseline sinusale di {baseline_stdev_mean:.0f} ms</b> (delta
+<h2>8. Sinus rhythm variability before the PVCs</h2>
+<p>For each PVC the 5 immediately preceding normal beats were measured, computing
+the standard deviation of their RR intervals. The <b>mean value is {pre_pvc_stdev_mean:.0f} ms</b>,
+to be compared with the <b>sinus baseline of {baseline_stdev_mean:.0f} ms</b> (delta
 {'+' if hrv_delta_pct>=0 else ''}{hrv_delta_pct:.0f}%).</p>
 <p>{
-   "Il ritmo sinusale è <b>leggermente più variabile</b> nei battiti immediatamente "
-   "antecedenti una PVC. Differenza piccola ma sistematica su centinaia di osservazioni. "
-   "Coerente con una <b>modulazione autonomica</b> (vagale o respiratoria) del trigger ectopico."
+   "The sinus rhythm is <b>slightly more variable</b> in the beats immediately "
+   "preceding a PVC. A small but systematic difference over hundreds of observations. "
+   "Consistent with an <b>autonomic modulation</b> (vagal or respiratory) of the ectopic trigger."
    if hrv_delta_pct > 5 else
-   "La variabilità non è significativamente diversa dal baseline."
+   "The variability is not significantly different from baseline."
 }</p>
 <img src="data:image/png;base64,{hrv_b64}" alt="hrv">
 
-<h2>9. Conclusioni descrittive</h2>
+<h2>9. Descriptive conclusions</h2>
 <ul>
-  <li><b>Focolaio ectopico monomorfo stabile</b>: il coupling interval ha bassa dispersione
-      ({coupling_std:.0f}ms su {coupling_median:.0f}ms mediana), indicando una sorgente
-      ectopica singola e consistente.</li>
-  <li><b>PVC isolate, raramente in raffica</b>: {iso_pvc} singole su {len(pvc)} totali
-      ({100*iso_pvc/max(1,len(pvc)):.0f}% del totale).</li>
-  <li><b>Pattern di trigeminia più frequente della bigeminia</b>: {trigem} run di trigeminia
-      vs {bigem} di bigeminia.</li>
-  <li><b>Burden costante nel tempo</b>: la frequenza PVC/min resta stabile per
-      la durata della registrazione, senza accumuli o quiescenze marcate.</li>
-  <li><b>Lieve aumento di HRV pre-PVC</b>: +{hrv_delta_pct:.0f}% rispetto al baseline sinusale,
-      compatibile con modulazione autonomica (potenzialmente respiratoria).</li>
-  <li><b>Pulse deficit teorico atteso</b>: ~{len(pvc)/n_total*100:.0f}% delle PVC potrebbe
-      non generare polso periferico apprezzabile (questo è il fenomeno per cui un Garmin
-      al polso conterebbe una frequenza più bassa dell'ECG).</li>
+  <li><b>Stable monomorphic ectopic focus</b>: the coupling interval has low dispersion
+      ({coupling_std:.0f}ms over {coupling_median:.0f}ms median), indicating a single,
+      consistent ectopic source.</li>
+  <li><b>Isolated PVCs, rarely in bursts</b>: {iso_pvc} singles out of {len(pvc)} total
+      ({100*iso_pvc/max(1,len(pvc)):.0f}% of the total).</li>
+  <li><b>Trigeminy pattern more frequent than bigeminy</b>: {trigem} trigeminy runs
+      vs {bigem} bigeminy.</li>
+  <li><b>Constant burden over time</b>: the PVC/min rate stays stable for
+      the duration of the recording, with no marked clustering or quiescence.</li>
+  <li><b>Slight increase in pre-PVC HRV</b>: +{hrv_delta_pct:.0f}% relative to the sinus baseline,
+      compatible with autonomic modulation (potentially respiratory).</li>
+  <li><b>Expected theoretical pulse deficit</b>: ~{len(pvc)/n_total*100:.0f}% of PVCs might
+      not generate an appreciable peripheral pulse (this is the phenomenon whereby a Garmin
+      on the wrist would count a lower rate than the ECG).</li>
 </ul>
 
-<h2>10. Limiti tecnici</h2>
+<h2>10. Technical limitations</h2>
 <ul>
-  <li>Singola derivazione (Einthoven I) → impossibile localizzare il focolaio
-      ectopico nei tre piani anatomici.</li>
-  <li>Detector basato su iperpolarizzazione post-QRS e larghezza → robusto per il
-      pattern attuale, ma potrebbe perdere PVC con morfologia atipica.</li>
-  <li>{total_min:.1f} min di registrazione, finestra troppo breve per inferire trend
-      circadiani o post-prandiali.</li>
-  <li>Nessun sensore di respiro sincronizzato → impossibile testare formalmente la
-      correlazione PVC ↔ fase respiratoria.</li>
+  <li>Single lead (Einthoven I) → impossible to localize the ectopic
+      focus in the three anatomical planes.</li>
+  <li>Detector based on post-QRS hyperpolarization and width → robust for the
+      current pattern, but could miss PVCs with atypical morphology.</li>
+  <li>{total_min:.1f} min of recording, a window too short to infer circadian
+      or post-prandial trends.</li>
+  <li>No synchronized respiration sensor → impossible to formally test the
+      PVC ↔ respiratory phase correlation.</li>
 </ul>
 
 <div class="footer">
-  File sorgente: <code>{os.path.basename(PATH)}</code><br>
-  Pipeline: Pi Pico W (250 Hz ADC) → WiFi → server Python (Flask/SSE) → detector
+  Source file: <code>{os.path.basename(PATH)}</code><br>
+  Pipeline: Pi Pico W (250 Hz ADC) → WiFi → Python server (Flask/SSE) → detector
   band-pass 0.3–25 Hz + 4-state FSM + rebound/width classification.<br>
   Repository: <code>https://github.com/mrEg0n/holter-ecg</code><br>
-  Generato automaticamente da <code>host/generate_report.py</code>
+  Generated automatically by <code>host/generate_report.py</code>
 </div>
 </body></html>
 """
@@ -464,5 +464,5 @@ da confrontare con la <b>baseline sinusale di {baseline_stdev_mean:.0f} ms</b> (
 out_path = PATH.replace(os.sep + "ecg_", os.sep + "report_").replace(".csv", ".html")
 with open(out_path, "w") as f:
     f.write(html)
-print(f"Report salvato: {out_path}")
+print(f"Report saved: {out_path}")
 print(f"  size: {os.path.getsize(out_path)//1024} KB")

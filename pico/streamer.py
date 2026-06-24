@@ -1,7 +1,7 @@
 """
-Streamer ECG continuo dal Pico 2 W via USB seriale.
-Campiona ADC0 (GP26) a 250 Hz e stampa il valore in Volt, una riga per campione.
-La dashboard sul Mac legge questa stdout via mpremote.
+Continuous ECG streamer from the Pico 2 W over USB serial.
+Samples ADC0 (GP26) at 250 Hz and prints the value in Volts, one line per sample.
+The dashboard on the Mac reads this stdout via mpremote.
 """
 from machine import ADC, Pin
 import time
@@ -15,7 +15,7 @@ SCALE = 65535
 
 t_next = time.ticks_us()
 while True:
-    # busy-wait per timing stretto
+    # busy-wait for tight timing
     while time.ticks_diff(time.ticks_us(), t_next) < 0:
         pass
     t_next = time.ticks_add(t_next, PERIOD_US)
