@@ -22,10 +22,11 @@ It was developed as an engineering and signal-analysis exercise on personal ECG 
 automatically — teal = sinus, red = PVC; shaded spans are intervals manually excluded as motion/contact
 noise before analysis.*
 
-**📄 Full analysis:** [`reports/holter_report.pdf`](reports/holter_report.pdf) — a longitudinal
-single-subject study of ~17,000 PVCs across 10 sessions: morphology, interpolated vs. compensated
-beats, couplets, cross-session burden dynamics, and ECG-derived respiration. Generated end-to-end
-by the pipeline in this repo.
+[![Read the full report (PDF)](https://img.shields.io/badge/Read%20the%20full%20report-PDF-b31b1b?style=for-the-badge)](reports/holter_report.pdf)
+
+The report — the substantial part of this project — is a longitudinal single-subject study of ~17,000
+PVCs across 10 sessions: morphology, interpolated vs. compensated beats, couplets, cross-session burden
+dynamics, and ECG-derived respiration, generated end-to-end by the pipeline in this repo.
 
 ---
 
