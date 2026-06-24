@@ -2,6 +2,11 @@
 
 [![CI](https://github.com/mrEg0n/holter-ecg/actions/workflows/ci.yml/badge.svg)](https://github.com/mrEg0n/holter-ecg/actions/workflows/ci.yml)
 
+> ⚠️ **Disclaimer.** A hobbyist, home-built project for engineering and signal-analysis purposes
+> only. **Not a medical device** — not clinically validated or certified, not a medical record, not a
+> clinical Holter report, and not diagnostic. Any cardiac condition should be evaluated by qualified
+> professionals using clinically validated tools.
+
 A hobbyist, low-cost, home-built single-lead ECG recorder and analysis pipeline for
 long-duration exploratory recordings of premature ventricular complexes (PVCs).
 
@@ -10,7 +15,6 @@ browser-based monitoring dashboard, manual annotation tools, automated beat dete
 rule-based PVC classification, noise curation, and downstream report generation.
 
 It was developed as an engineering and signal-analysis exercise on personal ECG recordings.
-It is **not a medical device**, not a clinical Holter system, and not intended for diagnostic use.
 
 ![Single-lead ECG with automatic beat detection and manual noise curation](reports/figs_manual/quality_strip.png)
 
@@ -22,21 +26,6 @@ noise before analysis.*
 single-subject study of ~17,000 PVCs across 10 sessions: morphology, interpolated vs. compensated
 beats, couplets, cross-session burden dynamics, and ECG-derived respiration. Generated end-to-end
 by the pipeline in this repo.
-
----
-
-## Disclaimer
-
-This repository describes a hobbyist, home-built ECG acquisition and analysis project. Neither the
-hardware nor the software pipeline has been clinically calibrated, validated, certified, or designed
-or intended for medical use.
-
-The data, figures, scripts, and analyses produced by this project do not constitute a medical record.
-They do not constitute a clinical Holter report and are not diagnostic.
-
-The project is intended solely for exploratory engineering, signal-processing, and documentation
-purposes. Any personal cardiac condition should be evaluated and monitored independently by qualified
-medical professionals using clinically validated tools.
 
 ---
 
