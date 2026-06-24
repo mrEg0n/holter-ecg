@@ -260,6 +260,7 @@ holter-ecg/
 ├── host/
 │   ├── dashboard.py           # Live filter + detect + plot + classify
 │   └── analyze_recording.py   # Offline analysis of recorded CSV with the same detector
+├── legacy/                    # Earlier standalone report generators (superseded; kept for reference)
 ├── tools/
 │   ├── blink.py               # Sanity check that MicroPython is alive
 │   ├── read_adc_raw.py        # Print raw ADC values (no filtering) — sanity check the wiring
