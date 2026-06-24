@@ -223,19 +223,49 @@ metrics, ECG-derived respiration, and per-session appendices.
 
 ## Example analyses
 
-The pipeline was used on a curated dataset of ~15 hours of single-lead ECG over 10 sessions:
+The pipeline was applied to a curated dataset of ~15 hours of single-lead ECG over 10 sessions. A few
+results are shown below — the **full write-up (methods, all figures, tables, and per-session
+appendices) is in [`reports/holter_report.pdf`](reports/holter_report.pdf)**, which is the substantial
+part of this project.
 
-- automatic beat detection and PVC classification;
-- cumulative PVC burden;
-- PVC morphology consistency across sessions;
-- interpolated vs. compensated PVC classification;
-- couplet detection and characterization;
-- cross-session changes in pause-type composition;
-- ECG-derived respiration from R-wave amplitude modulation;
-- exploratory respiratory-phase association.
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="reports/figs_manual/example_strips.png" width="100%"><br>
+      <sub><b>PVC presentations.</b> Isolated beats, couplets, short runs and bigeminy, detected automatically across sessions.</sub>
+    </td>
+    <td width="50%" valign="top">
+      <img src="reports/figs/02_pvc_morphology_summary.png" width="100%"><br>
+      <sub><b>PVC morphology.</b> ~17k PVCs overlaid, per-session medians, cross-session correlation, and the coupling-interval distribution.</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="reports/figs/06_interpolated_vs_compensated_example.png" width="100%"><br>
+      <sub><b>Interpolated vs. compensated.</b> Two representative PVCs: one without a substantial pause, one followed by a compensatory pause.</sub>
+    </td>
+    <td width="50%" valign="top">
+      <img src="reports/figs_manual/interp_comp_3class_strip.png" width="100%"><br>
+      <sub><b>Pause-based classification.</b> A continuous strip split by post-extrasystolic pause: interpolated (blue), compensated (red), borderline (yellow).</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="reports/figs/09_cross_session_rhythm_and_burden.png" width="100%"><br>
+      <sub><b>Cross-session dynamics.</b> PVC burden, rate, and pause-type composition across the 10 sessions.</sub>
+    </td>
+    <td width="50%" valign="top">
+      <img src="reports/figs/17_respiratory_phase_vs_pvc_enrichment.png" width="100%"><br>
+      <sub><b>ECG-derived respiration.</b> PVC timing across the respiratory cycle; per-session enrichment peaks near full-lung inflation.</sub>
+    </td>
+  </tr>
+</table>
 
-These analyses are subject-specific and exploratory and must not be interpreted as clinical
-measurements. See [`reports/holter_report.pdf`](reports/holter_report.pdf) for the full write-up.
+Topics covered include automatic beat detection and PVC classification, cumulative PVC burden, PVC
+morphology consistency across sessions, interpolated vs. compensated classification, couplet detection,
+cross-session pause-type composition, and an ECG-derived respiration signal with exploratory
+respiratory-phase association. These analyses are subject-specific and exploratory and must not be
+interpreted as clinical measurements.
 
 ---
 
