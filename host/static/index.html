@@ -138,7 +138,7 @@
 
 <script>
 const FS         = 250;
-const WINDOW_S   = 180;   // 3 minuti di traccia visibile
+const WINDOW_S   = 180;   // 3 minutes of trace visible
 const BUF_SIZE   = FS * WINDOW_S;
 const PVC_HALF_W = Math.round(0.12 * FS); // 120 ms window painted red around each PVC peak
 
@@ -158,7 +158,7 @@ let lastSamplesSeen = 0;
 
 // Plotly init
 const DEFAULT_X = [-WINDOW_S, 0];
-const DEFAULT_Y = [-1.5, 2.0];   // più respiro sopra e sotto la traccia
+const DEFAULT_Y = [-1.5, 2.0];   // a bit of headroom above and below the trace
 const layout = {
   paper_bgcolor: '#0d0d0d',
   plot_bgcolor:  '#0d0d0d',
@@ -325,7 +325,7 @@ function connect() {
     // marker arrays
     const nXY = { x: [], y: [] };
     const pXY = { x: [], y: [] };
-    // marker FISSI in cima al grafico, indipendenti dall'ampiezza del picco
+    // markers sit at a FIXED height at the top, independent of peak amplitude
     const Y_MARKER_NORMAL = 1.75;
     const Y_MARKER_PVC    = 1.90;
     for (const p of peakLog) {

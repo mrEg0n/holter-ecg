@@ -60,7 +60,7 @@ def getch():
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--url", default="http://localhost:8081",
-                    help="indirizzo del server (default http://localhost:8081)")
+                    help="server address (default http://localhost:8081)")
     args = ap.parse_args()
     url = args.url.rstrip("/") + "/mark"
 
@@ -81,27 +81,27 @@ def main():
             with urllib.request.urlopen(req, timeout=3) as r:
                 t_s = json.load(r).get("marker", {}).get("t_s")
         except Exception as ex:
-            print(f"  ⚠ server non raggiunto ({ex}). Evento salvato solo in locale.")
+            print(f"  ⚠ server unreachable ({ex}). Event saved locally only.")
         backup.write(f'{datetime.now():%H:%M:%S},"{text}",{("%.2f"%t_s) if t_s is not None else ""}\n')
         return t_s
 
     def show_open():
         opn = [k for k, v in open_state.items() if v]
-        bar = ("  aperte ▶ " + ", ".join(opn)) if opn else "  (nessuna manovra aperta)"
+        bar = ("  open ▶ " + ", ".join(opn)) if opn else "  (no maneuver open)"
         print(bar)
 
     print("=" * 68)
     print("EVENT LOGGER — logging of provocation experiments")
-    print(f"server: {args.url}   ·   backup locale: logs/eventlog_*.csv")
+    print(f"server: {args.url}   ·   local backup: logs/eventlog_*.csv")
     print(HELP.rstrip())
     print("=" * 68)
     # check connection
     try:
         urllib.request.urlopen(args.url.rstrip("/") + "/markers", timeout=3)
-        print("✓ server raggiungibile. Premi i tasti durante gli esperimenti.\n")
+        print("✓ server reachable. Press keys during the experiments.\n")
     except Exception:
-        print("⚠ ATTENZIONE: il server non risponde. Avvialo prima (host/server.py).")
-        print("  Procedo comunque: gli eventi finiscono nel backup locale.\n")
+        print("⚠ WARNING: the server is not responding. Start it first (host/server.py).")
+        print("  Continuing anyway: events will go to the local backup.\n")
 
     while True:
         ch = getch().lower()
@@ -115,7 +115,7 @@ def main():
             print(f"[{ts_label}] • sync{show_t}"); continue
         if ch == "t":
             # free text: switch back to normal mode to read the line
-            sys.stdout.write("  testo > "); sys.stdout.flush()
+            sys.stdout.write("  text > "); sys.stdout.flush()
             txt = sys.stdin.readline().strip()
             if txt:
                 t_s = post(txt); show_t = f"  t={t_s:.1f}s" if t_s is not None else ""
@@ -137,7 +137,7 @@ def main():
     # warn if any maneuvers are left open (forgot the END)
     leftover = [k for k, v in open_state.items() if v]
     if leftover:
-        print(f"\n⚠ manovre lasciate APERTE (nessun END): {', '.join(leftover)}")
+        print(f"\n⚠ maneuvers left OPEN (no END): {', '.join(leftover)}")
     print("\nClosed. Markers are in  logs/markers_<session>.csv  (and in the local backup).")
 
 if __name__ == "__main__":

@@ -20,6 +20,9 @@ logs/
 # WiFi credentials (user-specific, never commit)
 pico/wifi_config.py
 
+# Work-in-progress, not ready to publish
+interpretability/
+
 # Ad-hoc recordings in repo root (not the curated samples/)
 /ecg_*.csv
 /ecg_*.png

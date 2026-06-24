@@ -3,6 +3,8 @@
 numpy
 scipy
 matplotlib
-pillow
 flask
+
+# Only needed by the superseded scripts in legacy/ (not the active pipeline):
+pillow
 reportlab

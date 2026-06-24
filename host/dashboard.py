@@ -2202,7 +2202,7 @@ def main():
   footer {{ margin-top:46px; padding-top:12px; border-top:1px solid var(--rule);
             color:var(--muted); font-size:0.78em; line-height:1.55;
             font-family:ui-sans-serif,-apple-system,sans-serif; }}
-  /* accenti inline (span statici nel testo) scuriti per la carta */
+  /* inline accent colors (static spans in the text) darkened for print */
   [style*="#7ad9ff"]{{color:#1f7fb0 !important}} [style*="#5fb1ff"]{{color:#2f6fb0 !important}}
   [style*="#ff8a8a"]{{color:#c0392b !important}} [style*="#ff6b6b"]{{color:#c0392b !important}}
   [style*="#ff9a9a"]{{color:#c0392b !important}} [style*="#ffe169"]{{color:#9a7d0a !important}}

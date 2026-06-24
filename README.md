@@ -299,16 +299,15 @@ Host-side Python with common scientific libraries (the Pico runs MicroPython —
 numpy
 scipy
 matplotlib
-pillow
 flask
-reportlab
 ```
 
 ```bash
 pip install -r requirements.txt
 ```
 
-(`pillow` and `reportlab` are used by the figure/report tooling.)
+(`pillow` and `reportlab` are listed in `requirements.txt` too, but only the superseded
+scripts in `legacy/` use them — the active pipeline does not.)
 
 ---
 
