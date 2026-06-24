@@ -24,7 +24,7 @@ noise before analysis.*
 
 [![Read the full report (PDF)](https://img.shields.io/badge/Read%20the%20full%20report-PDF-b31b1b?style=for-the-badge)](reports/holter_report.pdf)
 
-The report — the substantial part of this project — is a longitudinal single-subject study of ~17,000
+The report is a longitudinal single-subject study of ~17,000
 PVCs across 10 sessions: morphology, interpolated vs. compensated beats, couplets, cross-session burden
 dynamics, and ECG-derived respiration, generated end-to-end by the pipeline in this repo.
 
@@ -224,8 +224,7 @@ interpreting that evidence remains the author's.
 
 The pipeline was applied to a curated dataset of ~15 hours of single-lead ECG over 10 sessions. A few
 results are shown below — the **full write-up (methods, all figures, tables, and per-session
-appendices) is in [`reports/holter_report.pdf`](reports/holter_report.pdf)**, which is the substantial
-part of this project.
+appendices) is in [`reports/holter_report.pdf`](reports/holter_report.pdf)**.
 
 <table>
   <tr>
