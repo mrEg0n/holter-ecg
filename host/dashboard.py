@@ -2452,8 +2452,9 @@ def main():
      style="border:1px solid #25282d; border-radius:6px;
             max-width: 1100px; display:block; margin: 0 auto;"/>
 <div class="commentary">
-  The reference sinus cycle is not a single session-wide number: this subject has
-  marked respiratory sinus arrhythmia, so it is estimated <b>locally</b> as the median
+  The reference sinus cycle is not a single session-wide number: this subject shows
+  marked beat-to-beat variation in sinus rate (RMSSD up to ~170&nbsp;ms across sessions),
+  likely reflecting respiratory sinus arrhythmia, so it is estimated <b>locally</b> as the median
   of the <b>{PAUSE_K} nearest N&ndash;N intervals</b> around each PVC. A
   <b>prematurity guard</b> discards beats whose coupling (RR<sub>pre</sub>) is not
   shorter than that local sinus cycle &mdash; physically impossible for a true
