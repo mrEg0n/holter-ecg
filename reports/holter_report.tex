@@ -98,7 +98,7 @@ A Longitudinal Single-Subject Analysis of Premature Ventricular Complexes}\\[14p
 
 \begin{center}\small\itshape
 \begin{minipage}{0.86\linewidth}\centering
-\textbf{\upshape Disclaimer.} This report describes an engineering and signal-analysis exercise based on a hobbyist, low-cost, home-built project. Neither the hardware nor the software pipeline has been clinically calibrated, validated, certified, or designed or intended for medical use. The data presented here do not constitute a medical record; the analyses and conclusions do not constitute a clinical Holter report and are not diagnostic. This document exists solely as an exploratory personal project related to a personal cardiac condition, which is independently and regularly monitored by qualified cardiologists and medical specialists.
+\textbf{\upshape Disclaimer.} This report describes an engineering and signal-analysis exercise based on a hobbyist, low-cost, home-built project. Neither the hardware nor the software pipeline has been clinically calibrated, validated, certified, or designed and intended for medical use. The data presented here do not constitute a medical record; the analyses and conclusions do not constitute a clinical Holter report and are not diagnostic. This document exists solely as an exploratory personal project related to a personal cardiac condition, which is independently and regularly monitored by qualified cardiologists and medical specialists.
 \end{minipage}
 \end{center}
 
@@ -138,37 +138,42 @@ present streaming-only architecture is a deliberate first stage. At present, the
 
 The components were nevertheless selected with a self-contained, body-worn recorder as the goal. The Raspberry Pi Pico 2 W was chosen for its integrated Wi-Fi and low power consumption, which already allow operation as a battery-powered wireless acquisition node and provide a clear path toward onboard logging. The AD8232 front-end and the single-cell LiPo battery keep the unit compact, rechargeable, and suitable for portable untethered acquisition (device size: $\sim$ 8 $\times$ 6 $\times$ 3\,cm; the assembled unit is shown in \textbf{Figure~\ref{fig:hw}}). At this stage, streaming to a laptop is the simplest way to validate the full acquisition, storage, visualisation, and analysis chain.
 
-This is being implemented by adding a 3\,V microSD breakout module, the Adafruit 4682, to the Pico over SPI and having the firmware log each session locally. A standard 32\,GB microSD card would provide storage for months of ECG recordings, while the Wi-Fi stream could remain available for live monitoring whenever a host is nearby. With onboard storage, sessions can be recorded independently of any external computer during acquisition.
+This is being implemented by adding a 3\,V microSD breakout module, the Adafruit 4682, to the Pico over SPI and having the firmware log each session locally. AA standard 32\,GB microSD card would provide storage for months of ECG recordings, allowing sessions to be recorded independently of any external computer during acquisition. The Wi-Fi stream could still remain available for live monitoring through the dashboard, including from a smartphone connected to the same network.
 
 A dual-accelerometer extension, based on two ADXL345 modules, is also planned. One sensor would be positioned on the sternum and one on the abdomen, allowing posture to be estimated from the gravity vector and respiration to be measured directly from thoraco-abdominal movement. This would complement the present report, where respiration is estimated indirectly from R-wave amplitude (see Section~\ref{sec:edr}) and posture is tracked manually during recording.
 
 % ===================== 3. SOFTWARE =====================
 \section{Software}
-On the host side --- currently a MacBook --- a Python application receives the stream from the recorder and acquires, stores, and displays the ECG signal. The live trace is served through a Flask dashboard using Server-Sent Events. The dashboard can be opened either on the MacBook itself or on a smartphone connected to the same network, allowing the trace to be followed in real time during acquisition. 
+On the host side --- currently a MacBook --- a Python application receives the stream from the recorder, stores the ECG signal, and serves the live trace through a Flask dashboard using Server-Sent Events. The dashboard can be opened either on the MacBook itself or on a smartphone connected to the same network, allowing the trace to be followed in real time during acquisition.
 
-The same dashboard is used to add time-stamped manual annotations during recording,
-marking events such as meals, caffeine intake, physical exertion, posture changes, or
-perceived symptoms. These annotations are stored within the session and remain aligned with the ECG trace during later analysis. A set of batch tools then regenerates a full HTML report in the browser, with every figure and table computed from the stored recordings. The present document is generated downstream from that HTML report.
+The same dashboard is used to add time-stamped manual annotations during recording, marking events such as meals, caffeine intake, physical exertion, posture changes, or perceived symptoms. These annotations are stored within the session and remain aligned with the ECG trace during later analysis.
 
-The incoming ECG signal is band-pass filtered online using a first-order IIR filter, combining a 0.3\,Hz high-pass and a 25\,Hz low-pass filter. Beats are detected by a custom four-state finite-state-machine QRS detector (\texttt{IDLE $\rightarrow$ WIDTH $\rightarrow$ DETECT $\rightarrow$ POST}) with a 300\,ms refractory period. Premature ventricular complexes are then flagged by a rule-based classifier based on rebound, QRS width, and amplitude thresholds.
-Intervals corrupted by motion artefacts or poor electrode contact are excluded manually using a paginated matplotlib editor, which stores per-session exclusion files. These exclusion files are applied before analysis, preventing noisy segments from affecting the technical reliability of the analyses and of the figures, tables, and quantitative summaries derived from them.
+A set of batch tools then regenerates a full HTML report in the browser, with every figure and table computed from the stored recordings. The present document is generated downstream from that HTML report. The same software environment includes the signal-processing, beat-detection, PVC-classification, manual-curation, and export routines described in the following sections.
 
 \medskip
-\noindent\textbf{Code, analysis \& hardware documentation.} The recorder firmware, the full signal-processing and analysis pipeline used to generate every figure and table in this report, and the complete hardware build documentation, including wiring diagrams and bill of materials, are available at \href{https://github.com/mrEg0n/holter-ecg}{\texttt{github.com/mrEg0n/holter-ecg}}.
+\noindent\textbf{Code, analysis, and hardware documentation.} The recorder firmware, the full signal-processing and analysis pipeline used to generate every figure and table in this report, and the complete hardware build documentation, including wiring diagrams and bill of materials, are available at \href{https://github.com/mrEg0n/holter-ecg}{\texttt{github.com/mrEg0n/holter-ecg}}.
 
 % ===================== RECORDING QUALITY (prima) =====================
 \section{Recording quality \& PVC auto-detection}\label{sec:quality}
-Beat detection and classification are fully automatic. The ECG signal is first band-pass filtered online between 0.3 and 25\,Hz and sampled at 250\,Hz. QRS complexes are then detected by a finite-state-machine detector with a 300\,ms refractory period. Each detected beat is subsequently labelled as sinus or ectopic by a fixed rule-based classifier.
+Beat detection and classification are fully automatic. The ECG signal is first band-pass filtered online between 0.3 and 25\,Hz and sampled at 250\,Hz. QRS complexes are then detected by a custom finite-state-machine detector with a 300\,ms refractory period. Each detected beat is subsequently labelled as sinus or ectopic by a fixed rule-based classifier.
+
 A beat is flagged as a premature ventricular complex (PVC) when it satisfies predefined criteria based on QRS width, post-QRS rebound, signal amplitude, and physiologically plausible duration. Specifically, PVC candidates must show sufficient width and/or a marked post-QRS rebound, adequate amplitude, and a measured width within the 40--220\,ms range. No template matching or model training is used. The same thresholds are applied unchanged across all sessions, ensuring that every recording is processed with the same classification rule.
+
 These thresholds were tuned and empirically validated on this single subject. They therefore reflect this individual's ECG morphology, signal amplitude, electrode placement, and acquisition geometry. The same parametrization should not be assumed to transfer unchanged to other subjects. In practice, the most subject-dependent parameter is the absolute amplitude threshold. This could be made self-calibrating by estimating it once from a clean baseline window at the beginning of a recording and then holding it fixed throughout the session. Such a baseline-then-fixed approach would avoid continuous adaptation, which could otherwise be transiently biased by motion artefacts or poor electrode contact. With this modification, the same pipeline could in principle be extended to other subjects recorded with comparable electrode placement.
+
 The only operation left to manual curation is the exclusion of intervals corrupted by motion artefacts or poor electrode contact. These intervals are marked by hand in a paginated editor, which stores per-session exclusion files. Beats falling within excluded intervals are removed before any downstream analysis.
-\textbf{Figure~\ref{fig:quality}} illustrates the detection and curation procedure on a continuous segment from one recording, displayed as consecutive 12\,s rows. The trace is stable over most of the segment, and each detected beat carries its automatic label, with PVCs shown in \comp{red} and sinus beats in \textcolor{ForestGreen}{green}. A single shaded interval corresponds to a burst of motion noise and is visually distinct from the surrounding ECG. This is the type of segment removed during manual noise curation.
+
+\textbf{Figure~\ref{fig:quality}} illustrates the detection and curation procedure on a continuous segment from one recording, displayed as consecutive 12\,s rows. The trace is stable over most of the segment, and each detected beat carries its automatic label, with PVCs shown in red and sinus beats in green. A single shaded interval corresponds to a burst of motion/contact noise and is visually distinct from the surrounding ECG. This is the type of segment removed during manual noise curation.
 
 \reportfig{quality_strip.png}{Continuous 72-second segment, displayed in consecutive 12-second rows. Beats are detected automatically, with PVCs shown in red and sinus beats in green. The shaded 10 s interval corresponds to motion/contact noise and was manually excluded before analysis. The bracket in the 62:07 and 62:19 rows marks a transient slowing of the sinus rate to $\sim$60\,bpm.
 \label{fig:quality}}
 
 % ===================== DATASET OVERVIEW =====================
 \section{Dataset overview}
+Although these recordings concern health-related personal data and are associated with an
+identifiable author, they are intentionally included and made public here for completeness,
+transparency, and reproducibility of the project and  the report.
+
 All data presented in the following sections were obtained from the \nSessions{} recording
 sessions listed in \textbf{Table~\ref{tab:sessions}}. The sessions span different times of day and were acquired mainly under
 resting conditions, either in a supine position or while seated during desk work.
@@ -182,12 +187,12 @@ Because the recordings were acquired under a limited range of contexts and condi
 dataset should not be considered representative of the full variability of the events. Its main
 purpose was to develop, structure, and test the hardware, software, and analysis pipeline under
 controlled and relatively stable acquisition conditions. The burden value reported here should
-therefore not be interpreted as a clinical index; it only summarizes the amount of ectopy
+not be interpreted as a clinical index; it only summarizes the amount of ectopy
 detected by this specific recorder in this specific curated dataset.
 
 Additional recordings are currently being acquired under different conditions. In particular, the
-ongoing implementation of onboard storage will remove the need for an external host during
-acquisition and will allow future sessions to be recorded in more naturalistic settings,
+ongoing implementation of onboard storage,  removing the need for an external host during
+acquisition, will allow future sessions to be recorded in more heterogeneous settings,
 including movement and physical exertion.
 
 \subsection*{Sessions}
