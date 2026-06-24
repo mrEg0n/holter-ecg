@@ -1,50 +1,62 @@
-# holter-ecg
+# DIY Single-Lead Holter ECG
 
-A DIY single-lead ECG built around a **Raspberry Pi Pico 2 W** and an **AD8232**
-analog front-end, with a live Python dashboard on the host that filters,
-detects R-peaks, and classifies premature ventricular contractions (PVCs) using
-QRS width and post-QRS hyperpolarization rebound.
+A hobbyist, low-cost, home-built single-lead ECG recorder and analysis pipeline for
+long-duration exploratory recordings of premature ventricular complexes (PVCs).
 
-> ⚠️ **Educational project. Not a medical device.**
-> This is a hobbyist exploration of human bioelectricity, built as a natural
-> extension of a bioelectric recording project on plants. **Do not use this
-> for diagnosis, monitoring of any clinical condition, or treatment decisions.**
-> If you have a cardiac concern, see a cardiologist. The author of this repo
-> is followed by one and built this purely out of curiosity about ECG signal
-> processing and PVC morphology.
+This project combines a compact ECG acquisition unit, real-time wireless streaming, a
+browser-based monitoring dashboard, manual annotation tools, automated beat detection,
+rule-based PVC classification, noise curation, and downstream report generation.
+
+It was developed as an engineering and signal-analysis exercise on personal ECG recordings.
+It is **not a medical device**, not a clinical Holter system, and not intended for diagnostic use.
 
 ![ECG sample](samples/ecg_30s_rebound.png)
 
-*30-second recording with bigeminy. Green markers = normal sinus beats; red
-markers = PVCs, annotated with their measured rebound ratio and QRS width.*
+*30-second recording with bigeminy. Green markers = normal sinus beats; red markers = PVCs,
+annotated with their measured rebound ratio and QRS width.*
 
-**📄 Full analysis:** [`reports/holter_report.pdf`](reports/holter_report.pdf) — a
-longitudinal single-subject study of ~17,000 PVCs across 10 sessions: morphology,
-interpolated vs. compensated beats, couplets, cross-session burden dynamics, and
-ECG-derived respiration. Generated end-to-end by the pipeline in this repo.
+**📄 Full analysis:** [`reports/holter_report.pdf`](reports/holter_report.pdf) — a longitudinal
+single-subject study of ~17,000 PVCs across 10 sessions: morphology, interpolated vs. compensated
+beats, couplets, cross-session burden dynamics, and ECG-derived respiration. Generated end-to-end
+by the pipeline in this repo.
 
 ---
 
-## Why this project
+## Disclaimer
 
-After building a bioelectric signal pipeline on a houseplant (AD620 + ADS1115
-+ Pi 5, low-frequency single-channel), I wanted to take the same architecture
-toward human physiology. ECG is the obvious next step: same problem class
-(membrane potentials of excitable cells), but with three crucial differences
-that make the project pedagogically rich:
+This repository describes a hobbyist, home-built ECG acquisition and analysis project. Neither the
+hardware nor the software pipeline has been clinically calibrated, validated, certified, or designed
+or intended for medical use.
 
-1. **Bandwidth**: plant signals are sub-Hz; ECG demands DC–40 Hz, with the QRS
-   complex packing energy up to 25 Hz.
-2. **Common-mode rejection**: a human body is a giant 50 Hz antenna, so a
-   driven-right-leg loop is essential. The AD8232 provides this internally.
-3. **Repeated stereotyped morphology**: instead of looking for slow deviations
-   from baseline, you look for periodic pattern matches — opening the door to
-   beat detection, classification, and rhythm analysis.
+The data, figures, scripts, and analyses produced by this project do not constitute a medical record.
+They do not constitute a clinical Holter report and are not diagnostic.
 
-The classification angle is what makes this fun. I have benign but frequent
-PVCs (clinically known and followed). I wanted to see whether a 12-line
-detector could pick them out of the noise the way a clinician's eye does —
-spoiler: yes, with the right features.
+The project is intended solely for exploratory engineering, signal-processing, and documentation
+purposes. Any personal cardiac condition should be evaluated and monitored independently by qualified
+medical professionals using clinically validated tools.
+
+---
+
+## Project overview
+
+The system is built around a single-lead ECG recorder based on an AD8232 biopotential front-end and a
+Raspberry Pi Pico 2 W. The recorder streams ECG data to a host computer, currently a MacBook, where a
+Python application receives, stores, displays, and processes the signal.
+
+The live ECG trace is served through a Flask dashboard using Server-Sent Events. The dashboard can be
+opened on the host computer or on a smartphone connected to the same network, allowing the signal to
+be followed in real time during acquisition.
+
+The software pipeline supports:
+
+- real-time ECG acquisition and storage;
+- browser-based live monitoring;
+- time-stamped manual annotations;
+- online signal filtering;
+- automatic QRS detection;
+- rule-based PVC classification;
+- manual exclusion of noisy intervals;
+- generation of figures, tables, and HTML/PDF reports from stored recordings.
 
 ---
 
@@ -52,17 +64,21 @@ spoiler: yes, with the right features.
 
 | Component | Notes |
 | --- | --- |
-| Raspberry Pi Pico 2 W (WH version) | RP2350, WiFi, 12-bit ADC. WH = pre-soldered headers. |
-| AD8232 breakout board | Any clone of the SparkFun reference design works. Includes 3.5 mm jack for the electrode cable. |
-| 3-lead ECG cable (3.5 mm TRS → snap connectors) | Usually included in AD8232 kits. |
+| Raspberry Pi Pico 2 W (WH) | RP2350, Wi-Fi, 12-bit ADC. WH = pre-soldered headers. |
+| AD8232 breakout board | Any clone of the SparkFun reference design. Includes a 3.5 mm jack for the electrode cable. |
+| 3-lead ECG cable (3.5 mm TRS → snap) | Usually included in AD8232 kits. |
 | Disposable gel ECG electrodes ×3 | Standard adhesive snap electrodes (3M Red Dot or equivalent). |
-| LiPo 3.7 V + TP4056 USB-C charger (optional) | For wireless / portable operation. A USB power bank works too. |
-| Micro-USB cable | For programming and current host link. |
+| LiPo 3.7 V + TP4056 USB-C charger | For wireless / portable operation. A USB power bank also works. |
+| SPDT power switch | On/off for battery operation. |
+| Micro-USB cable | For programming and the tethered host link. |
+
+Sampling uses the Pico's internal 12-bit ADC at **250 Hz**. Data is streamed over Wi-Fi, with USB
+serial available when tethered. The current build is compact, battery-powered, and wireless, but not
+yet housed in a dedicated enclosure. (Photographs of the assembled unit are in the report, Appendix A.)
 
 ### Wiring (3 wires)
 
-With the Pico 2 W held USB-up, the AD8232 connects to the **right column**
-of the Pico header:
+With the Pico 2 W held USB-up, the AD8232 connects to the **right column** of the Pico header:
 
 | AD8232 pin | Pico 2 W pin (physical) | Function |
 | --- | --- | --- |
@@ -70,8 +86,8 @@ of the Pico header:
 | `GND` | pin 38 (`GND`) | Ground |
 | `OUTPUT` | pin 31 (`GP26 / ADC0`) | ECG analog signal |
 
-The electrode jack on the AD8232 takes the snap cable; `LO+`, `LO-`, and `SDN`
-are not used in the simplest configuration.
+The electrode jack on the AD8232 takes the snap cable; `LO+`, `LO-`, and `SDN` are not used in the
+simplest configuration.
 
 **Electrode placement** (Einthoven Lead I, simplest 3-electrode setup):
 
@@ -89,234 +105,250 @@ are not used in the simplest configuration.
    └───────────────────────┘
 ```
 
-⚠️ Always run the Pico from a **battery** (LiPo or USB power bank) when
-electrodes are attached. Never connect a body to a device that is plugged into
-mains-powered USB — leakage current is a real safety concern even at hobbyist
-power levels.
+> ⚠️ Always run the Pico from a **battery** (LiPo or USB power bank) when electrodes are attached.
+> Never connect a body to a device plugged into mains-powered USB — leakage current is a real safety
+> concern even at hobbyist power levels.
 
----
-
-## Architecture
+### Signal path
 
 ```
-[3 electrodes] → [AD8232 AFE] → analog ECG (0–3.3 V centered at ~1.55 V)
+[3 electrodes] → [AD8232 AFE] → analog ECG (0–3.3 V, centered ~1.55 V)
                                        │
                                        ▼
                             [Pico 2 W ADC0 @ 250 Hz]
                                        │
-                            stdout (USB CDC serial)
+                           Wi-Fi stream  (USB serial when tethered)
                                        │
                                        ▼
-                              [host: dashboard.py]
-                       band-pass IIR → state-machine detector
-                       → live plot + BPM + PVC classification
+                              [host: Python + Flask]
+                  band-pass IIR → state-machine detector → classify
+                       → live dashboard + stored recording
 ```
-
-The current implementation streams over **USB serial** for simplicity. The
-Pico 2 W has WiFi and the natural next step is to push samples over TCP to a
-small server running on a separate Linux box (Pi 5 or similar), so the host
-laptop can be turned off without interrupting recording. The code is already
-structured so this only requires swapping the transport.
 
 ---
 
-## Algorithm
+## Current implementation and planned upgrades
 
-### Filtering chain
+In the current version, the Raspberry Pi Pico 2 W acquires the ECG signal and streams it to an
+external host, which stores the recording and serves the live dashboard. At this stage the recorder
+does **not** store data locally, so the host must remain available and within range during acquisition.
 
-Two first-order IIR filters in series on the host side:
+**Roadmap / planned upgrades:**
 
-| Stage | Cutoff | Purpose |
-| --- | --- | --- |
-| High-pass | 0.3 Hz | Removes DC offset and baseline wander from breathing |
-| Low-pass | 25 Hz | Attenuates 50 Hz mains and high-frequency EMG noise |
+- **Onboard storage** via a 3 V microSD breakout (Adafruit 4682) over SPI. A 32 GB card would hold
+  months of recordings, allowing fully standalone sessions while the Wi-Fi stream stays available for
+  live monitoring (including from a smartphone on the same network).
+- **Dual ADXL345 accelerometers** (sternum + abdomen) to estimate posture and thoraco-abdominal
+  movement, providing context on body position and respiration.
+- **Pan–Tompkins-style detection stage** — a dedicated 5–15 Hz QRS-enhancement path for the detector
+  (kept separate from the wider display band), to reduce dependence on the absolute amplitude threshold.
+- **HRV metrics** (SDNN, RMSSD, pNN50) and a finer PAC-vs-PVC distinction; eventually a 3D-printed
+  wearable enclosure.
 
-Together they form a 0.3–25 Hz band-pass that preserves QRS morphology while
-suppressing the dominant noise sources. First-order filters are intentionally
-mild so that wide PVC complexes are not narrowed in the time domain.
+---
 
-### Beat detection: 4-state machine
+## Software architecture
+
+The stack is Python on the host side and MicroPython on the recorder side. The host-side application:
+
+1. receives the ECG stream from the recorder;
+2. stores the incoming signal as a time-stamped recording;
+3. serves the live ECG trace through a Flask dashboard (Server-Sent Events);
+4. allows manual event annotations during recording;
+5. applies signal-processing and beat-detection routines;
+6. supports manual noise curation;
+7. regenerates full reports from stored data.
+
+Manual annotations can mark events such as meals, caffeine intake, physical exertion, posture changes,
+symptoms, or other experimental notes. They remain aligned with the ECG trace during later analysis.
+
+### Signal processing
+
+The incoming ECG is band-pass filtered online with a first-order IIR filter (high-pass 0.3 Hz,
+low-pass 25 Hz), sampled at 250 Hz. QRS complexes are detected by a custom four-state finite-state
+machine with a 300 ms refractory period:
 
 ```
    IDLE ──(v > WIDTH_THR)──▶ WIDTH ──(v > DETECT_THR)──▶ DETECT
      ▲                          │                          │
-     │              (v drops, no detect_thr crossed)        │
+     │            (v drops, DETECT_THR not crossed)        │
      │                          ▼                          │
-     │                       IDLE                          │
-     │                                                     │
+     │                        IDLE                         │
      └────────────────── POST ◀──(v < WIDTH_THR)───────────┘
-              (monitor trough for 200 ms, then classify)
+              (monitor the trough for ~200 ms, then classify)
 ```
 
-| Threshold | Default | Notes |
+Each detected beat is then labelled sinus or ectopic by a fixed rule-based classifier. PVC candidates
+are identified from QRS width, post-QRS rebound (`|trough| / peak`), signal amplitude, and a
+physiologically plausible duration range. A beat is flagged as a PVC when its rebound ratio or its
+width clears the threshold; the same thresholds are applied unchanged across all analysed sessions.
+
+No template matching or model training is used. On a representative recording the features separate
+cleanly:
+
+| Feature | Normal beats (median) | PVCs (median) |
 | --- | --- | --- |
-| `WIDTH_THR` | 0.10 V | Low threshold used to **measure** QRS width at the base of the spike. |
-| `DETECT_THR` | max(0.30, 0.45 × median amplitude) | High threshold required to **confirm** the up-crossing is a QRS and not a T-wave / noise spike. |
-| `REFRACTORY` | 300 ms | Minimum interval between accepted R-peaks. |
-| `POST_PEAK` | 200 ms | Time window monitored after each QRS to record the trough. |
+| QRS width | ~32 ms | ~96 ms |
+| Rebound ratio | ~0.25 | ~0.59 |
+| Amplitude | ~0.50 V | ~1.15 V |
 
-Using two thresholds decouples *what counts as a QRS* (the high one) from
-*how wide it is* (measured at the low one), giving width values that match
-clinical references rather than being clipped by detection threshold.
+These thresholds were tuned on a single subject and should not be assumed to transfer unchanged to
+other subjects, electrode placements, or acquisition geometries.
 
-### PVC classification: rebound + width
+### Manual noise curation
 
-Each accepted beat is classified by two intrinsic features:
+Motion artefacts and poor electrode contact produce segments unsuitable for analysis. A paginated
+Matplotlib editor lets noisy intervals be marked by hand and stored as per-session exclusion files
+(`exclusions/`). Beats inside excluded intervals are removed before any downstream analysis, so
+corrupted segments do not contribute to figures, tables, or summaries.
 
-- **`width_ms`** — milliseconds the filtered signal stayed above `WIDTH_THR`.
-- **`rebound_ratio`** — `|trough| / peak`, where `trough` is the minimum value
-  of the filtered signal in the 200 ms following the peak. This captures the
-  characteristic deep negative deflection (hyperpolarization-like undershoot)
-  that follows a ventricular ectopic contraction.
+### Report generation
 
-A beat is classified as **PVC** when **either**:
+The pipeline regenerates a full report from stored recordings — every figure and table is computed
+from the underlying data — making the analysis reproducible and providing a transparent record of each
+processing step:
 
-- `rebound_ratio ≥ 0.40`, **or**
-- `width_ms ≥ 95`
+```bash
+python3 host/dashboard.py      # recompute → reports/holter_dashboard.html (with figures)
+python3 host/export_latex.py   # HTML → reports/figs/*.png + reports/tables.tex
+latexmk -pdf reports/holter_report.tex   # → reports/holter_report.pdf
+```
 
-Otherwise it is **normal** (sinus origin).
-
-On a real 30-second recording from the author (frequent PVCs in a bigeminy
-pattern) the features separated cleanly:
-
-| Feature | Normal beats | PVCs | Separation |
-| --- | --- | --- | --- |
-| Width | 28–44 ms (median 32) | 92–104 ms (median 96) | 48 ms gap |
-| Rebound | 0.02–0.38 (median 0.25) | 0.54–0.69 (median 0.59) | 0.16 gap |
-| Amplitude | 0.38–0.56 V (median 0.50) | 1.08–1.23 V (median 1.15) | 2.3× |
-
-Rebound is the most discriminative single feature; width and amplitude follow.
-Earlier iterations used amplitude alone, which has a positive-feedback failure
-mode: if PVCs are excluded from the running baseline and amplitude drifts up,
-all new beats can suddenly be labelled PVC and the baseline never recovers.
-The current rule is intrinsic per-beat and history-free.
-
-### Rate computation
-
-Three rates are computed continuously on a rolling 60-second window:
-
-- **ECG total BPM** = all detected beats / window — the apical (electrical) rate.
-- **Sinus BPM** = normal beats only / window — approximately what a wrist PPG
-  monitor (Garmin, Apple Watch) would report if it missed *all* PVCs.
-- **PVC rate** = PVCs / minute — also the **pulse deficit lower bound**.
-- **PVC burden %** = PVCs / total beats — clinically relevant ratio.
-
-The difference between ECG total and sinus BPM is the **pulse deficit**
-phenomenon: PVCs occur before full ventricular filling, produce reduced stroke
-volume, and frequently fail to generate a palpable peripheral pulse. In one
-of the author's recordings, a Garmin showed 58 BPM while the ECG dashboard
-showed 78 BPM total / 50 BPM sinus — the Garmin was catching all normals and
-about half of the PVCs.
+The report includes: session overview, beat counts, PVC burden, noise-exclusion summary, PVC
+morphology, interpolated vs. compensated classification, couplet detection, cross-session rhythm
+metrics, ECG-derived respiration, and per-session appendices.
 
 ---
 
-## Quick start
+## Example analyses
 
-### 1. Flash MicroPython on the Pico 2 W
+The pipeline was used on a curated dataset of ~15 hours of single-lead ECG over 10 sessions:
 
-Download the latest UF2 from <https://micropython.org/download/RPI_PICO2_W/>.
-Hold BOOTSEL while plugging in USB, drag the UF2 onto the mounted `RP2350`
-drive. The Pico reboots into MicroPython.
+- automatic beat detection and PVC classification;
+- cumulative PVC burden;
+- PVC morphology consistency across sessions;
+- interpolated vs. compensated PVC classification;
+- couplet detection and characterization;
+- cross-session changes in pause-type composition;
+- ECG-derived respiration from R-wave amplitude modulation;
+- exploratory respiratory-phase association.
 
-### 2. Install host dependencies
-
-```bash
-pip3 install --user mpremote matplotlib numpy
-```
-
-### 3. Wire up the AD8232 and attach electrodes
-
-See [Wiring](#wiring-3-wires) and [Electrode placement](#hardware) above.
-**Run the Pico from a battery / power bank when electrodes are attached.**
-
-### 4. Run
-
-```bash
-git clone https://github.com/<your-username>/holter-ecg.git
-cd holter-ecg
-python3 host/dashboard.py
-```
-
-The dashboard auto-detects the Pico's USB serial device. Set `PICO_DEVICE=...`
-in the environment to override.
-
-### Dashboard keyboard shortcuts
-
-- `space` — pause / resume live updates (lets you pan/zoom freely)
-- `r` — reset axes to default view
-- `↑` / `↓` — zoom Y in / out
-- `←` / `→` — zoom X out / in
-
-The matplotlib toolbar at the bottom also works for fine drag/zoom with mouse.
+These analyses are subject-specific and exploratory and must not be interpreted as clinical
+measurements. See [`reports/holter_report.pdf`](reports/holter_report.pdf) for the full write-up.
 
 ---
 
-## Repository layout
+## Repository structure
 
-```
+```text
 holter-ecg/
-├── pico/
-│   └── streamer.py            # MicroPython, runs on the Pico; 250 Hz ADC → stdout
-├── host/
-│   ├── dashboard.py           # Live filter + detect + plot + classify
-│   └── analyze_recording.py   # Offline analysis of recorded CSV with the same detector
-├── legacy/                    # Earlier standalone report generators (superseded; kept for reference)
-├── tools/
-│   ├── blink.py               # Sanity check that MicroPython is alive
-│   ├── read_adc_raw.py        # Print raw ADC values (no filtering) — sanity check the wiring
-│   ├── record_ecg.py          # Record 5 s of ECG and stream as CSV (early test)
-│   ├── record_long.py         # Record 30 s with Pico-side timestamps for sample-rate verification
-│   └── plot_ecg.py            # Plot a recorded CSV with no analysis
-├── samples/
-│   ├── ecg_take1.csv / .png   # First 5 s "hello QRS" capture
-│   ├── ecg_30s.csv            # 30 s of frequent PVCs (bigeminy)
-│   └── ecg_30s_rebound.png    # Annotated analysis output
-├── README.md
-├── LICENSE                    # MIT
-└── .gitignore
+├── pico/        # MicroPython firmware for the Raspberry Pi Pico 2 W (ADC → Wi-Fi/USB stream)
+├── host/        # acquisition server, live Flask dashboard, signal processing, beat detection,
+│                #   PVC classification, manual noise-curation editor, report export
+├── tools/       # small standalone utilities (raw ADC dump, quick recordings, plotting)
+├── legacy/      # earlier standalone report generators (superseded; kept for reference)
+├── reports/     # LaTeX report source + generated figures/tables + compiled PDF
+├── samples/     # short example recordings used in this README
+├── exclusions/  # per-session manual noise-exclusion files
+├── requirements.txt
+├── LICENSE
+└── README.md
 ```
 
-To run any of the `tools/` recording scripts on the Pico:
+Raw recordings (`logs/`) and Wi-Fi credentials (`pico/wifi_config.py`) are git-ignored and never
+published; only short curated samples are included.
+
+---
+
+## Requirements
+
+Host-side Python with common scientific libraries (the Pico runs MicroPython — no pip there):
+
+```text
+numpy
+scipy
+matplotlib
+pillow
+flask
+reportlab
+```
 
 ```bash
-mpremote connect /dev/cu.usbmodem... run tools/record_long.py > capture.csv
-python3 host/analyze_recording.py capture.csv
+pip install -r requirements.txt
 ```
 
----
-
-## Roadmap
-
-In rough order of personal interest, not deadlines:
-
-- [ ] **WiFi streaming**: replace USB CDC with TCP over WiFi from Pico W to a
-      lightweight server (Pi 5 in my case). Decouples the host laptop from
-      continuous recording.
-- [ ] **Persistent logging**: 24-hour holter-style continuous capture with
-      CSV / HDF5 storage and offline review tooling.
-- [ ] **HRV metrics**: SDNN, RMSSD, pNN50 computed on normal-to-normal RR
-      intervals — opens the autonomic nervous system angle.
-- [ ] **PAC distinction**: currently both PACs (narrow premature) and PVCs
-      (wide premature) get classified by width / rebound; finer distinction
-      would require P-wave detection.
-- [ ] **Better filter**: move to a Pan-Tompkins-style 5–15 Hz QRS enhancement
-      stage for the detector while keeping a wider band for display.
-- [ ] **Wearable form factor**: smaller LiPo, 3D-printed enclosure with
-      electrode breakout, the Pico running standalone with WiFi only.
+(`pillow` and `reportlab` are used by the figure/report tooling.)
 
 ---
 
-## References and acknowledgements
+## Typical workflow
 
-- AD8232 datasheet — Analog Devices.
-- Pan & Tompkins, "A Real-Time QRS Detection Algorithm",
-  *IEEE Trans. Biomed. Eng.* 32(3):230–236, 1985.
-- The SparkFun AD8232 hookup guide, which most Chinese-clone breakouts are
-  electrically identical to.
-- ProtoCentral, for keeping open-source biomedical hardware alive.
+1. flash MicroPython on the Pico 2 W and copy the firmware from `pico/` (set Wi-Fi credentials from
+   `pico/wifi_config.example.py`);
+2. wire the AD8232 and attach electrodes — run the Pico from a **battery**;
+3. start host-side acquisition: `TRANSPORT=usb python3 host/server.py` (or `TRANSPORT=wifi`);
+4. open the Flask dashboard on the host or a phone on the same network;
+5. monitor the ECG in real time and add time-stamped annotations when relevant;
+6. stop and save the recording;
+7. curate noisy intervals manually: `python3 host/mark_exclusions.py`;
+8. regenerate the report: `python3 host/dashboard.py` then `python3 host/export_latex.py`;
+9. compile `reports/holter_report.tex` to PDF.
+
+---
+
+## Limitations
+
+- single ECG lead;
+- hobbyist hardware, not clinically validated;
+- not tested across subjects; PVC classification is rule-based and subject-specific;
+- morphology interpretation is limited by single-lead acquisition;
+- motion artefacts and electrode-contact quality remain important constraints;
+- the current streaming-only implementation requires an external host during acquisition.
+
+The system is useful as an exploratory engineering and signal-analysis platform, but must not be used
+as a substitute for clinical ECG monitoring.
+
+---
+
+## Privacy and data
+
+The example recordings concern health-related personal data and are associated with an identifiable
+author. They are intentionally included and made public for completeness, transparency, and
+reproducibility of the report. Anyone adapting this project should carefully consider privacy, consent,
+and data-sharing implications before publishing ECG recordings or derived health-related data.
+
+---
+
+## Intended use
+
+**Intended for:** documenting a DIY ECG acquisition system; exploring signal-processing methods on
+single-lead ECG; testing beat-detection and PVC-classification routines; generating reproducible
+technical reports; supporting development of portable, low-cost physiological recording tools.
+
+**Not intended for:** diagnosis, medical decision-making, clinical monitoring, treatment guidance,
+emergency detection, or regulatory / certified medical use.
+
+---
+
+## References
+
+- AD8232 datasheet — Analog Devices; SparkFun AD8232 hookup guide (most clone breakouts are
+  electrically identical).
+- Pan & Tompkins, "A Real-Time QRS Detection Algorithm," *IEEE Trans. Biomed. Eng.* 32(3):230–236,
+  1985 — the standard reference for real-time QRS detection (a future direction for this detector; the
+  current implementation is a custom state machine).
 
 ---
 
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+---
+
+## Author
+
+**Andrea Pedroni** — GitHub [@mrEg0n](https://github.com/mrEg0n)
+
+Developed as a personal engineering and signal-analysis exercise on long-duration ECG acquisition and
+PVC analysis.
