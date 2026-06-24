@@ -18,6 +18,11 @@ QRS width and post-QRS hyperpolarization rebound.
 *30-second recording with bigeminy. Green markers = normal sinus beats; red
 markers = PVCs, annotated with their measured rebound ratio and QRS width.*
 
+**📄 Full analysis:** [`reports/holter_report.pdf`](reports/holter_report.pdf) — a
+longitudinal single-subject study of ~17,000 PVCs across 10 sessions: morphology,
+interpolated vs. compensated beats, couplets, cross-session burden dynamics, and
+ECG-derived respiration. Generated end-to-end by the pipeline in this repo.
+
 ---
 
 ## Why this project
