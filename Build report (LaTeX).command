@@ -13,7 +13,8 @@ python3 host/export_latex.py || { echo "✗ error in export_latex.py"; read -r; 
 
 echo "▶ 3/3  Compiling reports/holter_report.tex ..."
 cd reports || exit 1
-latexmk -pdf -interaction=nonstopmode -halt-on-error holter_report.tex \
+# -gg = wipe any stale build cache first, then compile fresh (never reuse an old PDF)
+latexmk -gg -pdf -interaction=nonstopmode -halt-on-error holter_report.tex \
   || { echo "✗ LaTeX compilation error (see reports/holter_report.log)"; read -r; exit 1; }
 latexmk -c holter_report.tex >/dev/null 2>&1   # clean up auxiliary files
 
