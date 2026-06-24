@@ -10,10 +10,11 @@ rule-based PVC classification, noise curation, and downstream report generation.
 It was developed as an engineering and signal-analysis exercise on personal ECG recordings.
 It is **not a medical device**, not a clinical Holter system, and not intended for diagnostic use.
 
-![ECG sample](samples/ecg_30s_rebound.png)
+![Single-lead ECG with automatic beat detection and manual noise curation](reports/figs_manual/quality_strip.png)
 
-*30-second recording with bigeminy. Green markers = normal sinus beats; red markers = PVCs,
-annotated with their measured rebound ratio and QRS width.*
+*Continuous single-lead ECG (72 s, in consecutive 12-second rows). Beats are detected and classified
+automatically — teal = sinus, red = PVC; shaded spans are intervals manually excluded as motion/contact
+noise before analysis.*
 
 **📄 Full analysis:** [`reports/holter_report.pdf`](reports/holter_report.pdf) — a longitudinal
 single-subject study of ~17,000 PVCs across 10 sessions: morphology, interpolated vs. compensated
@@ -248,7 +249,7 @@ holter-ecg/
 ├── tools/       # small standalone utilities (raw ADC dump, quick recordings, plotting)
 ├── legacy/      # earlier standalone report generators (superseded; kept for reference)
 ├── reports/     # LaTeX report source + generated figures/tables + compiled PDF
-├── samples/     # short example recordings used in this README
+├── samples/     # short example ECG recordings (CSV + PNG)
 ├── exclusions/  # per-session manual noise-exclusion files
 ├── requirements.txt
 ├── LICENSE
