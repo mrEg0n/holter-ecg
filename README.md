@@ -370,6 +370,23 @@ emergency detection, or regulatory / certified medical use.
 
 ---
 
+## Use of AI tools
+
+This project was developed with substantial assistance from AI tools — specifically
+Anthropic's Claude, including the Claude Code agent. These tools were used throughout: to
+help write and refactor the firmware and host-side analysis code, build the figure- and
+report-generation pipeline, explore and discuss analysis choices, and draft and revise the
+accompanying report.
+
+All design decisions, the hardware build, the experimental setup, and the interpretation of
+results were directed, reviewed, and verified by the author, who takes full responsibility for
+the content of this repository. AI tools are not credited as authors.
+
+A more detailed account of where and how AI assistance was used — and of its limits in
+projects of this kind — is planned as a separate write-up.
+
+---
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
