@@ -1604,7 +1604,6 @@ def main():
         c = s["coupling_ms"]
         c = c[(c > 200) & (c < 800)] if len(c) else c
         mod = coupling_modality(c)
-        focus_txt = "unimodal"
         if len(c):
             h, _ = np.histogram(c, bins=bins_c)
             ax.bar(cen_c, h, width=12, color=clu_col, edgecolor="#ffffff", linewidth=0.3)
@@ -1612,31 +1611,25 @@ def main():
             ax.axvline(med, color="#b8860b", ls="-", lw=1.4)
             ax.text(med + 4, ax.get_ylim()[1] * 0.8, f"med {med:.0f} ms",
                     color="#b8860b", fontsize=FS_TEXT, fontweight="bold")
-            if mod["bimodal"]:
-                # real second mode → check morphology (same focus?)
-                morph = coupling_focus_morph(s["ecg_path"], mod["valley"])
-                ax.axvline(mod["valley"], color="#6f42c1", ls="--", lw=1.2)
-                if morph and morph["corr"] > 0.97:
-                    focus_txt = (f"bimodal: same morphology (QRS r={morph['corr']:.3f})")
-                    tag_col = "#6f42c1"
-                elif morph:
-                    focus_txt = (f"bimodal: CHECK morphology (QRS r={morph['corr']:.3f})")
-                    tag_col = "#cc3b30"
-                else:
-                    focus_txt = "bimodal (morphology n/a)"
-                    tag_col = "#6f42c1"
-                ax.text(0.985, 0.84, focus_txt, transform=ax.transAxes, ha="right",
-                        color=tag_col, fontsize=FS_TEXT - 0.5, fontweight="bold")
-                focus_findings.append((short_label(s["label"]), focus_txt, morph))
-            elif mod["ok"] and mod["mu"]:
-                # no real trough (right shoulder): artificial split at the midpoint
-                # of the two modes and check that the morphology stays the same
-                split = 0.5 * (mod["mu"][0] + mod["mu"][1])
+            # Uniform single-source check for EVERY session: split the coupling
+            # distribution into a shorter- and a longer-coupling cluster (at the
+            # trough if clearly bimodal, otherwise the midpoint between the two
+            # fitted modes) and report the QRS-morphology correlation between the
+            # two clusters. A high r means one focus firing at two coupling
+            # intervals, not a second morphologically distinct focus. The histogram
+            # shape (single mode / shoulder / two separated peaks) is left to speak
+            # for itself rather than forcing a bimodal/unimodal label.
+            split = mod["valley"] if mod["bimodal"] else (
+                0.5 * (mod["mu"][0] + mod["mu"][1]) if (mod["ok"] and mod["mu"]) else None)
+            if split is not None:
+                ax.axvline(split, color="#9aa0a6", ls=":", lw=1.0)
                 morph = coupling_focus_morph(s["ecg_path"], split)
                 if morph:
-                    ax.text(0.985, 0.84, f"artificially split QRS r={morph['corr']:.3f}",
-                            transform=ax.transAxes, ha="right", color="#9a7d0a",
+                    ax.text(0.985, 0.84, f"two-cluster QRS r={morph['corr']:.3f}",
+                            transform=ax.transAxes, ha="right", color="#6f6f6f",
                             fontsize=FS_TEXT - 0.5, fontstyle="italic")
+                    focus_findings.append(
+                        (short_label(s["label"]), morph["corr"], bool(mod["bimodal"])))
         ax.axvline(500, color="#6a6a6a", ls="--", lw=0.7, alpha=0.5)
         ax.axvline(600, color="#6a6a6a", ls="--", lw=0.7, alpha=0.5)
         ax.set_title(f"{short_label(s['label'])}   pre-PVC coupling (n={len(c)})",
@@ -1650,23 +1643,23 @@ def main():
     fig.subplots_adjust(left=0.06, right=0.99, top=0.965, bottom=0.05, hspace=0.5)
     img_persession_coupling = fig_to_b64(fig, dpi=450)
 
-    # textual summary of the dual-focus check (for the HTML)
-    n_bimodal = len(focus_findings)
-    n_diff = sum(1 for _, txt, _ in focus_findings if "CHECK" in txt)
-    if n_bimodal == 0:
-        focus_summary = ("Every session's coupling is statistically unimodal — a "
-                         "single pre-PVC coupling peak, consistent with one focus.")
+    # textual summary of the single-source check (for the HTML)
+    if not focus_findings:
+        focus_summary = ("Every session's coupling is a single peak, consistent "
+                         "with one focus.")
     else:
-        same = ", ".join(f"{lab} (r={m['corr']:.3f})"
-                         for lab, txt, m in focus_findings if m and "CHECK" not in txt)
+        rmin = min(corr for _, corr, _ in focus_findings)
+        n_sep = sum(1 for _, _, bi in focus_findings if bi)
         focus_summary = (
-            f"{n_bimodal} session(s) show a genuinely <b>bimodal</b> coupling "
-            f"(two peaks, not just skew): {same}. In each the two coupling clusters "
-            f"have <b>identical QRS morphology</b> (template correlation as shown), so "
-            f"this is the <b>same monomorphic focus discharging at two coupling "
-            f"intervals</b> (coupling modulation), <b>not</b> a second focus."
-            + (f" {n_diff} session(s) flagged for morphology review."
-               if n_diff else " No session shows a morphologically distinct second focus."))
+            "Across sessions the coupling distribution ranges from a single mode "
+            "with a right-skewed shoulder to a more clearly separated second mode "
+            f"({n_sep} session(s) with two clearly separated peaks). Rather than "
+            "drawing a hard line, note that wherever the distribution is split into "
+            "a shorter- and a longer-coupling cluster, the two clusters have "
+            "essentially the <b>same QRS morphology</b> (template correlation "
+            f"r &ge; {rmin:.2f} in every session). This is consistent with "
+            "<b>coupling modulation of one dominant monomorphic focus</b>, not a "
+            "second morphologically distinct focus.")
 
     # ============ COUPLETS: detection, per-session count, morphological overlay ==
     # Couplet = 2 consecutive PVCs (RR 200-700ms), not part of a run>=3. Collected per

@@ -91,14 +91,14 @@
 A Longitudinal Single-Subject Analysis of Premature Ventricular Complexes}\\[14pt]
 {\large Andrea Pedroni}\\[5pt]
 {\itshape Independent project $\cdot$ apedroni85@gmail.com}\\[2pt]
-{\itshape Personal report --- May/June 2026}
+{\itshape  May/June 2026}
 \end{center}
 
 \vspace{4pt}\hrule\vspace{6pt}
 
 \begin{center}\small\itshape
 \begin{minipage}{0.86\linewidth}\centering
-\textbf{\upshape Disclaimer.} This report describes an engineering and signal-analysis exercise based on a hobbyist, low-cost, home-built project. Neither the hardware nor the software pipeline has been clinically calibrated, validated, certified, or designed for medical use. The data presented here do not constitute a medical record; the analyses and conclusions do not constitute a clinical Holter report and are not diagnostic. This document exists solely as an exploratory personal project related to a personal cardiac condition, which is independently and regularly monitored by qualified cardiologists and medical specialists.
+\textbf{\upshape Disclaimer.} This report describes an engineering and signal-analysis exercise based on a hobbyist, low-cost, home-built project. Neither the hardware nor the software pipeline has been clinically calibrated, validated, certified, or designed or intended for medical use. The data presented here do not constitute a medical record; the analyses and conclusions do not constitute a clinical Holter report and are not diagnostic. This document exists solely as an exploratory personal project related to a personal cardiac condition, which is independently and regularly monitored by qualified cardiologists and medical specialists.
 \end{minipage}
 \end{center}
 
@@ -285,25 +285,21 @@ is expected to show a relatively tight coupling distribution. By contrast, multi
 clearly distinct ectopic mechanisms may produce separate coupling peaks, particularly if
 associated with different QRS morphologies.
 
-For each session, the coupling distribution was tested using one- versus two-component Gaussian
-mixture models (\textbf{Figure~\ref{fig:coupling}}). A session was flagged as bimodal only when the two-component fit produced two
-genuinely separated peaks, with a visible trough rather than simple skew, and improved the
-Bayesian information criterion. This classification was further checked offline using a
-parametric-bootstrap likelihood-ratio test.
+For each session the coupling distribution was examined for evidence of more than one coupling
+mode (\textbf{Figure~\ref{fig:coupling}}). Across sessions the distribution ranged on a continuum,
+from a single mode with a right-skewed shoulder to a more clearly separated second mode, without a
+sharp boundary between the two cases. Rather than forcing a binary bimodal-versus-unimodal label,
+each distribution was split into a shorter- and a longer-coupling cluster --- at the trough where
+two modes were clearly separated, otherwise at the midpoint between the two fitted Gaussian-mixture
+modes --- and the QRS morphology of the two clusters was then compared.
 
-Two sessions, 2026-06-05 18:29 and 2026-06-06 15:08, showed genuinely bimodal coupling
-distributions. In both cases, however, the two coupling clusters had essentially identical QRS
-morphology. Within the limits of a single-lead recording setup, this supports coupling modulation
-of the same dominant monomorphic PVC morphology rather than a morphologically distinct second
-source. Sessions showing only a right-skewed shoulder, rather than two separated modes, were
-deliberately left unflagged. Even when these tails were artificially split, the resulting clusters
-retained nearly identical QRS morphology, supporting their inclusion within the same recurrent PVC
-population.
-
-Overall, no session showed a coupling distribution associated with a clearly distinct second QRS
-morphology. The per-session coupling analysis therefore remains consistent with the
-single-population interpretation derived from morphology, clustering, and cross-session
-correlation.
+In every session the two coupling clusters had essentially identical QRS morphology (template
+correlation $r\geq0.99$ throughout). Within the limits of a single-lead recording setup, this is
+consistent with coupling-interval modulation of a single dominant monomorphic focus --- the same
+complex recurring at two coupling intervals --- rather than a morphologically distinct second
+source. No session showed a coupling mode associated with a clearly distinct QRS morphology, so the
+per-session coupling analysis remains consistent with the single-population interpretation derived
+from morphology, clustering, and cross-session correlation.
 
 \reportfig{12_per_session_coupling_distribution.png}{Per-session coupling-interval distributions with the statistical single-source consistency check based on Gaussian mixture modelling.\label{fig:coupling}}
 
