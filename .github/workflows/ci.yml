@@ -1,0 +1,27 @@
+name: CI
+
+# Runs the end-to-end smoke test on a clean machine for every push / PR:
+# installs the pinned dependencies and checks that the detector runs on the
+# bundled sample recording and returns a plausible beat count.
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run smoke test
+        env:
+          MPLBACKEND: Agg
+        run: python tests/test_smoke.py

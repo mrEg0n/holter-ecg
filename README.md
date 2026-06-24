@@ -1,5 +1,7 @@
 # DIY Single-Lead Holter ECG
 
+[![CI](https://github.com/mrEg0n/holter-ecg/actions/workflows/ci.yml/badge.svg)](https://github.com/mrEg0n/holter-ecg/actions/workflows/ci.yml)
+
 A hobbyist, low-cost, home-built single-lead ECG recorder and analysis pipeline for
 long-duration exploratory recordings of premature ventricular complexes (PVCs).
 
@@ -281,6 +283,7 @@ holter-ecg/
 ├── reports/     # LaTeX report source + generated figures/tables + compiled PDF
 ├── samples/     # short example ECG recordings (CSV + PNG)
 ├── exclusions/  # per-session manual noise-exclusion files
+├── tests/       # end-to-end smoke test (runs the detector on a sample)
 ├── requirements.txt
 ├── LICENSE
 └── README.md
@@ -308,6 +311,19 @@ pip install -r requirements.txt
 
 (`pillow` and `reportlab` are listed in `requirements.txt` too, but only the superseded
 scripts in `legacy/` use them — the active pipeline does not.)
+
+---
+
+## Tests
+
+A single end-to-end smoke test runs the detector on the bundled sample recording and checks
+that it returns a physiologically plausible beat count. It is a quick "the pipeline still
+runs end-to-end" check — **not** a clinical or accuracy validation, which is done by reading
+the actual traces. It runs on every push via GitHub Actions (see the badge at the top).
+
+```bash
+python tests/test_smoke.py
+```
 
 ---
 
