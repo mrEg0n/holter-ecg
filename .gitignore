@@ -22,6 +22,14 @@ pico/wifi_config.py
 
 # Work-in-progress, not ready to publish
 interpretability/
+notes/
+# P-wave analysis: held back until reviewed. Remove a line to publish that script.
+host/analyze_p_wave.py
+host/compare_p_groups.py
+host/compare_p_wave.py
+host/compare_p_windows.py
+host/quantify_shoulder.py
+host/show_pwave_panels.py
 
 # Ad-hoc recordings in repo root (not the curated samples/)
 /ecg_*.csv
