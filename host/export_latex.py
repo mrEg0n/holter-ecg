@@ -1,8 +1,8 @@
 """
 Extracts the "automatic" parts of the report (the 18 figures and the 5 tables)
 from  reports/holter_dashboard.html  and writes them as files that the LaTeX
-document includes. This way you edit the prose by hand in  reports/holter_report.tex ,
-while figures and tables regenerate themselves whenever you redo the recordings:
+document includes. The prose is edited by hand in  reports/holter_report.tex ,
+while figures and tables regenerate whenever the recordings are redone:
 
     python3 host/dashboard.py        # recompute everything -> HTML (with figures)
     python3 host/export_latex.py     # HTML -> reports/figs/*.png + tables.tex

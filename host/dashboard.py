@@ -1,45 +1,43 @@
 """
 Holter ECG — cumulative report generator (host/dashboard.py).
 
-WHAT IT DOES, in short:
+What it does:
   reads every recording in logs/  →  applies the classification pipeline  →
   builds the figures (matplotlib)  →  embeds them into a single self-contained
   HTML file  →  reports/holter_dashboard.html
-  (the PDF is that HTML printed via headless Chrome, see at the bottom).
+  (the PDF is that HTML printed via headless Chrome, see the bottom of this file).
 
 ────────────────────────────────────────────────────────────────────────────
-FILE MAP — where to find what (use your editor's search on the markers)
+File map (search the markers below):
 ────────────────────────────────────────────────────────────────────────────
   1. CONFIG          → at the top: detector thresholds, colors, constants
                        (search:  "classifier configuration",  "DARK_BG")
-  2. FUNCTIONS       → the "math": loading and analysis, one function
-                       per concept.  (search:  "def load_session",
-                       "def pvc_pause_data",  "def extract_edr_and_phase")
-  3. def main()      → the core: computes the metrics and BUILDS THE FIGURES.
-                       Each figure block has a banner:  "# ==== ... ===="
-                       and ends with  img_something = fig_to_b64(fig).
+  2. FUNCTIONS       → loading and analysis, one function per concept
+                       (search:  "def load_session",  "def pvc_pause_data",
+                       "def extract_edr_and_phase")
+  3. def main()      → computes the metrics and builds the figures. Each figure
+                       block has a banner:  "# ==== ... ===="  and ends with
+                       img_something = fig_to_b64(fig).
   4. HTML TEMPLATE   → at the bottom, in the large string that starts with  html = f
-                       (search exactly:  html = f ).
-                       ► ALL THE REPORT TEXT LIVES HERE ◄
-                       - the titles are the  <h2>...</h2>  tags
-                       - the descriptions are the  <div class="commentary">...</div>
+                       (search:  html = f ). All report text lives here:
+                       - titles are the  <h2>...</h2>  tags
+                       - descriptions are the  <div class="commentary">...</div>
                        - figures are inserted with  {img_something}
                        - computed numbers are inserted with  {variable_name}
 
-EDITING THE TEXT BY HAND (the part you care about):
-  Go to the bottom, into the HTML template, and change the text inside <h2> or
-  <div class="commentary">. Watch out for only 2 things, because it's an f-string:
-    • a LITERAL brace must be DOUBLED:  write  {{  and  }}  (not  {  } )
-    • {something} without doubling = "insert the value of the variable
-      something here". If you don't know what it is, don't touch it.
-  The rest is normal HTML: <b>bold</b>, <br/> line break, <span style="...">.
+Editing the report text:
+  Edit the text inside <h2> or <div class="commentary"> in the HTML template at
+  the bottom. Two f-string caveats:
+    • a literal brace must be doubled:  {{  and  }}  (not  {  } )
+    • {something} inserts the value of the variable `something`.
+  The rest is plain HTML.
 
-REGENERATE:
-    python3 host/dashboard.py                 → rewrites reports/holter_dashboard.html
-    then (for the PDF) print the HTML from Chrome, or ask me.
+Regenerate:
+    python3 host/dashboard.py    → rewrites reports/holter_dashboard.html
+    (for the PDF, print the HTML from Chrome).
 
-ADDING A SESSION:  put the CSV in logs/, mark the noise with
-    python3 host/mark_exclusions.py logs/ecg_*.csv  and regenerate. Everything updates.
+Adding a session:  put the CSV in logs/, mark noise with
+    python3 host/mark_exclusions.py logs/ecg_*.csv  and regenerate.
 """
 import csv, json, os, glob, base64, io
 from datetime import datetime

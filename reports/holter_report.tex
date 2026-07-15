@@ -4,7 +4,7 @@
 %  DIY Holter ECG — conclusive document (LaTeX source, hand-edited)
 % ---------------------------------------------------------------------
 %  HOW IT WORKS:
-%   - The PROSE is below: edit it freely, it's yours.
+%   - The prose is below and is edited by hand.
 %   - The FIGURES are in  figs/*.png  and the TABLES + aggregate numbers
 %     live in  tables.tex : both REGENERATE from the data with
 %         python3 host/dashboard.py        (recompute -> HTML + figures)
@@ -18,13 +18,13 @@
 % ---- fonts & encoding (Times, academic-paper style) ----
 \usepackage[T1]{fontenc}
 \usepackage[utf8]{inputenc}
-\usepackage{newtxtext,newtxmath}   % Times (stile paper accademico)
+\usepackage{newtxtext,newtxmath}   % Times (academic-paper style)
 \usepackage{microtype}
 
 % ---- page layout ----
 \usepackage[a4paper,margin=2.5cm]{geometry}
 \usepackage{graphicx}
-\graphicspath{{figs/}{figs_manual/}}   % figs/=auto (export_latex.py)  ·  figs_manual/=figure curate a mano
+\graphicspath{{figs/}{figs_manual/}}   % figs/=auto (export_latex.py)  ·  figs_manual/=hand-curated figures
 \usepackage{float}
 \usepackage{booktabs}
 \usepackage{array}
@@ -61,10 +61,10 @@
 \titlespacing*{\section}{0pt}{2.2ex plus .3ex}{1.0ex}
 \titlespacing*{\subsection}{0pt}{1.4ex plus .2ex}{0.6ex}
 
-% ---- didascalie ----
+% ---- captions ----
 \captionsetup{font={footnotesize,it},labelfont={bf,up},labelsep=period,skip=5pt,justification=justified,singlelinecheck=false}
 
-% ---- testatina ----
+% ---- page header ----
 \pagestyle{plain}   % page number centered at the bottom, paper style
 
 % ---- figure shortcut: \reportfig[width]{file}{caption} ----
